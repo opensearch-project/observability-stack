@@ -1,0 +1,7 @@
+# OpenTelemetry Python SDK and OTLP exporters
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+
+# Required for instrumentation
+opentelemetry-instrumentation>=0.41b0

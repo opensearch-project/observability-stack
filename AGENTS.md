@@ -439,7 +439,7 @@ opensearch:
     - "9200:9200"
     - "9600:9600"
   healthcheck:
-    test: curl -s -k -u admin:Admin123!@# https://localhost:9200/_cluster/health | grep -E '"status":"(green|yellow)"'
+    test: curl -s -k -u admin:My_password_123!@# https://localhost:9200/_cluster/health | grep -E '"status":"(green|yellow)"'
     start_period: 30s
     interval: 5s
     timeout: 10s
@@ -495,8 +495,8 @@ docker-compose up -d
 # Check all services
 docker-compose ps
 
-# Check OpenSearch health (with authentication)
-curl -k -u admin:Admin123!@# https://localhost:9200/_cluster/health?pretty
+# Check OpenSearch health (with authentication - use password from .env)
+curl -k -u admin:My_password_123!@# https://localhost:9200/_cluster/health?pretty
 
 # Check Prometheus
 curl http://localhost:9090/-/healthy

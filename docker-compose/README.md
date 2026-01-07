@@ -60,7 +60,7 @@ The main `docker-compose.yml` file is located in this directory and references c
 - **otel-collector**: Receives OTLP telemetry data (ports 4317, 4318, 8888)
 - **data-prepper**: Processes logs and traces before OpenSearch ingestion (ports 21890, 21892)
 - **opensearch**: Stores logs and traces with security enabled (port 9200, 9600)
-  - Default credentials: admin/Admin123!@#
+  - Default credentials: admin/My_password_123!@# (configured in .env file)
 - **prometheus**: Stores metrics with OTLP receiver enabled (port 9090)
 - **opensearch-dashboards**: Visualization UI (port 5601)
 

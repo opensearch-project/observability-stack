@@ -12,8 +12,9 @@ server.name: 'atlas-dashboards'
 opensearch.hosts: ["https://opensearch:9200"]
 
 # Authentication credentials for OpenSearch
-opensearch.username: "admin"
-opensearch.password: "Admin123!@#"
+# These will be overridden by environment variables from docker-compose
+opensearch.username: "${OPENSEARCH_USER}"
+opensearch.password: "${OPENSEARCH_PASSWORD}"
 
 # SSL/TLS configuration
 # Disable certificate verification for development with self-signed certs
