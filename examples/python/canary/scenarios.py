@@ -622,13 +622,15 @@ class MultiAgentScenario(CanaryScenario):
     def execute(self, agent) -> ScenarioResult:
         """Execute multi-agent scenario.
 
-        This scenario creates a parent-child agent relationship to test
-        that span hierarchy is correctly preserved through the telemetry
-        pipeline. The parent agent's span should contain the child agent's
-        span as a nested child.
+        This scenario uses the pre-built agent hierarchy from the runner.
+        The parent agent invokes its child agents, which were created with
+        the same fault injection configuration as the parent.
+
+        The agent hierarchy is built by the runner based on the config file,
+        so all agents (parent and children) have fault injection applied.
 
         Args:
-            agent: Configurable agent to use as parent agent
+            agent: Root agent with child_agents already populated
 
         Returns:
             ScenarioResult with execution details
@@ -637,40 +639,26 @@ class MultiAgentScenario(CanaryScenario):
         conversation_id = f"conv_multi_agent_{int(time.time())}"
 
         try:
-            # Import here to avoid circular dependency
-            from .factory import AgentFactory
-            from .providers import MockLLMProvider, MockToolProvider
+            # Check if agent has children
+            if not agent.child_agents:
+                raise ValueError(
+                    "Multi-agent scenario requires agent hierarchy with children. "
+                    "Ensure config file has 'children' defined under 'agent'."
+                )
 
-            # Parent agent is the one passed in
-            parent_agent = agent
-
-            # Create child agent (separate instance, same process)
-            # Child agent initializes its own OTel exporters
-            factory = AgentFactory(otlp_endpoint=parent_agent.otlp_endpoint)
-            child_agent = factory.create_mock_agent(
-                agent_id="child_agent_001",
-                agent_name="Child Agent",
-                llm_latency_ms=100,
-                tool_latency_ms=50,
-                tool_failure_rate=0.0
+            # Parent agent invokes itself first
+            parent_result = agent.invoke(
+                "Coordinate with child agents for weather information", conversation_id
             )
 
-            # Parent agent invokes child agent within its span context
-            with parent_agent.tracer.start_as_current_span(
-                "parent_agent_operation"
-            ):
-                # This creates a parent span
-                parent_result = parent_agent.invoke(
-                    "Coordinate with child agent",
-                    conversation_id
-                )
-
-                # Child invocation happens within parent span context
-                # This creates a child span nested under the parent
+            # Parent invokes each child agent
+            child_results = []
+            for child_name, child_agent in agent.child_agents.items():
+                # Invoke child agent with same conversation_id
                 child_result = child_agent.invoke(
-                    "Execute subtask",
-                    conversation_id
+                    f"Get weather data (delegated from parent)", conversation_id
                 )
+                child_results.append(child_result)
 
             duration = time.time() - start_time
 
