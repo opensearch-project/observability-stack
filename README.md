@@ -21,33 +21,29 @@ ATLAS combines OpenSearch, OpenTelemetry, Prometheus, and OpenSearch Dashboards 
 ## 🚀 Quickstart
 To get started quickly, use the provided Docker Compose setup:
 
-### Docker Compose Deployment
-
-#### 1️⃣ Clone the repository:
+### 1️⃣ Clone the repository:
 ```bash
 git clone https://github.com/opensearch-project/atlas.git
 cd atlas
 ```
+### **Optional**: Configure stack
+See [Configuration](#configuration) section for details on customizing the stack.
 
-#### 2️⃣ Start the stack:
+### 2️⃣ Start the stack:  
+If you already have an agent to test with and want to send telemetry from your agent:
 ```bash
 docker compose up -d
 ```
-
-#### **Optional**: Start with example services (weather-agent + canary) 
-If you don't have an agent to test with, you can start the stack with the included example services to generate example telemetry data.
+Or if you don't have an agent to test with, you can start the stack with the included example services to generate example telemetry data.  
 ```bash
 docker compose --profile examples up -d
 ```  
 [docker-compose.yml](./docker-compose.yml) uses Docker [Profiles](https://docs.docker.com/reference/compose-file/profiles/) to specify optional run configurations. The above command uses the `examples` profile to start the stack with a sample agent and synthetic canary traffic
 
-#### 3️⃣ Verify all services are running:
-```bash
-docker compose ps
-```
+### 3️⃣ View your Logs and Traces in OpenSearch Dashboards 
+👉 Navigate to http://localhost:5601  
 
-#### 4️⃣ View your data in OpenSearch Dashboards at 📊 http://localhost:5601  
-The `opensearch-dashboards-init` container will create initial Workspace and index patterns. It will also output the full dashboards URL with user/pass. Example:  
+Also, the `opensearch-dashboards-init` container will create initial Workspace and index patterns. It will also output the full dashboards URL with configured user/pass. Example:  
 
 ```bash
 docker compose logs opensearch-dashboards-init --tail=20
@@ -139,6 +135,38 @@ agent("What's the weather like?")
 ### Environment Variables
 
 The [.env](./.env) file contains all configurable parameters. Edit this file before starting the stack to customize your deployment.
+
+### Changing OpenSearch Credentials
+
+To change the OpenSearch username and password:
+
+1. **Edit `.env` file**:
+   ```env
+   OPENSEARCH_USER=your-new-username
+   OPENSEARCH_PASSWORD=your-new-password
+   ```
+
+2. **Update [Data Prepper configuration](docker-compose/data-prepper/pipelines.yaml)**:
+   
+   The Data Prepper configuration has hardcoded credentials in three OpenSearch sink definitions. You can update them automatically:
+   
+   ```bash
+   # Replace username (default: admin)
+   sed -i.bak 's/username: admin/username: your-new-username/g' docker-compose/data-prepper/pipelines.yaml
+   
+   # Replace password (default: My_password_123!@#)
+   sed -i.bak 's/password: "My_password_123!@#"/password: "your-new-password"/g' docker-compose/data-prepper/pipelines.yaml
+   ```
+   
+   Or manually update the `username` and `password` fields in all `opensearch:` sink sections.
+
+3. **Restart the stack**:
+   ```bash
+   docker compose --profile "*" down
+   docker compose up -d
+   ```
+
+**Note**: The `opensearch-dashboards` and `opensearch-dashboards-init` services automatically use the values from `.env`, so no manual changes are needed for those components.
 
 ## Production Readiness
 
