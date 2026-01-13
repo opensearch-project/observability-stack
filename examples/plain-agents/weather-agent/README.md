@@ -25,14 +25,33 @@ cd ../../../docker-compose
 docker compose up -d
 ```
 
-2. Run the weather agent:
+2. Run the weather agent (choose one):
+
+**Option A: Direct execution**
 ```bash
 uv run python main.py
 ```
 
-That's it! The agent will:
+**Option B: API Server**
+```bash
+uv run python server.py
+```
+
+The API server will start on `http://localhost:8000`. You can then invoke the agent via REST API:
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Invoke agent
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the weather in Paris?"}'
+```
+
+The agent will:
 - Set up OpenTelemetry with OTLP exporters
-- Simulate a weather query
+- Process weather queries
 - Send traces, metrics, and logs to the ATLAS stack
 
 ## View Telemetry Data
@@ -54,6 +73,7 @@ The weather agent demonstrates:
 ## Code Structure
 
 - `main.py`: Main agent implementation with OpenTelemetry instrumentation
+- `server.py`: FastAPI server that exposes the agent through REST API
 
 ## Customization
 
