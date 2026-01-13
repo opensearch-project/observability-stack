@@ -10,54 +10,6 @@ ATLAS combines OpenSearch, OpenTelemetry, Prometheus, and OpenSearch Dashboards 
 
 ![](./docs/atlas-arch.excalidraw.png)
 
-
-### Key Features
-
-- **Quick Start**: Deploy the complete stack with a single command using docker-compose
-- **Standards-Based**: Built on OpenTelemetry Protocol (OTLP) for vendor-neutral telemetry ingestion
-- **Agent-Optimized**: Pre-configured for agent observability with gen-ai semantic conventions
-- **Multi-Signal**: Supports logs, traces, and metrics in a unified platform
-- **Visualization Ready**: Includes OpenSearch Dashboards for exploring agent behavior
-- **Kubernetes Ready**: Optional Helm charts for Kubernetes deployment
-- **AI-Friendly**: Repository structure and documentation optimized for AI coding assistants
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Agent Applications                        │
-│                    (instrumented with OTLP)                     │
-└────────────┬────────────────────────────────────┬───────────────┘
-             │                                    │
-             │ OTLP (logs, traces, metrics)      │
-             │                                    │
-             ▼                                    ▼
-┌────────────────────────────────────────────────────────────────┐
-│                  OpenTelemetry Collector                        │
-│         Routes logs/traces → Data Prepper                       │
-│         Routes metrics → Prometheus                             │
-└────────┬───────────────────────────────────────┬───────────────┘
-         │                                       │
-         ▼                                       ▼
-┌─────────────────────┐              ┌─────────────────────┐
-│    Data Prepper     │              │     Prometheus      │
-│  (Transform data)   │              │  (Store metrics)    │
-└─────────┬───────────┘              └─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│  OpenSearch Cluster │
-│  (Store logs/traces)│
-└─────────┬───────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ OpenSearch          │
-│ Dashboards          │
-│ (Visualize data)    │
-└─────────────────────┘
-```
-
 ### Components
 
 - **OpenTelemetry Collector**: Receives OTLP data and routes it to appropriate backends
@@ -93,18 +45,17 @@ nano .env
 3. Start the stack:
 ```bash
 cd docker-compose
-docker-compose up -d
+docker compose up -d
 ```
 
 3. Verify all services are running:
 ```bash
-docker-compose ps
+docker compose ps
 ```
 
 4. Access the interfaces:
 - OpenSearch Dashboards: http://localhost:5601
 - Prometheus UI: http://localhost:9090
-- OpenSearch API: http://localhost:9200
 
 5. Send sample telemetry data:
 ```bash
@@ -114,34 +65,10 @@ python examples/python/sample_agent.py
 
 6. View your data in OpenSearch Dashboards at http://localhost:5601
 
-### Helm Deployment (Kubernetes)
-
-1. Add the Helm repository (if published):
-```bash
-helm repo add atlas https://opensearch-project.github.io/atlas
-helm repo update
-```
-
-2. Install the chart:
-```bash
-helm install atlas ./helm/atlas
-```
-
-3. Wait for pods to be ready:
-```bash
-kubectl get pods -w
-```
-
-4. Port-forward to access services:
-```bash
-kubectl port-forward svc/opensearch-dashboards 5601:5601
-```
-
-5. Access OpenSearch Dashboards at http://localhost:5601
 
 ## Instrumenting Your Agent
 
-ATLAS accepts telemetry data via the OpenTelemetry Protocol (OTLP) and follows the [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/) for standardized attribute naming and structure. For AI agent-specific attributes, we use the [Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
+ATLAS accepts telemetry data via the OpenTelemetry Protocol (OTLP) and follows the [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for standardized attribute naming and structure for AI agents. 
 
 Here's a quick example in Python:
 
