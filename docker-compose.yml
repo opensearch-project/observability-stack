@@ -185,6 +185,12 @@ services:
       resources:
         limits:
           memory: ${DASHBOARDS_MEMORY_LIMIT}
+    healthcheck:
+      test: curl -f -u ${OPENSEARCH_USER}:'${OPENSEARCH_PASSWORD}' http://localhost:5601/api/status || exit 1
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 12
     logging: *logging
 
   # Weather Agent API Server - Example instrumented agent (optional)

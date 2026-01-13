@@ -35,21 +35,36 @@ docker compose up -d
 ```
 
 #### **Optional**: Start with example services (weather-agent + canary)
-
-[docker-compose.yml](./docker-compose.yml) uses [Profiles](https://docs.docker.com/reference/compose-file/profiles/) to specify optional run configurations. Use the `example` profile to start the stack with a sample agent and synthetic canary traffic to generate example telemetry data.
-
 ```bash
 docker compose --profile examples up -d
-```
-   See [docker-compose/EXAMPLES.md](docker-compose/EXAMPLES.md) for details on the example services.
+```  
+[docker-compose.yml](./docker-compose.yml) uses Docker [Profiles](https://docs.docker.com/reference/compose-file/profiles/) to specify optional run configurations. The above command uses the `examples` profile to start the stack with a sample agent and synthetic canary traffic to generate example telemetry data.
 
-4. Verify all services are running:
+#### 3️⃣ Verify all services are running:
 ```bash
 docker compose ps
 ```
 
-5. View your data in OpenSearch Dashboards at http://localhost:5601
+#### 4️⃣ View your data in OpenSearch Dashboards at 📊 http://localhost:5601  
 
+### Shutting Down Services
+
+To stop the stack while preserving your data:
+```bash
+docker compose down
+```
+
+To stop the stack and remove all data volumes:
+```bash
+docker compose down -v
+```
+
+If you started services with a profile (e.g., `--profile examples`), use:
+```bash
+docker compose --profile "*" down
+```
+
+This ensures all services, including those in profiles, are properly stopped and networks are cleaned up.
 
 ## Instrumenting Your Agent
 
@@ -189,6 +204,18 @@ docker compose stats
 ```
 
 Adjust resource limits in docker-compose.yml or values.yaml for Helm.
+
+### Network Removal Error on Shutdown
+
+If `docker compose down` fails with an error like:
+```
+failed to remove network atlas-network: Error response from daemon: error while removing network: network atlas-network id ab129adaabcd7ab35cddb1fbe8dc2a68b3c730b9fb9384c5c1e7f5ca015c27d9 has active endpoints
+```
+
+This typically occurs when you started services with a profile. Use:
+```bash
+docker compose --profile "*" down
+```
 
 For more troubleshooting guidance, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
