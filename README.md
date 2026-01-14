@@ -37,18 +37,6 @@ docker compose up -d
 
 This starts all services including example services (weather-agent and canary) that generate sample telemetry data.
 
-**To run only the core observability stack without examples:**
-
-Edit `.env` and comment out or remove the `INCLUDE_COMPOSE_FILES` line:
-```env
-# INCLUDE_COMPOSE_FILES=docker-compose.examples.yml
-```
-
-Then start the stack:
-```bash
-docker compose up -d
-```
-
 ### 3️⃣ View your Logs and Traces in OpenSearch Dashboards 
 👉 Navigate to http://localhost:5601  
 
@@ -187,13 +175,13 @@ To change the OpenSearch username and password:
    
    Or manually update the `username` and `password` fields in all `opensearch:` sink sections.
 
-3. **Restart the stack**:
+3. **Restart the stack** (remove volumes to clear stale credentials):
    ```bash
-   docker compose down
+   docker compose down -v
    docker compose up -d
    ```
 
-**Note**: The `opensearch-dashboards` and `opensearch-dashboards-init` services automatically use the values from `.env`, so no manual changes are needed for those components.
+**Note**: The `opensearch-dashboards` and `opensearch-dashboards-init` services automatically use the values from `.env`, so no manual changes are needed for those components. OpenSearch uses HTTPS with self-signed certificates, so use `-k` flag with curl commands.
 
 ## Production Readiness
 
@@ -219,9 +207,8 @@ To change the OpenSearch username and password:
 
 The default configuration includes these development-friendly settings that are **NOT secure**:
 
-- OpenSearch security plugin is disabled (no authentication required)
-- No TLS/SSL encryption
-- Default passwords where required
+- OpenSearch security is enabled but uses default credentials (admin/My_password_123!@#)
+- Self-signed TLS certificates with verification disabled
 - Permissive CORS settings
 - All services exposed without network isolation
 
@@ -255,14 +242,14 @@ docker compose logs data-prepper
 
 Verify OpenSearch indices:
 ```bash
-curl http://localhost:9200/_cat/indices?v
+curl -k -u admin:My_password_123!@# https://localhost:9200/_cat/indices?v
 ```
 
 ### Performance Issues
 
 Check resource usage:
 ```bash
-docker compose stats
+docker stats
 ```
 
 Adjust resource limits in docker-compose.yml or values.yaml for Helm.
@@ -274,8 +261,14 @@ If `docker compose down` fails with an error like:
 failed to remove network atlas-network: Error response from daemon: error while removing network: network atlas-network id ab129adaabcd7ab35cddb1fbe8dc2a68b3c730b9fb9384c5c1e7f5ca015c27d9 has active endpoints
 ```
 
-This typically occurs when you have running services. Use:
+This typically occurs when containers from other compose files are still running. Try:
 ```bash
+docker compose down --remove-orphans
+```
+
+Or stop all containers using the network first:
+```bash
+docker network inspect atlas-network --format '{{range .Containers}}{{.Name}} {{end}}' | xargs -r docker stop
 docker compose down
 ```
 
