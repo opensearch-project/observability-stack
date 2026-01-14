@@ -252,6 +252,8 @@ services:
         condition: service_healthy
     environment:
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - PROMETHEUS_HOST=${PROMETHEUS_HOST}
+      - PROMETHEUS_PORT=${PROMETHEUS_PORT}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
     networks:

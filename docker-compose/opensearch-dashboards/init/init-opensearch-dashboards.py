@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
-import requests
-import json
-import time
 import os
-import sys
+import time
+import requests
 
 BASE_URL = "http://opensearch-dashboards:5601"
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "admin")
+PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
+PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -124,7 +124,83 @@ def create_index_pattern(workspace_id, title, time_field=None):
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error creating index pattern {title}: {e}")
 
+
+def create_prometheus_datasource(workspace_id):
+    """Create Prometheus datasource"""
+    print("🔧 Creating Prometheus datasource...")
+
+    prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
+
+    payload = {
+        "attributes": {
+            "dataSourceEngineType": "Prometheus",
+            "title": "ATLAS Prometheus",
+            "endpoint": prometheus_endpoint,
+            "auth": {"type": "no_auth"},
+        }
+    }
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/api/saved_objects/data-source",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"Prometheus datasource creation: {response.status_code}")
+
+        if response.status_code == 200:
+            result = response.json()
+            datasource_id = result.get("id")
+            if datasource_id:
+                print(f"✅ Created Prometheus datasource: {datasource_id}")
+
+                # Associate with workspace if provided
+                if workspace_id and workspace_id != "default":
+                    associate_datasource_with_workspace(workspace_id, datasource_id)
+                return datasource_id
+        else:
+            print(f"⚠️  Prometheus datasource creation failed: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating Prometheus datasource: {e}")
+        return None
+
+
+def associate_datasource_with_workspace(workspace_id, datasource_id):
+    """Associate datasource with workspace"""
+    print(f"🔗 Associating datasource with workspace {workspace_id}...")
+
+    payload = {
+        "workspaceId": workspace_id,
+        "savedObjects": [{"type": "data-source", "id": datasource_id}],
+    }
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/api/workspaces/_associate",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"Datasource association: {response.status_code}")
+
+        if response.status_code == 200:
+            print("✅ Datasource associated with workspace")
+        else:
+            print(f"⚠️  Association failed: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error associating datasource: {e}")
+
+
 def main():
+    """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
 
     # Check for existing workspace
@@ -138,9 +214,12 @@ def main():
         # Create index patterns
         create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime")
         create_index_pattern(workspace_id, "logs-otel-v1-*", "time")
-        create_index_pattern(workspace_id, "otel-v1-apm-service-map")  # No time field
+        create_index_pattern(workspace_id, "otel-v1-apm-service-map")
 
         print("📊 Created index patterns for spans, logs, and service map")
+
+    # Create Prometheus datasource
+    create_prometheus_datasource(workspace_id)
 
     # Output summary
     print()
@@ -154,7 +233,7 @@ def main():
     else:
         dashboard_url = "http://localhost:5601/app/home"
 
-    print(f"\033[1m📊 OpenSearch Dashboards Workspace: {dashboard_url}\033[0m")
+    print(f"\033[1m📊 OpenSearch Dashboards: {dashboard_url}\033[0m")
     print()
 
 if __name__ == "__main__":
