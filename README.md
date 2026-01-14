@@ -1,4 +1,4 @@
-# 🌐 ATLAS - Agent Traces Logging Analytics Stack
+# 🌐 ATLAS - Agent Tracing Logging Analytics Stack
 
 ATLAS (Agent Tracing Logging Analytics Stack) is an open-source quickstart observability stack specifically designed for AI agent observability. It provides a complete, pre-configured infrastructure that enables developers to quickly deploy and monitor their agent applications using industry-standard observability tools.
 
