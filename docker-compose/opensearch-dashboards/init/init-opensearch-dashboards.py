@@ -94,7 +94,7 @@ def create_workspace():
         return "default"
 
 def create_index_pattern(workspace_id, title, time_field=None):
-    """Create index pattern in workspace"""
+    """Create index pattern in workspace and return its ID"""
     payload = {
         "attributes": {
             "title": title
@@ -121,8 +121,16 @@ def create_index_pattern(workspace_id, title, time_field=None):
             timeout=10,
         )
         print(f"Index pattern {title} creation: {response.status_code}")
+
+        if response.status_code == 200:
+            result = response.json()
+            pattern_id = result.get("id")
+            if pattern_id:
+                return pattern_id
+        return None
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error creating index pattern {title}: {e}")
+        return None
 
 
 def create_prometheus_datasource(workspace_id):
@@ -199,6 +207,38 @@ def associate_datasource_with_workspace(workspace_id, datasource_id):
         print(f"⚠️  Error associating datasource: {e}")
 
 
+def set_default_index_pattern(workspace_id, pattern_id):
+    """Set the default index pattern"""
+    print(f"⭐ Setting default index pattern: {pattern_id}")
+
+    # Use workspace-specific URL if workspace exists, otherwise use default
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/opensearch-dashboards/settings/defaultIndex"
+    else:
+        url = f"{BASE_URL}/api/opensearch-dashboards/settings/defaultIndex"
+
+    payload = {"value": pattern_id}
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"Set default index pattern: {response.status_code}")
+
+        if response.status_code == 200:
+            print("✅ Default index pattern set to logs-otel-v1-*")
+        else:
+            print(f"⚠️  Setting default failed: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error setting default index pattern: {e}")
+
+
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
@@ -212,11 +252,15 @@ def main():
         workspace_id = create_workspace()
 
         # Create index patterns
+        logs_pattern_id = create_index_pattern(workspace_id, "logs-otel-v1-*", "time")
         create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime")
-        create_index_pattern(workspace_id, "logs-otel-v1-*", "time")
         create_index_pattern(workspace_id, "otel-v1-apm-service-map")
 
         print("📊 Created index patterns for spans, logs, and service map")
+
+        # Set logs as the default index pattern
+        if logs_pattern_id:
+            set_default_index_pattern(workspace_id, logs_pattern_id)
 
     # Create Prometheus datasource
     create_prometheus_datasource(workspace_id)
@@ -229,11 +273,12 @@ def main():
 
     # Generate appropriate dashboard URL
     if workspace_id and workspace_id != "default":
-        dashboard_url = f"http://localhost:5601/w/{workspace_id}/app/explore/traces"
+        dashboard_url = f"http://localhost:5601/w/{workspace_id}/app/explore/logs"
     else:
         dashboard_url = "http://localhost:5601/app/home"
 
     print(f"\033[1m📊 OpenSearch Dashboards: {dashboard_url}\033[0m")
+    print(f"📈 Prometheus: http://localhost:{PROMETHEUS_PORT}")
     print()
 
 if __name__ == "__main__":
