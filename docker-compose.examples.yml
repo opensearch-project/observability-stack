@@ -9,6 +9,13 @@
 # Then run: docker compose up -d
 #
 
+x-default-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "5m"
+    max-file: "2"
+    tag: "{{.Name}}"
+
 services:
   # OpenSearch Dashboards Initialization - Creates example workspace and index patterns
   opensearch-dashboards-init:
@@ -50,12 +57,7 @@ services:
       resources:
         limits:
           memory: ${WEATHER_AGENT_MEMORY_LIMIT}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-        tag: "{{.Name}}"
+    logging: *logging
 
   # Canary Service - Periodically invokes weather-agent for testing
   canary:
@@ -75,9 +77,4 @@ services:
       resources:
         limits:
           memory: ${CANARY_MEMORY_LIMIT}
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-        tag: "{{.Name}}"
+    logging: *logging

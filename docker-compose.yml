@@ -90,7 +90,7 @@ services:
 
   # OpenSearch - Stores and indexes logs and traces for search and analysis
   opensearch:
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION}
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch:${OPENSEARCH_VERSION}
     container_name: opensearch
     environment:
       # Single-node cluster for development
@@ -102,6 +102,7 @@ services:
       - OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS}
       # Initial admin password (required for OpenSearch 2.12+)
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}
+      - plugins.query.datasources.encryption.masterkey=BTqK4Ytdz67La1kShIKV3Pu9
     volumes:
       # Persist data across container restarts
       - opensearch-data:/usr/share/opensearch/data
@@ -167,7 +168,7 @@ services:
 
   # OpenSearch Dashboards - Web UI for visualizing logs and traces
   opensearch-dashboards:
-    image: opensearchproject/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
     container_name: opensearch-dashboards
     environment:
       - OPENSEARCH_HOSTS=["https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"]

@@ -133,24 +133,55 @@ def create_index_pattern(workspace_id, title, time_field=None):
         return None
 
 
+def get_existing_datasource(datasource_name):
+    """Check if a datasource with the given name already exists"""
+    try:
+        response = requests.get(
+            f"{BASE_URL}/api/query/datasources",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            datasources = response.json()
+            for ds in datasources:
+                if ds.get("name") == datasource_name:
+                    return ds.get("id")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error checking existing datasources: {e}")
+        return None
+
+
 def create_prometheus_datasource(workspace_id):
-    """Create Prometheus datasource"""
+    """Create Prometheus datasource using query data source API"""
+    datasource_name = "ATLAS Prometheus"
+
+    # Check if datasource already exists
+    existing_id = get_existing_datasource(datasource_name)
+    if existing_id:
+        print(f"✅ Prometheus datasource already exists: {existing_id}")
+        # Associate with workspace if provided
+        if workspace_id and workspace_id != "default":
+            associate_datasource_with_workspace(workspace_id, existing_id)
+        return existing_id
+
     print("🔧 Creating Prometheus datasource...")
 
     prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
 
     payload = {
-        "attributes": {
-            "dataSourceEngineType": "Prometheus",
-            "title": "ATLAS Prometheus",
-            "endpoint": prometheus_endpoint,
-            "auth": {"type": "no_auth"},
-        }
+        "name": datasource_name,
+        "allowedRoles": [],
+        "connector": "prometheus",
+        "properties": {"prometheus.uri": prometheus_endpoint},
     }
 
     try:
         response = requests.post(
-            f"{BASE_URL}/api/saved_objects/data-source",
+            f"{BASE_URL}/api/query/datasources",
             auth=(USERNAME, PASSWORD),
             headers={"Content-Type": "application/json", "osd-xsrf": "true"},
             json=payload,
