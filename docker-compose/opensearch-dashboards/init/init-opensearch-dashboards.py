@@ -455,6 +455,103 @@ def set_default_index_pattern(workspace_id, pattern_id):
         print(f"⚠️  Error setting default index pattern: {e}")
 
 
+def get_existing_correlation(workspace_id):
+    """Check if APM correlation already exists"""
+    try:
+        if workspace_id and workspace_id != "default":
+            url = (
+                f"{BASE_URL}/w/{workspace_id}/api/saved_objects/_find?type=correlations"
+            )
+        else:
+            url = f"{BASE_URL}/api/saved_objects/_find?type=correlations"
+
+        response = requests.get(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            saved_objects = result.get("saved_objects", [])
+            for obj in saved_objects:
+                attributes = obj.get("attributes", {})
+                if attributes.get("correlationType") == "APM-Correlation":
+                    return obj.get("id")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error checking existing correlation: {e}")
+        return None
+
+
+def create_apm_correlation(workspace_id, traces_pattern_id, logs_pattern_id):
+    """Create APM correlation between traces and logs"""
+    # Check if correlation already exists
+    existing_id = get_existing_correlation(workspace_id)
+    if existing_id:
+        print(f"✅ APM correlation already exists: {existing_id}")
+        return existing_id
+
+    print("🔗 Creating APM correlation between traces and logs...")
+
+    payload = {
+        "attributes": {
+            "correlationType": "APM-Correlation",
+            "version": "1.0.0",
+            "entities": [
+                {"tracesDataset": {"id": "references[0].id"}},
+                {"logsDataset": {"id": "references[1].id"}},
+            ],
+        },
+        "references": [
+            {
+                "name": "entities[0].index",
+                "type": "index-pattern",
+                "id": traces_pattern_id,
+            },
+            {
+                "name": "entities[1].index",
+                "type": "index-pattern",
+                "id": logs_pattern_id,
+            },
+        ],
+    }
+
+    # Add workspaces field if workspace exists
+    if workspace_id and workspace_id != "default":
+        payload["workspaces"] = [workspace_id]
+        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/correlations"
+    else:
+        url = f"{BASE_URL}/api/saved_objects/correlations"
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"APM correlation creation: {response.status_code}")
+
+        if response.status_code == 200:
+            result = response.json()
+            correlation_id = result.get("id")
+            if correlation_id:
+                print(f"✅ Created APM correlation: {correlation_id}")
+                return correlation_id
+        else:
+            print(f"⚠️  APM correlation creation failed: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating APM correlation: {e}")
+        return None
+
+
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
@@ -472,7 +569,9 @@ def main():
     logs_pattern_id = create_index_pattern(
         workspace_id, "logs-otel-v1-*", "time", "logs", logs_schema_mappings
     )
-    create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime", "traces")
+    traces_pattern_id = create_index_pattern(
+        workspace_id, "otel-v1-apm-span-*", "startTime", "traces"
+    )
     create_index_pattern(workspace_id, "otel-v1-apm-service-map")
 
     print("📊 Created index patterns for spans, logs, and service map")
@@ -480,6 +579,10 @@ def main():
     # Set logs as the default index pattern
     if logs_pattern_id:
         set_default_index_pattern(workspace_id, logs_pattern_id)
+
+    # Create APM correlation between traces and logs
+    if traces_pattern_id and logs_pattern_id:
+        create_apm_correlation(workspace_id, traces_pattern_id, logs_pattern_id)
 
     # Create datasources
     create_prometheus_datasource(workspace_id)
