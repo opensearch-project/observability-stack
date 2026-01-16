@@ -94,8 +94,45 @@ def create_workspace():
         return "default"
 
 
+def get_existing_index_pattern(workspace_id, title):
+    """Check if an index pattern with the given title already exists"""
+    try:
+        # Use workspace-specific URL if workspace exists
+        if workspace_id and workspace_id != "default":
+            url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/_find?type=index-pattern&search_fields=title&search={title}"
+        else:
+            url = f"{BASE_URL}/api/saved_objects/_find?type=index-pattern&search_fields=title&search={title}"
+
+        response = requests.get(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            saved_objects = result.get("saved_objects", [])
+            for obj in saved_objects:
+                attributes = obj.get("attributes", {})
+                # Exact match on title
+                if attributes.get("title") == title:
+                    return obj.get("id")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error checking existing index pattern {title}: {e}")
+        return None
+
+
 def create_index_pattern(workspace_id, title, time_field=None, signal_type=None):
     """Create index pattern in workspace and return its ID"""
+    # Check if index pattern already exists
+    existing_id = get_existing_index_pattern(workspace_id, title)
+    if existing_id:
+        print(f"✅ Index pattern already exists: {title}")
+        return existing_id
+
     payload = {
         "attributes": {
             "title": title
@@ -131,6 +168,7 @@ def create_index_pattern(workspace_id, title, time_field=None, signal_type=None)
             result = response.json()
             pattern_id = result.get("id")
             if pattern_id:
+                print(f"✅ Created index pattern: {title}")
                 return pattern_id
         return None
     except requests.exceptions.RequestException as e:
@@ -423,16 +461,18 @@ def main():
     else:
         workspace_id = create_workspace()
 
-        # Create index patterns
-        logs_pattern_id = create_index_pattern(workspace_id, "logs-otel-v1-*", "time")
-        create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime", "traces")
-        create_index_pattern(workspace_id, "otel-v1-apm-service-map")
+    # Create index patterns (idempotent - will skip if already exist)
+    logs_pattern_id = create_index_pattern(
+        workspace_id, "logs-otel-v1-*", "time", "logs"
+    )
+    create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime", "traces")
+    create_index_pattern(workspace_id, "otel-v1-apm-service-map")
 
-        print("📊 Created index patterns for spans, logs, and service map")
+    print("📊 Created index patterns for spans, logs, and service map")
 
-        # Set logs as the default index pattern
-        if logs_pattern_id:
-            set_default_index_pattern(workspace_id, logs_pattern_id)
+    # Set logs as the default index pattern
+    if logs_pattern_id:
+        set_default_index_pattern(workspace_id, logs_pattern_id)
 
     # Create datasources
     create_prometheus_datasource(workspace_id)
