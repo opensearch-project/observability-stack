@@ -93,7 +93,8 @@ def create_workspace():
         print(f"⚠️  Error creating workspace: {e}")
         return "default"
 
-def create_index_pattern(workspace_id, title, time_field=None):
+
+def create_index_pattern(workspace_id, title, time_field=None, signal_type=None):
     """Create index pattern in workspace and return its ID"""
     payload = {
         "attributes": {
@@ -104,6 +105,10 @@ def create_index_pattern(workspace_id, title, time_field=None):
     # Only add timeFieldName if time_field is provided
     if time_field:
         payload["attributes"]["timeFieldName"] = time_field
+
+    # Only add signalType if signal_type is provided
+    if signal_type:
+        payload["attributes"]["signalType"] = signal_type
 
     # Use workspace-specific URL if workspace exists, otherwise use default
     if workspace_id and workspace_id != "default":
@@ -133,11 +138,11 @@ def create_index_pattern(workspace_id, title, time_field=None):
         return None
 
 
-def get_existing_datasource(datasource_name):
-    """Check if a datasource with the given name already exists"""
+def get_existing_prometheus_datasource(datasource_name):
+    """Check if a Prometheus datasource with the given name already exists"""
     try:
         response = requests.get(
-            f"{BASE_URL}/api/query/datasources",
+            f"{BASE_URL}/api/saved_objects/_find?per_page=10000&type=data-connection",
             auth=(USERNAME, PASSWORD),
             headers={"Content-Type": "application/json", "osd-xsrf": "true"},
             verify=False,
@@ -145,27 +150,32 @@ def get_existing_datasource(datasource_name):
         )
 
         if response.status_code == 200:
-            datasources = response.json()
-            for ds in datasources:
-                if ds.get("name") == datasource_name:
-                    return ds.get("id")
+            result = response.json()
+            saved_objects = result.get("saved_objects", [])
+            for obj in saved_objects:
+                attributes = obj.get("attributes", {})
+                if attributes.get("connectionId") == datasource_name:
+                    return obj.get("id")
+        elif response.status_code == 404:
+            # List endpoint not available
+            return None
         return None
     except requests.exceptions.RequestException as e:
-        print(f"⚠️  Error checking existing datasources: {e}")
+        print(f"⚠️  Error checking existing Prometheus datasources: {e}")
         return None
 
 
 def create_prometheus_datasource(workspace_id):
-    """Create Prometheus datasource using query data source API"""
-    datasource_name = "ATLAS Prometheus"
+    """Create Prometheus datasource using direct query API"""
+    datasource_name = "ATLAS_Prometheus"
 
     # Check if datasource already exists
-    existing_id = get_existing_datasource(datasource_name)
+    existing_id = get_existing_prometheus_datasource(datasource_name)
     if existing_id:
         print(f"✅ Prometheus datasource already exists: {existing_id}")
         # Associate with workspace if provided
         if workspace_id and workspace_id != "default":
-            associate_datasource_with_workspace(workspace_id, existing_id)
+            associate_prometheus_with_workspace(workspace_id, existing_id)
         return existing_id
 
     print("🔧 Creating Prometheus datasource...")
@@ -176,12 +186,17 @@ def create_prometheus_datasource(workspace_id):
         "name": datasource_name,
         "allowedRoles": [],
         "connector": "prometheus",
-        "properties": {"prometheus.uri": prometheus_endpoint},
+        "properties": {
+            "prometheus.uri": prometheus_endpoint,
+            "prometheus.auth.type": "basicauth",
+            "prometheus.auth.username": "",
+            "prometheus.auth.password": "",
+        },
     }
 
     try:
         response = requests.post(
-            f"{BASE_URL}/api/query/datasources",
+            f"{BASE_URL}/api/directquery/dataconnections",
             auth=(USERNAME, PASSWORD),
             headers={"Content-Type": "application/json", "osd-xsrf": "true"},
             json=payload,
@@ -192,15 +207,27 @@ def create_prometheus_datasource(workspace_id):
         print(f"Prometheus datasource creation: {response.status_code}")
 
         if response.status_code == 200:
-            result = response.json()
-            datasource_id = result.get("id")
-            if datasource_id:
-                print(f"✅ Created Prometheus datasource: {datasource_id}")
+            print(f"✅ Created Prometheus datasource: {datasource_name}")
 
-                # Associate with workspace if provided
-                if workspace_id and workspace_id != "default":
-                    associate_datasource_with_workspace(workspace_id, datasource_id)
-                return datasource_id
+            # Fetch the datasource ID from saved objects
+            datasource_id = get_existing_prometheus_datasource(datasource_name)
+            if datasource_id and workspace_id and workspace_id != "default":
+                associate_prometheus_with_workspace(workspace_id, datasource_id)
+
+            return datasource_name
+        elif response.status_code == 400:
+            # Check if error is due to duplicate
+            error_text = response.text
+            if "already exists with name" in error_text:
+                print(f"✅ Prometheus datasource already exists: {datasource_name}")
+                # Fetch the datasource ID and associate
+                datasource_id = get_existing_prometheus_datasource(datasource_name)
+                if datasource_id and workspace_id and workspace_id != "default":
+                    associate_prometheus_with_workspace(workspace_id, datasource_id)
+                return datasource_name
+            else:
+                print(f"⚠️  Prometheus datasource creation failed: {error_text}")
+                return None
         else:
             print(f"⚠️  Prometheus datasource creation failed: {response.text}")
             return None
@@ -209,9 +236,38 @@ def create_prometheus_datasource(workspace_id):
         return None
 
 
+def associate_prometheus_with_workspace(workspace_id, datasource_id):
+    """Associate Prometheus datasource with workspace"""
+    print(f"🔗 Associating Prometheus datasource with workspace {workspace_id}...")
+
+    payload = {
+        "workspaceId": workspace_id,
+        "savedObjects": [{"type": "data-connection", "id": datasource_id}],
+    }
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/api/workspaces/_associate",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"Prometheus datasource association: {response.status_code}")
+
+        if response.status_code == 200:
+            print("✅ Prometheus datasource associated with workspace")
+        else:
+            print(f"⚠️  Association failed: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error associating Prometheus datasource: {e}")
+
+
 def associate_datasource_with_workspace(workspace_id, datasource_id):
     """Associate datasource with workspace"""
-    print(f"🔗 Associating datasource with workspace {workspace_id}...")
+    print(f"🔗 Associating datasource {datasource_id} with workspace {workspace_id}...")
 
     payload = {
         "workspaceId": workspace_id,
@@ -236,6 +292,91 @@ def associate_datasource_with_workspace(workspace_id, datasource_id):
             print(f"⚠️  Association failed: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error associating datasource: {e}")
+
+
+def get_existing_opensearch_datasource(datasource_title):
+    """Check if OpenSearch datasource already exists"""
+    try:
+        response = requests.get(
+            f"{BASE_URL}/api/saved_objects/_find?per_page=10000&type=data-source",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            saved_objects = result.get("saved_objects", [])
+            for obj in saved_objects:
+                attributes = obj.get("attributes", {})
+                if attributes.get("title") == datasource_title:
+                    return obj.get("id")
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error checking existing OpenSearch datasources: {e}")
+        return None
+
+
+def create_opensearch_datasource(workspace_id):
+    """Create OpenSearch datasource from local cluster"""
+    datasource_title = "local_cluster"
+
+    # Check if datasource already exists
+    existing_id = get_existing_opensearch_datasource(datasource_title)
+    if existing_id:
+        print(f"✅ OpenSearch datasource already exists: {existing_id}")
+        # Associate with workspace if provided
+        if workspace_id and workspace_id != "default":
+            associate_datasource_with_workspace(workspace_id, existing_id)
+        return existing_id
+
+    print("🔧 Creating OpenSearch datasource...")
+
+    opensearch_endpoint = "https://opensearch:9200"
+
+    payload = {
+        "attributes": {
+            "title": datasource_title,
+            "description": "Local OpenSearch cluster",
+            "endpoint": opensearch_endpoint,
+            "auth": {
+                "type": "username_password",
+                "credentials": {"username": USERNAME, "password": PASSWORD},
+            },
+            "dataSourceVersion": "3.5.0",
+            "dataSourceEngineType": "OpenSearch",
+        }
+    }
+
+    try:
+        response = requests.post(
+            f"{BASE_URL}/api/saved_objects/data-source",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        print(f"OpenSearch datasource creation: {response.status_code}")
+
+        if response.status_code == 200:
+            result = response.json()
+            datasource_id = result.get("id")
+            if datasource_id:
+                print(f"✅ Created OpenSearch datasource: {datasource_id}")
+
+                # Associate with workspace if provided
+                if workspace_id and workspace_id != "default":
+                    associate_datasource_with_workspace(workspace_id, datasource_id)
+                return datasource_id
+        else:
+            print(f"⚠️  OpenSearch datasource creation failed: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating OpenSearch datasource: {e}")
+        return None
 
 
 def set_default_index_pattern(workspace_id, pattern_id):
@@ -284,7 +425,7 @@ def main():
 
         # Create index patterns
         logs_pattern_id = create_index_pattern(workspace_id, "logs-otel-v1-*", "time")
-        create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime")
+        create_index_pattern(workspace_id, "otel-v1-apm-span-*", "startTime", "traces")
         create_index_pattern(workspace_id, "otel-v1-apm-service-map")
 
         print("📊 Created index patterns for spans, logs, and service map")
@@ -293,8 +434,9 @@ def main():
         if logs_pattern_id:
             set_default_index_pattern(workspace_id, logs_pattern_id)
 
-    # Create Prometheus datasource
+    # Create datasources
     create_prometheus_datasource(workspace_id)
+    create_opensearch_datasource(workspace_id)
 
     # Output summary
     print()
