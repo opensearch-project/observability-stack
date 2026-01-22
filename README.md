@@ -34,21 +34,12 @@ docker compose up -d
 This starts all services including example services (weather-agent and canary) that generate sample telemetry data.
 
 ### 3️⃣ View your Logs and Traces in OpenSearch Dashboards 
-👉 Navigate to http://localhost:5601  
-
-Also, the `opensearch-dashboards-init` container will create initial Workspace and index patterns. It will also output the full dashboards URL with configured user/pass. Example:  
-
+**👉 Navigate to http://localhost:5601**    
+Username and password can be retrieved from .env file:   
 ```bash
-docker compose logs opensearch-dashboards-init --tail=20
+grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
 ```
-Example output: 
-```bash
-...
-opensearch-dashboards-init |🎉 AgentOps Stack Ready!
-opensearch-dashboards-init |👤 Username: admin
-opensearch-dashboards-init |🔑 Password: My_password_123!@#
-opensearch-dashboards-init |📊 OpenSearch Dashboards Workspace: http://localhost:5601/w/9Z8lc3/app/explore/traces
-```
+___ 
 
 ### Destroying the Stack
 
