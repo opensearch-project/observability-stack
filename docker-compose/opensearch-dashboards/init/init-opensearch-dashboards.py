@@ -712,16 +712,16 @@ def set_default_dashboard(workspace_id, dashboard_id):
 
 
 def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
-    """Create Agent Observability dashboard with visualizations based on saved queries"""
+    """Create or update Agent Observability dashboard with visualizations"""
     import json
 
     dashboard_id = "agent-observability-dashboard"
+    dashboard_exists = get_existing_dashboard(workspace_id, dashboard_id)
 
-    if get_existing_dashboard(workspace_id, dashboard_id):
-        print("✅ Agent Observability dashboard already exists")
-        return dashboard_id
-
-    print("📊 Creating Agent Observability dashboard...")
+    if dashboard_exists:
+        print("📊 Updating Agent Observability dashboard...")
+    else:
+        print("📊 Creating Agent Observability dashboard...")
 
     # Visualizations based on last 5 queries from saved-queries-traces.yaml
     visualizations = [
@@ -781,6 +781,7 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
     references = []
     for i, vis_id in enumerate(created_vis_ids):
         panels.append({
+            "version": "3.5.0",
             "gridData": {"x": (i % 2) * 24, "y": (i // 2) * 15, "w": 24, "h": 15, "i": str(i)},
             "panelIndex": str(i),
             "embeddableConfig": {},
@@ -822,9 +823,27 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
 
         if response.status_code == 200:
             print(f"✅ Created Agent Observability dashboard")
-            # Set as default dashboard
             set_default_dashboard(workspace_id, dashboard_id)
             return dashboard_id
+        elif response.status_code == 409:
+            # Dashboard exists, update it with PUT
+            print("🔄 Dashboard exists, updating...")
+            update_payload = {"attributes": payload["attributes"], "references": references}
+            response = requests.put(
+                url,
+                auth=(USERNAME, PASSWORD),
+                headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+                json=update_payload,
+                verify=False,
+                timeout=10,
+            )
+            if response.status_code == 200:
+                print(f"✅ Updated Agent Observability dashboard")
+                set_default_dashboard(workspace_id, dashboard_id)
+                return dashboard_id
+            else:
+                print(f"⚠️  Dashboard update failed: {response.text}")
+                return None
         else:
             print(f"⚠️  Dashboard creation failed: {response.text}")
             return None
