@@ -8,6 +8,7 @@ queries:
     description: Find all agent invocation spans
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE `attributes.gen_ai.operation.name` = 'invoke_agent'
 
   - id: tool_executions
@@ -15,6 +16,7 @@ queries:
     description: Find all tool execution spans
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE `attributes.gen_ai.operation.name` = 'execute_tool'
 
   - id: high_token_usage
@@ -22,6 +24,7 @@ queries:
     description: Find spans with high token usage (>1000 tokens)
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE `attributes.gen_ai.usage.input_tokens` + `attributes.gen_ai.usage.output_tokens` > 1000
 
   - id: error_spans
@@ -29,6 +32,7 @@ queries:
     description: Find spans with errors
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE `status.code` = 2
 
   - id: slow_operations
@@ -36,6 +40,7 @@ queries:
     description: Find operations taking longer than 5 seconds
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE `durationInNanos` > 5000000000
 
   - id: agent_by_model
@@ -43,6 +48,7 @@ queries:
     description: Count LLM spans grouped by model
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE NOT isnull(`attributes.gen_ai.request.model`) AND NOT isnull(`traceId`)
       | stats count() by `attributes.gen_ai.request.model`
 
@@ -51,6 +57,7 @@ queries:
     description: Count tool execution spans by tool name
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE NOT isnull(`attributes.gen_ai.tool.name`) AND NOT isnull(`traceId`)
       | stats count() by `attributes.gen_ai.tool.name`
 
@@ -59,6 +66,7 @@ queries:
     description: Sum token usage from spans grouped by agent name
     language: PPL
     query: |
+      source=otel-v1-apm-span-*
       | WHERE NOT isnull(`attributes.gen_ai.agent.name`) AND NOT isnull(`traceId`)
       | stats sum(`attributes.gen_ai.usage.input_tokens`) as input_tokens,
               sum(`attributes.gen_ai.usage.output_tokens`) as output_tokens
@@ -69,7 +77,17 @@ queries:
     description: Sum token usage from spans grouped by model name
     language: PPL
     query: |
-    | WHERE NOT isnull(`attributes.gen_ai.request.model`) AND NOT isnull(`traceId`)
-    | stats sum(`attributes.gen_ai.usage.input_tokens`) as input_tokens, 
-            sum(`attributes.gen_ai.usage.output_tokens`) as output_tokens 
-            by `attributes.gen_ai.request.model`
+      source=otel-v1-apm-span-*
+      | WHERE NOT isnull(`attributes.gen_ai.request.model`) AND NOT isnull(`traceId`)
+      | stats sum(`attributes.gen_ai.usage.input_tokens`) as input_tokens,
+              sum(`attributes.gen_ai.usage.output_tokens`) as output_tokens
+        by `attributes.gen_ai.request.model`
+
+  - id: agent_operation_names
+    title: Agent operations used by services
+    description: Agent operations used by services
+    language: PPL
+    query: |
+      source=otel-v1-apm-span-*
+      | WHERE NOT isnull(`attributes.gen_ai.operation.name`)
+      | stats count() as operations by serviceName, `attributes.gen_ai.operation.name`

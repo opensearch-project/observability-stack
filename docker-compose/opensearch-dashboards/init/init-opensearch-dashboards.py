@@ -622,39 +622,44 @@ def create_default_saved_queries(workspace_id):
     """Create a collection of useful saved queries for agent observability"""
     print("📝 Creating saved queries...")
 
-    # Load queries from YAML file
-    queries_file = "/config/saved-queries.yaml"
+    import glob
 
-    try:
-        with open(queries_file, "r") as f:
-            config = yaml.safe_load(f)
-            queries = config.get("queries", [])
-    except FileNotFoundError:
-        print(f"⚠️  Queries file not found: {queries_file}")
-        return 0
-    except yaml.YAMLError as e:
-        print(f"⚠️  Error parsing queries YAML: {e}")
+    # Load all saved-queries-*.yaml files
+    queries_files = glob.glob("/config/saved-queries-*.yaml")
+
+    if not queries_files:
+        print("⚠️  No saved-queries-*.yaml files found")
         return 0
 
-    if not queries:
-        print("⚠️  No queries found in configuration file")
-        return 0
+    total_created = 0
+    for queries_file in sorted(queries_files):
+        print(f"📄 Loading {os.path.basename(queries_file)}...")
+        try:
+            with open(queries_file, "r") as f:
+                config = yaml.safe_load(f)
+                queries = config.get("queries", [])
+        except yaml.YAMLError as e:
+            print(f"⚠️  Error parsing {queries_file}: {e}")
+            continue
 
-    created_count = 0
-    for query_def in queries:
-        result = create_or_update_saved_query(
-            workspace_id,
-            query_def.get("id"),
-            query_def.get("title"),
-            query_def.get("description"),
-            query_def.get("query"),
-            query_def.get("language", "PPL"),
-        )
-        if result:
-            created_count += 1
+        if not queries:
+            print(f"⚠️  No queries found in {queries_file}")
+            continue
 
-    print(f"✅ Processed {created_count} saved queries")
-    return created_count
+        for query_def in queries:
+            result = create_or_update_saved_query(
+                workspace_id,
+                query_def.get("id"),
+                query_def.get("title"),
+                query_def.get("description"),
+                query_def.get("query"),
+                query_def.get("language", "PPL"),
+            )
+            if result:
+                total_created += 1
+
+    print(f"✅ Processed {total_created} saved queries from {len(queries_files)} file(s)")
+    return total_created
 
 
 def main():
