@@ -662,6 +662,249 @@ def create_default_saved_queries(workspace_id):
     return total_created
 
 
+def get_existing_dashboard(workspace_id, dashboard_id):
+    """Check if dashboard already exists"""
+    try:
+        if workspace_id and workspace_id != "default":
+            url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/dashboard/{dashboard_id}"
+        else:
+            url = f"{BASE_URL}/api/saved_objects/dashboard/{dashboard_id}"
+
+        response = requests.get(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+def set_default_dashboard(workspace_id, dashboard_id):
+    """Set the default dashboard for the observability overview page"""
+    print(f"⭐ Setting default dashboard: {dashboard_id}")
+
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/opensearch-dashboards/settings"
+    else:
+        url = f"{BASE_URL}/api/opensearch-dashboards/settings"
+
+    payload = {"changes": {"observability:defaultDashboard": dashboard_id}}
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            print("✅ Default dashboard set")
+        else:
+            print(f"⚠️  Setting default dashboard failed: {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error setting default dashboard: {e}")
+
+
+def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
+    """Create Agent Observability dashboard with visualizations based on saved queries"""
+    import json
+
+    dashboard_id = "agent-observability-dashboard"
+
+    if get_existing_dashboard(workspace_id, dashboard_id):
+        print("✅ Agent Observability dashboard already exists")
+        return dashboard_id
+
+    print("📊 Creating Agent Observability dashboard...")
+
+    # Visualizations based on last 5 queries from saved-queries-traces.yaml
+    visualizations = [
+        {
+            "id": "llm-requests-by-model",
+            "title": "LLM Requests by Model",
+            "type": "pie",
+            "field": "attributes.gen_ai.request.model"
+        },
+        {
+            "id": "tool-usage-stats",
+            "title": "Tool Usage Statistics",
+            "type": "pie",
+            "field": "attributes.gen_ai.tool.name"
+        },
+        {
+            "id": "token-usage-by-agent",
+            "title": "Token Usage by Agent",
+            "type": "horizontal_bar",
+            "field": "attributes.gen_ai.agent.name",
+            "metric_field": "attributes.gen_ai.usage.input_tokens"
+        },
+        {
+            "id": "token-usage-by-model",
+            "title": "Token Usage by Model",
+            "type": "horizontal_bar",
+            "field": "attributes.gen_ai.request.model",
+            "metric_field": "attributes.gen_ai.usage.input_tokens"
+        },
+        {
+            "id": "agent-operations-by-service",
+            "title": "Agent Operations by Service",
+            "type": "horizontal_bar",
+            "field": "serviceName",
+            "split_field": "attributes.gen_ai.operation.name"
+        }
+    ]
+
+    created_vis_ids = []
+    for vis in visualizations:
+        vis_id = create_chart_visualization(
+            workspace_id, vis["id"], vis["title"], vis["type"],
+            vis["field"], traces_pattern_id,
+            metric_field=vis.get("metric_field"),
+            split_field=vis.get("split_field")
+        )
+        if vis_id:
+            created_vis_ids.append(vis_id)
+            print(f"  ✅ Created visualization: {vis['title']}")
+
+    if not created_vis_ids:
+        print("⚠️  No visualizations created, skipping dashboard")
+        return None
+
+    # Create dashboard with panels
+    panels = []
+    references = []
+    for i, vis_id in enumerate(created_vis_ids):
+        panels.append({
+            "gridData": {"x": (i % 2) * 24, "y": (i // 2) * 15, "w": 24, "h": 15, "i": str(i)},
+            "panelIndex": str(i),
+            "embeddableConfig": {},
+            "panelRefName": f"panel_{i}"
+        })
+        references.append({"name": f"panel_{i}", "type": "visualization", "id": vis_id})
+
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/dashboard/{dashboard_id}"
+    else:
+        url = f"{BASE_URL}/api/saved_objects/dashboard/{dashboard_id}"
+
+    payload = {
+        "attributes": {
+            "title": "Agent Observability",
+            "description": "Overview of AI agent performance, token usage, and tool execution",
+            "panelsJSON": json.dumps(panels),
+            "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
+            "timeRestore": False,
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": json.dumps({"query": {"query": "", "language": "kuery"}, "filter": []})
+            }
+        },
+        "references": references
+    }
+
+    if workspace_id and workspace_id != "default":
+        payload["workspaces"] = [workspace_id]
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            print(f"✅ Created Agent Observability dashboard")
+            # Set as default dashboard
+            set_default_dashboard(workspace_id, dashboard_id)
+            return dashboard_id
+        else:
+            print(f"⚠️  Dashboard creation failed: {response.text}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating dashboard: {e}")
+        return None
+
+
+def create_chart_visualization(workspace_id, vis_id, title, vis_type, field, index_pattern_id,
+                                metric_field=None, split_field=None):
+    """Create a chart visualization (pie, bar, etc.)"""
+    import json
+
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/visualization/{vis_id}"
+    else:
+        url = f"{BASE_URL}/api/saved_objects/visualization/{vis_id}"
+
+    # Build aggregations
+    aggs = []
+    if metric_field:
+        aggs.append({"id": "1", "type": "sum", "schema": "metric", "params": {"field": metric_field}})
+    else:
+        aggs.append({"id": "1", "type": "count", "schema": "metric"})
+
+    aggs.append({"id": "2", "type": "terms", "schema": "segment", "params": {"field": field, "size": 10}})
+
+    if split_field:
+        aggs.append({"id": "3", "type": "terms", "schema": "group", "params": {"field": split_field, "size": 5}})
+
+    vis_state = {
+        "title": title,
+        "type": vis_type,
+        "params": {"type": vis_type, "addTooltip": True, "addLegend": True},
+        "aggs": aggs
+    }
+
+    payload = {
+        "attributes": {
+            "title": title,
+            "visState": json.dumps(vis_state),
+            "uiStateJSON": "{}",
+            "kibanaSavedObjectMeta": {
+                "searchSourceJSON": json.dumps({
+                    "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                    "query": {"query": "", "language": "kuery"},
+                    "filter": []
+                })
+            }
+        },
+        "references": [
+            {
+                "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
+                "type": "index-pattern",
+                "id": index_pattern_id
+            }
+        ]
+    }
+
+    if workspace_id and workspace_id != "default":
+        payload["workspaces"] = [workspace_id]
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code in (200, 409):
+            return vis_id
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating visualization {title}: {e}")
+        return None
+
+
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
@@ -693,6 +936,10 @@ def main():
     # Create APM correlation between traces and logs
     if traces_pattern_id and logs_pattern_id:
         create_apm_correlation(workspace_id, traces_pattern_id, logs_pattern_id)
+
+    # Create Agent Observability dashboard
+    if traces_pattern_id:
+        create_agent_observability_dashboard(workspace_id, traces_pattern_id)
 
     # Create saved queries for common agent observability patterns
     create_default_saved_queries(workspace_id)
