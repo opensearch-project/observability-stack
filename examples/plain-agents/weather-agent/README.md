@@ -1,91 +1,120 @@
 # Weather Agent - Plain Python Example
 
-This example demonstrates how to instrument a plain Python AI agent with OpenTelemetry to send telemetry data to the AgentOps observability stack.
+This example demonstrates how to instrument a plain Python AI agent with OpenTelemetry to send telemetry data to the AgentOps observability stack, including fault injection for debugging scenarios.
 
 ## Features
 
 - OTLP exporter configuration for traces, metrics, and logs
-- Gen-AI semantic convention attributes (invoke_agent, execute_tool)
-- Custom attributes for agent context
+- Full Gen-AI semantic convention coverage (invoke_agent, execute_tool)
+- Three weather tools: current, forecast, historical
+- Fault injection for debugging demonstrations
 - Structured logging with trace correlation
-- Tool execution tracing
 - Token usage metrics
 
-## Prerequisites
+## Tools
 
-- Python 3.9 or higher
-- [uv](https://docs.astral.sh/uv/) package manager
-- AgentOps stack running (see [docker-compose README](../../../docker-compose/README.md))
+| Tool | Description | Example Query |
+|------|-------------|---------------|
+| `get_current_weather` | Current conditions | "What's the weather now?" |
+| `get_forecast` | Multi-day forecast | "What's the forecast for next week?" |
+| `get_historical_weather` | Past weather data | "What was the weather yesterday?" |
+
+## Fault Injection
+
+The agent supports fault injection via the `/invoke` API for testing observability:
+
+| Fault Type | Description | HTTP Status |
+|------------|-------------|-------------|
+| `tool_timeout` | Tool execution times out | 504 |
+| `tool_error` | Tool returns error | 502 |
+| `rate_limited` | Model API rate limited | 429 |
+| `token_limit_exceeded` | Response truncated | 200 |
+| `hallucination` | Agent skips tool, fabricates answer | 200 |
+| `wrong_tool` | Agent calls wrong tool for query | 200 |
+| `high_latency` | Slow but successful response | 200 |
+
+### Fault Injection Examples
+
+```bash
+# Normal request
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What is the weather in Paris?"}'
+
+# Inject tool timeout
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Weather in Tokyo?", "fault": {"type": "tool_timeout"}}'
+
+# Inject hallucination (agent answers without calling tool)
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Weather in London?", "fault": {"type": "hallucination"}}'
+
+# Inject wrong tool (asks for current, gets forecast)
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Current weather in Berlin?", "fault": {"type": "wrong_tool"}}'
+
+# Inject high latency with custom delay
+curl -X POST http://localhost:8000/invoke \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Weather in NYC?", "fault": {"type": "high_latency", "delay_ms": 5000}}'
+```
 
 ## Quick Start
 
 1. Make sure the AgentOps stack is running:
 ```bash
-cd ../../../docker-compose
+cd ../../../
 docker compose up -d
 ```
 
-2. Run the weather agent (choose one):
-
-**Option A: Direct execution**
+2. The weather agent runs automatically as part of the stack. Test it:
 ```bash
-uv run python main.py
-```
-
-**Option B: API Server**
-```bash
-uv run python server.py
-```
-
-The API server will start on `http://localhost:8000`. You can then invoke the agent via REST API:
-
-```bash
-# Health check
 curl http://localhost:8000/health
-
-# Invoke agent
 curl -X POST http://localhost:8000/invoke \
   -H "Content-Type: application/json" \
   -d '{"message": "What is the weather in Paris?"}'
 ```
 
-The agent will:
-- Set up OpenTelemetry with OTLP exporters
-- Process weather queries
-- Send traces, metrics, and logs to the AgentOps stack
-
 ## View Telemetry Data
-
-After running the agent, view the telemetry data:
 
 - **OpenSearch Dashboards**: http://localhost:5601
 - **Prometheus**: http://localhost:9090
 
-## What's Happening
+## Gen-AI Semantic Conventions
 
-The weather agent demonstrates:
+This agent implements the [OpenTelemetry Gen-AI Semantic Conventions](https://github.com/open-telemetry/semantic-conventions/tree/main/docs/gen-ai):
 
-1. **Agent Invocation**: Creates an `invoke_agent` span with gen-ai semantic conventions
-2. **Tool Execution**: Creates an `execute_tool` span for the weather API call
-3. **Metrics**: Records token usage and operation duration
-4. **Logs**: Structured logging with trace correlation
+### invoke_agent Span
+- `gen_ai.operation.name`: "invoke_agent"
+- `gen_ai.agent.id`, `gen_ai.agent.name`, `gen_ai.agent.description`
+- `gen_ai.request.model`, `gen_ai.response.model`
+- `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`
+- `gen_ai.system_instructions`, `gen_ai.tool.definitions`
+- `gen_ai.input.messages`, `gen_ai.output.messages`
+
+### execute_tool Span
+- `gen_ai.operation.name`: "execute_tool"
+- `gen_ai.tool.name`, `gen_ai.tool.description`, `gen_ai.tool.type`
+- `gen_ai.tool.call.id`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result`
 
 ## Code Structure
 
-- `main.py`: Main agent implementation with OpenTelemetry instrumentation
-- `server.py`: FastAPI server that exposes the agent through REST API
+- `main.py`: Agent implementation with OpenTelemetry instrumentation and fault injection
+- `server.py`: FastAPI server exposing the agent via REST API
 
-## Customization
+## Development
 
-You can customize the agent by:
-
-- Changing the OTLP endpoint in `setup_telemetry()` (default: `http://localhost:4317`)
-- Adding more tools to the agent
-- Modifying the agent's behavior and responses
-- Adding custom attributes and metrics
+After modifying the agent, rebuild and restart:
+```bash
+docker compose build --no-cache example-weather-agent
+docker compose up -d example-weather-agent
+```
 
 ## Learn More
 
-- [OpenTelemetry Python Documentation](https://opentelemetry.io/docs/languages/python/)
-- [Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/)
+- [OpenTelemetry Gen-AI Semantic Conventions](https://github.com/open-telemetry/semantic-conventions/tree/main/docs/gen-ai)
+- [Fault Injection Design](../../../docs/fault-injection-design.md)
 - [AgentOps Documentation](../../../README.md)

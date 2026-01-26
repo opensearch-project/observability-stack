@@ -21,10 +21,12 @@ References:
 - System instructions schema: gen-ai-system-instructions.json
 """
 
+from dataclasses import dataclass
 import json
 import logging
+import random
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from opentelemetry import trace, metrics
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -38,6 +40,39 @@ from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
 from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.trace import Status, StatusCode
+
+
+# Fault injection exceptions
+class AgentError(Exception):
+    """Base exception for agent errors."""
+    def __init__(self, message: str, error_type: str, status_code: int = 500):
+        super().__init__(message)
+        self.error_type = error_type
+        self.status_code = status_code
+
+
+class ToolTimeoutError(AgentError):
+    def __init__(self, message: str):
+        super().__init__(message, "timeout", 504)
+
+
+class ToolExecutionError(AgentError):
+    def __init__(self, message: str):
+        super().__init__(message, "tool_error", 502)
+
+
+class RateLimitError(AgentError):
+    def __init__(self, message: str):
+        super().__init__(message, "rate_limit_exceeded", 429)
+
+
+@dataclass
+class FaultConfig:
+    """Configuration for fault injection."""
+    type: str
+    delay_ms: int = 0
+    probability: float = 1.0
+    tool: Optional[str] = None
 
 
 # Configure OpenTelemetry with OTLP exporters
@@ -119,6 +154,34 @@ def get_weather(location: str) -> Dict[str, Any]:
     }
 
 
+def get_forecast(location: str, days: int = 3) -> Dict[str, Any]:
+    """Get weather forecast for a location."""
+    time.sleep(0.5)
+    forecasts = []
+    conditions = ["sunny", "cloudy", "rainy", "partly cloudy"]
+    for i in range(days):
+        forecasts.append({
+            "day": i + 1,
+            "high": f"{65 + i * 3}°F",
+            "low": f"{45 + i * 2}°F",
+            "condition": conditions[i % len(conditions)]
+        })
+    return {"location": location, "forecast": forecasts}
+
+
+def get_historical_weather(location: str, date: str) -> Dict[str, Any]:
+    """Get historical weather for a location and date."""
+    time.sleep(0.5)
+    return {
+        "location": location,
+        "date": date,
+        "high": "62°F",
+        "low": "48°F",
+        "condition": "partly cloudy",
+        "precipitation": "0.1 in"
+    }
+
+
 # Simulated LLM call
 def call_llm(
     model: str,
@@ -126,20 +189,24 @@ def call_llm(
     tools: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """
-    Simulated LLM API call.
-    
-    Args:
-        model: Model name to use
-        messages: Chat messages
-        tools: Available tools
-    
-    Returns:
-        LLM response with tool call
+    Simulated LLM API call that selects appropriate tool based on query.
     """
-    # Simulate LLM latency
     time.sleep(1.0)
     
-    # Return mock response with tool call
+    user_message = messages[-1]["content"].lower()
+    location = messages[-1]["content"].split()[-1].rstrip("?")
+    
+    # Determine which tool to call based on query
+    if any(word in user_message for word in ["forecast", "next", "tomorrow", "week", "upcoming"]):
+        tool_name = "get_forecast"
+        arguments = {"location": location, "days": 3}
+    elif any(word in user_message for word in ["yesterday", "last", "historical", "was", "were", "past"]):
+        tool_name = "get_historical_weather"
+        arguments = {"location": location, "date": "2026-01-25"}
+    else:
+        tool_name = "get_current_weather"
+        arguments = {"location": location}
+    
     return {
         "id": "chatcmpl-123456",
         "model": "gpt-4-0613",
@@ -150,8 +217,8 @@ def call_llm(
                     "id": "call_abc123",
                     "type": "function",
                     "function": {
-                        "name": "get_weather",
-                        "arguments": json.dumps({"location": messages[-1]["content"].split()[-1].rstrip("?")})
+                        "name": tool_name,
+                        "arguments": json.dumps(arguments)
                     }
                 }]
             },
@@ -206,23 +273,56 @@ class WeatherAgent:
             {
                 "type": "function",
                 "function": {
-                    "name": "get_weather",
-                    "description": "Get current weather for a location",
+                    "name": "get_current_weather",
+                    "description": "Get current weather conditions for a location",
                     "parameters": {
                         "type": "object",
                         "properties": {
-                            "location": {
-                                "type": "string",
-                                "description": "City name or location"
-                            }
+                            "location": {"type": "string", "description": "City name or location"}
                         },
                         "required": ["location"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_forecast",
+                    "description": "Get weather forecast for the next several days",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string", "description": "City name or location"},
+                            "days": {"type": "integer", "description": "Number of days (1-7)", "default": 3}
+                        },
+                        "required": ["location"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_historical_weather",
+                    "description": "Get historical weather data for a past date",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {"type": "string", "description": "City name or location"},
+                            "date": {"type": "string", "description": "Date in YYYY-MM-DD format"}
+                        },
+                        "required": ["location", "date"]
                     }
                 }
             }
         ]
     
-    def invoke(self, user_message: str, conversation_id: str) -> str:
+    def _should_inject_fault(self, fault: Optional[FaultConfig]) -> bool:
+        """Check if fault should be injected based on probability."""
+        if fault is None:
+            return False
+        return random.random() < fault.probability
+
+    def invoke(self, user_message: str, conversation_id: str, fault: Optional[FaultConfig] = None) -> str:
         """
         Invoke the agent with a user message.
         
@@ -231,6 +331,7 @@ class WeatherAgent:
         Args:
             user_message: User's question
             conversation_id: Conversation/session identifier
+            fault: Optional fault injection configuration
         
         Returns:
             Agent's response
@@ -295,6 +396,29 @@ class WeatherAgent:
                 # Opt-in: Record input messages as attribute
                 span.set_attribute("gen_ai.input.messages", json.dumps(input_messages))
                 
+                # Check for pre-LLM faults
+                if self._should_inject_fault(fault):
+                    if fault.delay_ms:
+                        time.sleep(fault.delay_ms / 1000)
+                    
+                    if fault.type == "rate_limited":
+                        span.set_status(Status(StatusCode.ERROR, "Rate limit exceeded"))
+                        span.set_attribute("error.type", "rate_limit_exceeded")
+                        raise RateLimitError("Rate limit exceeded. Retry after 60 seconds.")
+                    
+                    if fault.type == "hallucination":
+                        # Skip tool call, return fabricated response
+                        hallucinated_response = f"The weather is 22°C and sunny with light winds."
+                        span.set_attribute("gen_ai.response.model", self.model)
+                        span.set_attribute("gen_ai.response.id", f"chatcmpl-hallucinated-{conversation_id[:8]}")
+                        span.set_attribute("gen_ai.response.finish_reasons", ["stop"])
+                        span.set_attribute("gen_ai.usage.input_tokens", 50)
+                        span.set_attribute("gen_ai.usage.output_tokens", 20)
+                        output_messages = [{"role": "assistant", "parts": [{"type": "text", "content": hallucinated_response}], "finish_reason": "stop"}]
+                        span.set_attribute("gen_ai.output.messages", json.dumps(output_messages))
+                        span.set_status(Status(StatusCode.OK))
+                        return hallucinated_response
+                
                 # Prepare messages for LLM call (internal format)
                 messages = [
                     {"role": "system", "content": system_instructions[0]["content"]},
@@ -303,6 +427,19 @@ class WeatherAgent:
                 
                 # Call LLM
                 llm_response = call_llm(self.model, messages, self.tools)
+                
+                # Check for token_limit_exceeded fault (simulates truncated response)
+                if self._should_inject_fault(fault) and fault.type == "token_limit_exceeded":
+                    span.set_attribute("gen_ai.response.model", llm_response["model"])
+                    span.set_attribute("gen_ai.response.id", llm_response["id"])
+                    span.set_attribute("gen_ai.response.finish_reasons", ["length"])
+                    span.set_attribute("gen_ai.usage.input_tokens", llm_response["usage"]["prompt_tokens"])
+                    span.set_attribute("gen_ai.usage.output_tokens", 1024)  # Hit limit
+                    truncated_response = "The weather in the requested location is currently showing temperatures around—"
+                    output_messages = [{"role": "assistant", "parts": [{"type": "text", "content": truncated_response}], "finish_reason": "length"}]
+                    span.set_attribute("gen_ai.output.messages", json.dumps(output_messages))
+                    span.set_status(Status(StatusCode.OK))
+                    return truncated_response
                 
                 # Recommended response attributes
                 span.set_attribute("gen_ai.response.model", llm_response["model"])
@@ -341,14 +478,30 @@ class WeatherAgent:
                 tool_call_id = tool_call["id"] if tool_call else None
                 
                 if tool_call:
-                    tool_result = self.execute_tool(
-                        tool_call["function"]["name"],
-                        json.loads(tool_call["function"]["arguments"]),
-                        tool_call_id
-                    )
+                    tool_name = tool_call["function"]["name"]
+                    tool_args = json.loads(tool_call["function"]["arguments"])
                     
-                    # Generate final response
-                    final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
+                    # wrong_tool fault: swap the tool being called
+                    if self._should_inject_fault(fault) and fault.type == "wrong_tool":
+                        wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
+                        tool_name = wrong_tools.get(tool_name, tool_name)
+                        # Adjust args for the wrong tool
+                        if tool_name == "get_historical_weather":
+                            tool_args["date"] = "2026-01-25"
+                    
+                    # Pass fault config to execute_tool for tool-specific faults
+                    tool_result = self.execute_tool(tool_name, tool_args, tool_call_id, fault)
+                    
+                    # Generate final response based on tool result
+                    if "temperature" in tool_result:
+                        final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
+                    elif "forecast" in tool_result:
+                        days = tool_result["forecast"]
+                        final_response = f"Forecast for {tool_result['location']}: Day 1: {days[0]['condition']}, high {days[0]['high']}."
+                    elif "date" in tool_result:
+                        final_response = f"On {tool_result['date']} in {tool_result['location']}: {tool_result['condition']}, high {tool_result['high']}."
+                    else:
+                        final_response = f"Weather data for {tool_result.get('location', 'unknown')}: {tool_result}"
                 else:
                     final_response = "I couldn't determine what you're asking about."
                 
@@ -407,7 +560,7 @@ class WeatherAgent:
                 span.record_exception(e)
                 raise
     
-    def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None) -> Dict[str, Any]:
+    def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None, fault: Optional[FaultConfig] = None) -> Dict[str, Any]:
         """
         Execute a tool with proper instrumentation.
         
@@ -417,6 +570,7 @@ class WeatherAgent:
             tool_name: Name of the tool to execute
             arguments: Tool arguments
             tool_call_id: The tool call identifier from the LLM response
+            fault: Optional fault injection configuration
         
         Returns:
             Tool execution result
@@ -444,6 +598,25 @@ class WeatherAgent:
                 # Opt-in: Record tool call arguments
                 span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
                 
+                # Check for tool-specific faults
+                if self._should_inject_fault(fault) and fault.type in ("tool_timeout", "tool_error", "high_latency"):
+                    target_tool = fault.tool or tool_name
+                    if target_tool == tool_name:
+                        if fault.delay_ms:
+                            time.sleep(fault.delay_ms / 1000)
+                        
+                        if fault.type == "tool_timeout":
+                            span.set_status(Status(StatusCode.ERROR, "Tool execution timed out"))
+                            span.set_attribute("error.type", "timeout")
+                            raise ToolTimeoutError(f"Tool '{tool_name}' timed out after 30000ms")
+                        
+                        if fault.type == "tool_error":
+                            span.set_status(Status(StatusCode.ERROR, "Tool execution failed"))
+                            span.set_attribute("error.type", "tool_error")
+                            raise ToolExecutionError(f"Tool '{tool_name}' failed: External API returned 503")
+                        
+                        # high_latency: delay already applied, continue normally
+                
                 # Log tool execution start
                 self.logger.info(
                     f"Executing tool: {tool_name}",
@@ -456,7 +629,14 @@ class WeatherAgent:
                 )
                 
                 # Execute the actual tool
-                if tool_name == "get_weather":
+                if tool_name == "get_current_weather":
+                    result = get_weather(arguments["location"])
+                elif tool_name == "get_forecast":
+                    result = get_forecast(arguments["location"], arguments.get("days", 3))
+                elif tool_name == "get_historical_weather":
+                    result = get_historical_weather(arguments["location"], arguments.get("date", "2026-01-01"))
+                # Legacy support
+                elif tool_name == "get_weather":
                     result = get_weather(arguments["location"])
                 else:
                     raise ValueError(f"Unknown tool: {tool_name}")

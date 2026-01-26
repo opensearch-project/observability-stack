@@ -6,10 +6,10 @@ This directory contains plain Python agent examples with OpenTelemetry instrumen
 
 ### Weather Agent
 
-A simple weather assistant that demonstrates:
-- OTLP exporter configuration for traces, metrics, and logs
-- Gen-AI semantic convention attributes
-- Tool execution tracing
+A weather assistant demonstrating full Gen-AI semantic convention coverage:
+- Three tools: current weather, forecast, historical
+- Fault injection for debugging scenarios
+- OTLP traces, metrics, and logs
 - Token usage metrics
 
 [View Weather Agent →](./weather-agent/)

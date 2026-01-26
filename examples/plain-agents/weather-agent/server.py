@@ -11,16 +11,26 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from main import WeatherAgent, setup_telemetry
+from main import WeatherAgent, setup_telemetry, FaultConfig, AgentError
 
 
 # Request/Response models
+class FaultRequest(BaseModel):
+    """Fault injection configuration"""
+    type: str = Field(..., description="Fault type: tool_timeout, tool_error, rate_limited, high_latency, hallucination, token_limit_exceeded")
+    delay_ms: int = Field(0, description="Delay in milliseconds before/during fault")
+    probability: float = Field(1.0, description="Probability of fault injection (0.0-1.0)")
+    tool: Optional[str] = Field(None, description="Target specific tool (for tool faults)")
+
+
 class InvokeRequest(BaseModel):
     """Request model for agent invocation"""
     message: str = Field(..., description="User message to send to the agent")
     conversation_id: Optional[str] = Field(None, description="Optional conversation ID for tracking")
+    fault: Optional[FaultRequest] = Field(None, description="Optional fault injection configuration")
 
 
 class InvokeResponse(BaseModel):
@@ -114,7 +124,7 @@ async def invoke(request: InvokeRequest):
     Invoke the weather agent with a user message.
     
     Args:
-        request: InvokeRequest with message and optional conversation_id
+        request: InvokeRequest with message, optional conversation_id, and optional fault config
     
     Returns:
         InvokeResponse with agent's response and conversation_id
@@ -125,13 +135,33 @@ async def invoke(request: InvokeRequest):
     # Generate conversation ID if not provided
     conversation_id = request.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
     
+    # Convert fault request to FaultConfig if provided
+    fault_config = None
+    if request.fault:
+        fault_config = FaultConfig(
+            type=request.fault.type,
+            delay_ms=request.fault.delay_ms,
+            probability=request.fault.probability,
+            tool=request.fault.tool
+        )
+    
     try:
         # Invoke the agent
-        response = agent.invoke(request.message, conversation_id)
+        response = agent.invoke(request.message, conversation_id, fault_config)
         
         return InvokeResponse(
             response=response,
             conversation_id=conversation_id
+        )
+    
+    except AgentError as e:
+        return JSONResponse(
+            status_code=e.status_code,
+            content={
+                "response": None,
+                "error": {"type": e.error_type, "message": str(e)},
+                "conversation_id": conversation_id
+            }
         )
     
     except Exception as e:
