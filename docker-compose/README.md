@@ -100,13 +100,14 @@ By default, the stack includes example services (weather-agent and canary) via `
 These services demonstrate how to instrument an agent application and generate test telemetry:
 
 - **weather-agent**: Example FastAPI server with OpenTelemetry instrumentation (port 8000)
-  - Demonstrates Gen-AI semantic conventions
-  - Provides REST API for agent invocation
+  - Three tools: current weather, forecast, historical
+  - Full Gen-AI semantic convention coverage
+  - Fault injection API for debugging scenarios
   - Sends traces, metrics, and logs to AgentOps stack
 - **canary**: Periodic test client that invokes weather-agent (no exposed ports)
-  - Generates synthetic agent traffic every 30 seconds (configurable)
+  - Generates synthetic agent traffic with fault injection
+  - Configurable fault distribution (55% normal, 45% various faults)
   - Validates the observability pipeline end-to-end
-  - Useful for testing and demonstrations
 
 ## Configuration Files
 
@@ -163,20 +164,21 @@ docker-compose restart <service-name>
 **To customize example services**: Edit the `.env` file:
 - `WEATHER_AGENT_PORT`: Port for weather-agent API (default: 8000)
 - `CANARY_INTERVAL`: Seconds between canary invocations (default: 30)
+- `FAULT_WEIGHTS`: JSON object controlling fault injection distribution
 - `WEATHER_AGENT_MEMORY_LIMIT`: Memory limit for weather-agent (default: 200M)
 - `CANARY_MEMORY_LIMIT`: Memory limit for canary (default: 100M)
 
-**To modify weather-agent or canary code**: After editing code in `examples/plain-agents/weather-agent/` or `docker-compose/canary.py`:
+**To modify weather-agent or canary code**: After editing code in `examples/plain-agents/weather-agent/` or `docker-compose/canary/canary.py`:
 ```bash
 # Rebuild the service with no cache
-docker-compose build --no-cache weather-agent
+docker compose build --no-cache example-weather-agent
 # Or for canary
-docker-compose build --no-cache canary
+docker compose build --no-cache example-canary
 
 # Restart the service
-docker-compose restart weather-agent
+docker compose up -d example-weather-agent
 # Or rebuild and restart in one command
-docker compose up -d --build weather-agent canary
+docker compose up -d --build example-weather-agent example-canary
 ```
 
 The docker-compose.yml file mounts these configurations into the containers.
