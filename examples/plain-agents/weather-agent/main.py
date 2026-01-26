@@ -8,10 +8,17 @@ to send telemetry data to the AgentOps observability stack using OTLP protocol.
 Key features demonstrated:
 - OTLP exporter configuration for traces, metrics, and logs
 - OTel Gen-AI semantic convention attributes (invoke_agent, execute_tool)
-- Custom attributes for agent context
-- Structured logging with trace correlation
-- Tool execution tracing
+- Structured content capture (system instructions, messages, tool calls)
 - Token usage metrics
+- Structured logging with trace correlation
+
+References:
+- OpenTelemetry GenAI Semantic Conventions:
+  https://github.com/open-telemetry/semantic-conventions/tree/e126ea9105b15912ccd80deab98929025189b696/docs/gen-ai
+- Agent spans: gen-ai-agent-spans.md
+- Tool execution: gen-ai-spans.md#execute-tool-span
+- Input/output message schemas: gen-ai-input-messages.json, gen-ai-output-messages.json
+- System instructions schema: gen-ai-system-instructions.json
 """
 
 import json
@@ -230,26 +237,39 @@ class WeatherAgent:
         """
         start_time = time.time()
         
+        # System instructions (separate from chat history per spec)
+        system_instructions = [
+            {"type": "text", "content": "You are a helpful weather assistant."}
+        ]
+        
         # Create invoke_agent span with gen-ai semantic conventions
         with self.tracer.start_as_current_span(
             f"invoke_agent {self.agent_name}",
             kind=trace.SpanKind.CLIENT
         ) as span:
             try:
-                # Set gen-ai semantic convention attributes
+                # Required attributes
                 span.set_attribute("gen_ai.operation.name", "invoke_agent")
                 span.set_attribute("gen_ai.provider.name", "openai")
+                
+                # Conditionally required attributes
                 span.set_attribute("gen_ai.agent.id", self.agent_id)
                 span.set_attribute("gen_ai.agent.name", self.agent_name)
                 span.set_attribute("gen_ai.agent.description", self.agent_description)
                 span.set_attribute("gen_ai.conversation.id", conversation_id)
                 span.set_attribute("gen_ai.request.model", self.model)
+                span.set_attribute("gen_ai.output.type", "text")
+                
+                # Recommended attributes
+                span.set_attribute("gen_ai.request.temperature", 0.7)
+                span.set_attribute("gen_ai.request.max_tokens", 1024)
                 span.set_attribute("server.address", "api.openai.com")
                 span.set_attribute("server.port", 443)
                 
-                # Custom agent context attributes
-                span.set_attribute("agent.tools.count", len(self.tools))
-                span.set_attribute("agent.tools.available", json.dumps([t["function"]["name"] for t in self.tools]))
+                # Opt-in attributes (content capture)
+                # See schema definitions: https://github.com/open-telemetry/semantic-conventions/tree/e126ea9105b15912ccd80deab98929025189b696/docs/gen-ai
+                span.set_attribute("gen_ai.system_instructions", json.dumps(system_instructions))
+                span.set_attribute("gen_ai.tool.definitions", json.dumps(self.tools))
                 
                 # Structured logging with trace correlation
                 self.logger.info(
@@ -263,25 +283,28 @@ class WeatherAgent:
                     }
                 )
                 
-                # Prepare messages
-                messages = [
-                    {"role": "system", "content": "You are a helpful weather assistant."},
-                    {"role": "user", "content": user_message}
+                # Prepare input messages following gen-ai-input-messages.json schema
+                # See: https://github.com/open-telemetry/semantic-conventions/tree/e126ea9105b15912ccd80deab98929025189b696/docs/gen-ai
+                input_messages = [
+                    {
+                        "role": "user",
+                        "parts": [{"type": "text", "content": user_message}]
+                    }
                 ]
                 
-                # Add span event for input
-                span.add_event(
-                    "gen_ai.client.inference.operation.details",
-                    attributes={
-                        "gen_ai.operation.name": "chat",
-                        "gen_ai.input.messages": json.dumps(messages)
-                    }
-                )
+                # Opt-in: Record input messages as attribute
+                span.set_attribute("gen_ai.input.messages", json.dumps(input_messages))
+                
+                # Prepare messages for LLM call (internal format)
+                messages = [
+                    {"role": "system", "content": system_instructions[0]["content"]},
+                    {"role": "user", "content": user_message}
+                ]
                 
                 # Call LLM
                 llm_response = call_llm(self.model, messages, self.tools)
                 
-                # Set response attributes
+                # Recommended response attributes
                 span.set_attribute("gen_ai.response.model", llm_response["model"])
                 span.set_attribute("gen_ai.response.id", llm_response["id"])
                 span.set_attribute("gen_ai.response.finish_reasons", [llm_response["choices"][0]["finish_reason"]])
@@ -313,27 +336,32 @@ class WeatherAgent:
                     }
                 )
                 
-                # Add span event for output
-                span.add_event(
-                    "gen_ai.client.inference.operation.details",
-                    attributes={
-                        "gen_ai.operation.name": "chat",
-                        "gen_ai.output.messages": json.dumps([llm_response["choices"][0]["message"]])
-                    }
-                )
-                
                 # Execute tool if requested
                 tool_call = llm_response["choices"][0]["message"].get("tool_calls", [None])[0]
+                tool_call_id = tool_call["id"] if tool_call else None
+                
                 if tool_call:
                     tool_result = self.execute_tool(
                         tool_call["function"]["name"],
-                        json.loads(tool_call["function"]["arguments"])
+                        json.loads(tool_call["function"]["arguments"]),
+                        tool_call_id
                     )
                     
                     # Generate final response
                     final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
                 else:
                     final_response = "I couldn't determine what you're asking about."
+                
+                # Opt-in: Record output messages following gen-ai-output-messages.json schema
+                # See: https://github.com/open-telemetry/semantic-conventions/tree/e126ea9105b15912ccd80deab98929025189b696/docs/gen-ai
+                output_messages = [
+                    {
+                        "role": "assistant",
+                        "parts": [{"type": "text", "content": final_response}],
+                        "finish_reason": "stop"
+                    }
+                ]
+                span.set_attribute("gen_ai.output.messages", json.dumps(output_messages))
                 
                 # Log successful completion
                 self.logger.info(
@@ -374,11 +402,12 @@ class WeatherAgent:
                         "error": str(e)
                     }
                 )
+                span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
     
-    def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None) -> Dict[str, Any]:
         """
         Execute a tool with proper instrumentation.
         
@@ -387,6 +416,7 @@ class WeatherAgent:
         Args:
             tool_name: Name of the tool to execute
             arguments: Tool arguments
+            tool_call_id: The tool call identifier from the LLM response
         
         Returns:
             Tool execution result
@@ -397,17 +427,22 @@ class WeatherAgent:
             kind=trace.SpanKind.INTERNAL
         ) as span:
             try:
-                # Set gen-ai semantic convention attributes
+                # Required attribute
                 span.set_attribute("gen_ai.operation.name", "execute_tool")
+                
+                # Recommended attributes
                 span.set_attribute("gen_ai.tool.name", tool_name)
+                span.set_attribute("gen_ai.tool.type", "function")
+                if tool_call_id:
+                    span.set_attribute("gen_ai.tool.call.id", tool_call_id)
                 
                 # Find tool description
                 tool_def = next((t for t in self.tools if t["function"]["name"] == tool_name), None)
                 if tool_def:
                     span.set_attribute("gen_ai.tool.description", tool_def["function"]["description"])
                 
-                # Custom tool context attributes
-                span.set_attribute("tool.arguments", json.dumps(arguments))
+                # Opt-in: Record tool call arguments
+                span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
                 
                 # Log tool execution start
                 self.logger.info(
@@ -415,15 +450,8 @@ class WeatherAgent:
                     extra={
                         "gen_ai.operation.name": "execute_tool",
                         "gen_ai.tool.name": tool_name,
-                        "tool.arguments": json.dumps(arguments)
-                    }
-                )
-                
-                # Add span event for tool execution start
-                span.add_event(
-                    "tool_execution_start",
-                    attributes={
-                        "tool.input": json.dumps(arguments)
+                        "gen_ai.tool.call.id": tool_call_id,
+                        "gen_ai.tool.call.arguments": json.dumps(arguments)
                     }
                 )
                 
@@ -433,13 +461,8 @@ class WeatherAgent:
                 else:
                     raise ValueError(f"Unknown tool: {tool_name}")
                 
-                # Add span event for tool execution complete
-                span.add_event(
-                    "tool_execution_complete",
-                    attributes={
-                        "tool.output": json.dumps(result)
-                    }
-                )
+                # Opt-in: Record tool call result
+                span.set_attribute("gen_ai.tool.call.result", json.dumps(result))
                 
                 # Log tool execution completion
                 self.logger.info(
@@ -447,7 +470,8 @@ class WeatherAgent:
                     extra={
                         "gen_ai.operation.name": "execute_tool",
                         "gen_ai.tool.name": tool_name,
-                        "tool.result": json.dumps(result)
+                        "gen_ai.tool.call.id": tool_call_id,
+                        "gen_ai.tool.call.result": json.dumps(result)
                     }
                 )
                 
@@ -464,6 +488,7 @@ class WeatherAgent:
                         "error": str(e)
                     }
                 )
+                span.set_attribute("error.type", type(e).__name__)
                 span.set_status(Status(StatusCode.ERROR, str(e)))
                 span.record_exception(e)
                 raise
