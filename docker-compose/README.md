@@ -61,7 +61,8 @@ By default, the stack includes example services (weather-agent and canary) via `
    - OpenSearch Dashboards: http://localhost:5601
    - Prometheus: http://localhost:9090
    - OpenSearch API: http://localhost:9200
-   - Weather Agent API (included by default): http://localhost:8000
+   - Travel Planner API (multi-agent): http://localhost:8003
+   - Weather Agent API: http://localhost:8000
 
 4. **View telemetry data:**
    
@@ -97,16 +98,22 @@ By default, the stack includes example services (weather-agent and canary) via `
 
 ### Example Services
 
-These services demonstrate how to instrument an agent application and generate test telemetry:
+These services demonstrate how to instrument agent applications and generate test telemetry:
 
+- **travel-planner**: Multi-agent orchestrator that fans out to weather and events agents (port 8003)
+  - Demonstrates trace context propagation across services
+  - Fault injection at orchestrator and sub-agent levels
+  - Graceful degradation on partial failures
 - **weather-agent**: Example FastAPI server with OpenTelemetry instrumentation (port 8000)
   - Three tools: current weather, forecast, historical
   - Full Gen-AI semantic convention coverage
   - Fault injection API for debugging scenarios
-  - Sends traces, metrics, and logs to AgentOps stack
-- **canary**: Periodic test client that invokes weather-agent (no exposed ports)
-  - Generates synthetic agent traffic with fault injection
-  - Configurable fault distribution (55% normal, 45% various faults)
+- **events-agent**: Local events lookup agent (port 8002)
+  - Returns events for destination cities
+  - Supports fault injection
+- **canary**: Periodic test client that invokes travel-planner (no exposed ports)
+  - Generates synthetic multi-agent traffic with fault injection
+  - Configurable fault distribution (50% normal, 50% various faults)
   - Validates the observability pipeline end-to-end
 
 ## Configuration Files

@@ -45,11 +45,14 @@ agentops/
 │           └── pvc.yaml
 ├── examples/                    # Instrumentation examples
 │   ├── plain-agents/            # Plain agent examples
-│   │   └── weather-agent/       # Weather agent with FastAPI server
-│   │       ├── Dockerfile
-│   │       ├── main.py
-│   │       ├── server.py
-│   │       └── README.md
+│   │   ├── weather-agent/       # Weather agent with FastAPI server
+│   │   │   ├── Dockerfile
+│   │   │   ├── main.py
+│   │   │   ├── server.py
+│   │   │   └── README.md
+│   │   └── multi-agent-planner/ # Multi-agent orchestration example
+│   │       ├── orchestrator/    # Travel planner (fans out to sub-agents)
+│   │       └── events-agent/    # Events lookup agent
 │   ├── langchain/               # LangChain examples
 │   └── strands/                 # Strands examples
 ├── docs/                        # Additional documentation
@@ -84,7 +87,7 @@ Contains all files needed for local Docker Compose deployment. Each component ha
 
 **Note**: OpenSearch uses default configuration with settings provided via environment variables in docker-compose.yml and .env file.
 
-**Example Services**: The weather-agent and canary services are defined in `docker-compose.examples.yml` and included by default. To disable them, comment out `INCLUDE_COMPOSE_FILES=docker-compose.examples.yml` in the `.env` file.
+**Example Services**: The multi-agent planner (travel-planner, weather-agent, events-agent) and canary services are defined in `docker-compose.examples.yml` and included by default. To disable them, comment out `INCLUDE_COMPOSE_FILES=docker-compose.examples.yml` in the `.env` file.
 
 ### Prometheus Configuration
 
@@ -494,7 +497,7 @@ component:
 
 ### Starting the Stack
 
-By default, this starts all services including example agents (weather-agent and canary):
+By default, this starts all services including example agents (travel-planner, weather-agent, events-agent, and canary):
 
 ```bash
 docker compose up -d

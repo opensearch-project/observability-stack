@@ -33,7 +33,7 @@ See [Configuration](#configuration) section for more details.
 docker compose up -d
 ```
 
-This starts all services including example services (weather-agent and canary) that generate sample telemetry data.
+This starts all services including example services (multi-agent travel planner, weather-agent, events-agent, and canary) that generate sample telemetry data.
 
 ### 3️⃣ View your Logs and Traces in OpenSearch Dashboards 
 **👉 Navigate to http://localhost:5601**    
@@ -124,11 +124,17 @@ The [.env](./.env) file contains all configurable parameters. Edit this file bef
 
 ### Including Example Services
 
-By default, the stack includes example services (weather-agent and canary) via the `INCLUDE_COMPOSE_EXAMPLES` variable in `.env`:
+By default, the stack includes example services (multi-agent travel planner, weather-agent, events-agent, and canary) via the `INCLUDE_COMPOSE_EXAMPLES` variable in `.env`:
 
 ```env
 INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
 ```
+
+**Example services:**
+- **travel-planner** (port 8003): Multi-agent orchestrator demonstrating distributed tracing
+- **weather-agent** (port 8000): Weather lookup with fault injection
+- **events-agent** (port 8002): Local events lookup
+- **canary**: Generates test traffic with fault injection
 
 **To run without examples:**
 - Comment out the `INCLUDE_COMPOSE_EXAMPLES` line in `.env`
