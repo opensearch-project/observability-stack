@@ -34,8 +34,10 @@ EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
 
 
 class SubAgentFault(BaseModel):
-    type: str = Field(..., description="Fault type to inject in sub-agent")
+    type: str = Field(..., description="Fault type: timeout, error, rate_limited, high_latency, wrong_city, empty")
     delay_ms: int = Field(0, description="Delay in ms for high_latency")
+    probability: float = Field(1.0, description="Probability of fault (0.0-1.0)")
+    wrong_city: Optional[str] = Field(None, description="For wrong_city fault: return events from this city")
 
 
 class FaultConfig(BaseModel):

@@ -72,9 +72,10 @@ SAMPLE_EVENTS = {
 
 
 class FaultConfig(BaseModel):
-    type: str = Field(..., description="Fault type: timeout, error, rate_limited, high_latency")
+    type: str = Field(..., description="Fault type: timeout, error, rate_limited, high_latency, wrong_city, empty")
     delay_ms: int = Field(0, description="Delay in milliseconds")
     probability: float = Field(1.0, description="Probability of fault (0.0-1.0)")
+    wrong_city: Optional[str] = Field(None, description="Return events from this city instead")
 
 
 class EventsRequest(BaseModel):
@@ -189,6 +190,19 @@ async def get_events(request: EventsRequest):
                     agent_id=AGENT_ID,
                 )
 
+            elif fault.type == "wrong_city":
+                # Return events from a different city
+                wrong = fault.wrong_city or random.choice([c for c in SAMPLE_EVENTS.keys() if c != destination])
+                span.set_attribute("fault.wrong_city", wrong)
+                events_data = SAMPLE_EVENTS.get(wrong, SAMPLE_EVENTS["paris"])
+                selected = random.sample(events_data, min(len(events_data), 2))
+                events = [Event(name=e["name"], type=e["type"], venue=e["venue"], date=date) for e in selected]
+                return EventsResponse(destination=request.destination, events=events, agent_id=AGENT_ID)
+
+            elif fault.type == "empty":
+                # Return no events
+                return EventsResponse(destination=request.destination, events=[], agent_id=AGENT_ID)
+
         # Normal execution
         with tracer.start_as_current_span(
             "execute_tool",
@@ -196,6 +210,8 @@ async def get_events(request: EventsRequest):
             attributes={
                 "gen_ai.operation.name": "execute_tool",
                 "gen_ai.tool.name": "lookup_events",
+                "gen_ai.request.model": "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                "gen_ai.system": "aws.bedrock",
                 "destination": destination,
             },
         ):
