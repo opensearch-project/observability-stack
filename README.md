@@ -2,7 +2,6 @@
 
 AgentOps is an open-source observability stack designed for modern distributed systems. Built on OpenTelemetry, OpenSearch, and Prometheus, AgentOps provides a complete, pre-configured infrastructure for monitoring microservices, web applications, and AI agents—with first-class support for agent observability through [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
 
-![](./docs/agentops-arch-compose.excalidraw.png)
 
 ## Components
 
