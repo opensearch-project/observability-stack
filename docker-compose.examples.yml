@@ -81,7 +81,7 @@ services:
       - example-events-agent
       - example-mcp-server
     networks:
-      - agentops-network
+      - observability-stack-network
     restart: unless-stopped
     deploy:
       resources:
