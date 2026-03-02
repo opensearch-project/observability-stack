@@ -93,6 +93,7 @@ service-map-pipeline:
         window_duration: 10s
   route:
     - otel_apm_service_map_route: 'getEventType() == "SERVICE_MAP"'
+    - service_processed_metrics: 'getEventType() == "METRIC"'
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
@@ -101,3 +102,10 @@ service-map-pipeline:
         index_type: otel-v2-apm-service-map
         routes: [otel_apm_service_map_route]
         insecure: true
+    # Route RED metrics to local Prometheus via remote write
+    - prometheus:
+        url: "http://prometheus:9090/api/v1/write"
+        threshold:
+          max_events: 500
+          flush_interval: 5s
+        routes: [service_processed_metrics]
