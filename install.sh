@@ -368,7 +368,7 @@ configure_environment() {
     fi
     
     if [[ "$INCLUDE_OTEL_DEMO" =~ ^[Yy]$ ]]; then
-        sed -i.bak 's/^#INCLUDE_COMPOSE_OTEL_DEMO=/INCLUDE_COMPOSE_OTEL_DEMO=/' .env
+        sed -i.bak 's/^# *INCLUDE_COMPOSE_OTEL_DEMO=/INCLUDE_COMPOSE_OTEL_DEMO=/' .env
         print_info "OpenTelemetry Demo enabled"
     fi
     
