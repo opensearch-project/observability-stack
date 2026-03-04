@@ -11,6 +11,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
@@ -23,17 +24,16 @@ STAR="★"
 
 clear
 
-echo -e "\n${CYAN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-echo -e "${CYAN}${BOLD}║              🔭 Observability Stack Installer v0.1                    ║${RESET}"
-echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-echo -e "${CYAN}${BOLD}║            Open-source Agent Observability                 ║${RESET}"
-echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-echo -e "${CYAN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+echo -e ""
+echo -e "  ${PURPLE}${BOLD}🔭 Observability Stack${RESET}"
+echo -e ""
+echo -e "  ${DIM}Installer v0.1${RESET}"
+echo -e "  ${DIM}Agents, Services, Logs, Metrics, Traces & Evals${RESET}"
+echo -e ""
 
 sleep 1
 
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Checking system requirements...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Checking system requirements...${RESET}"
 sleep 0.5
 echo -e "${GREEN}${CHECK}${RESET} Git installed: git version 2.39.0"
 sleep 0.3
@@ -45,7 +45,7 @@ echo -e "${GREEN}${CHECK}${RESET} Available memory: 16GB"
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Configuration${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Configuration${RESET}"
 echo ""
 sleep 0.5
 echo -e "${BOLD}Installation directory${RESET} ${DIM}(default: observability-stack)${RESET}: observability-stack"
@@ -58,13 +58,13 @@ echo -e "${BOLD}Customize OpenSearch credentials?${RESET} ${DIM}(y/N)${RESET}: N
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Cloning Observability Stack repository...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Cloning Observability Stack repository...${RESET}"
 sleep 1
 echo -e "${GREEN}${CHECK}${RESET} Repository cloned to observability-stack"
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Configuring environment...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Configuring environment...${RESET}"
 sleep 0.5
 echo -e "${DIM}  Example services enabled${RESET}"
 sleep 0.3
@@ -72,7 +72,7 @@ echo -e "${GREEN}${CHECK}${RESET} Environment configured"
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Pulling container images...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Pulling container images...${RESET}"
 echo ""
 sleep 0.5
 
@@ -100,7 +100,7 @@ for i in "${!images[@]}"; do
         echo -ne "\r${DIM}[$num/$total]${RESET} ["
         printf "%${filled}s" | tr ' ' '█'
         printf "%${empty}s" | tr ' ' '░'
-        echo -ne "] ${percent}% ${CYAN}${spinner[$spin_idx]}${RESET} ${DIM}Pulling ${images[$i]}${RESET}"
+        echo -ne "] ${percent}% ${PURPLE}${spinner[$spin_idx]}${RESET} ${DIM}Pulling ${images[$i]}${RESET}"
         sleep 0.08
     done
     
@@ -116,7 +116,7 @@ echo -e "${GREEN}${CHECK}${RESET} Images ready: 6 pulled, 0 cached"
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Starting Observability Stack services...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Starting Observability Stack services...${RESET}"
 echo ""
 sleep 1
 
@@ -136,7 +136,7 @@ echo -e "${GREEN}${CHECK}${RESET} Services started"
 sleep 0.5
 
 echo ""
-echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}Waiting for services to be ready...${RESET}"
+echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}Waiting for services to be ready...${RESET}"
 echo ""
 sleep 0.5
 
@@ -161,26 +161,23 @@ echo -e "${GREEN}${CHECK}${RESET} Services are ready"
 sleep 1
 
 echo ""
-echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-echo -e "${GREEN}${BOLD}║              ${STAR} Installation Complete! ${STAR}                    ║${RESET}"
-echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}"
+echo -e "  ${GREEN}${BOLD}${STAR} Observability Stack Install Complete! ${STAR}${RESET}"
 echo ""
 
-echo -e "${BOLD}Access Points:${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch Dashboards: ${BOLD}http://localhost:5601${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Prometheus:            ${BOLD}http://localhost:9090${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch API:        ${BOLD}https://localhost:9200${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Weather Agent:        ${BOLD}http://localhost:8000${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Travel Planner:       ${BOLD}http://localhost:8003${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} OTel Demo Frontend:   ${BOLD}http://localhost:8080${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Load Generator:       ${BOLD}http://localhost:8089${RESET}"
-
+echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}http://localhost:5601${RESET}"
+echo -e "           ${DIM}Username: ${RESET}${BOLD}admin${RESET}  ${DIM}Password: ${RESET}${BOLD}My_password_123!@#${RESET}"
 echo ""
-echo -e "${BOLD}Credentials:${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Username: ${BOLD}admin${RESET}"
-echo -e "  ${CYAN}${ARROW}${RESET} Password: ${BOLD}My_password_123!@#${RESET}"
+echo -e "${GREEN}${ARROW}${RESET} ${BOLD}Send OTLP:${RESET} OTel Collector         ${BOLD}grpc://localhost:4317${RESET}"
+echo -e "                                      ${BOLD}http://localhost:4318${RESET}"
+echo ""
+
+echo -e "${DIM}Other Services:${RESET}"
+echo -e "  ${DIM}${ARROW} Prometheus:            http://localhost:9090${RESET}"
+echo -e "  ${DIM}${ARROW} OpenSearch API:        https://localhost:9200${RESET}"
+echo -e "  ${DIM}${ARROW} Weather Agent:         http://localhost:8000${RESET}"
+echo -e "  ${DIM}${ARROW} Travel Planner:        http://localhost:8003${RESET}"
+echo -e "  ${DIM}${ARROW} OTel Demo Frontend:    http://localhost:8080${RESET}"
+echo -e "  ${DIM}${ARROW} Load Generator:        http://localhost:8089${RESET}"
 
 echo ""
 echo -e "${BOLD}Useful Commands:${RESET}"
@@ -194,10 +191,10 @@ echo -e "  ${DIM}# Stop and remove data${RESET}"
 echo -e "  ${BOLD}cd observability-stack && docker compose down -v${RESET}"
 
 echo ""
-echo -e "${BOLD}Next Steps:${RESET}"
-echo -e "  1. Visit ${CYAN}http://localhost:5601${RESET} to explore your data"
-echo -e "  2. Check out ${CYAN}observability-stack/examples/${RESET} for instrumentation examples"
-echo -e "  3. Read ${CYAN}observability-stack/README.md${RESET} for detailed documentation"
+echo -e "${PURPLE}${BOLD}Next Steps:${RESET}"
+echo -e "  1. Visit ${PURPLE}http://localhost:5601${RESET} to explore your data"
+echo -e "  2. To send data, point your OTLP exporter at ${PURPLE}localhost:4317${RESET} (gRPC) or ${PURPLE}localhost:4318${RESET} (HTTP)"
+echo -e "  3. Learn more at ${PURPLE}https://opensearch.org/platform/observability/${RESET}"
 
 echo ""
 echo -e "${DIM}For support, visit: https://github.com/opensearch-project/observability-stack${RESET}"
