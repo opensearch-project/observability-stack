@@ -43,18 +43,23 @@ processors:
     trace_statements:
       - context: span
         statements:
-          # Workaround for OpenSearch mapping conflicts with nested dotted keys
-          # Flatten nested attribute keys to prevent mapping issues
+          # could be removed when https://github.com/vercel/next.js/pull/64852 is fixed upstream
+          - replace_pattern(name, "\\?.*", "")
+          - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
+          # Workaround for https://github.com/opensearch-project/data-prepper/issues/5616
+          # Flatten nested dotted attribute keys to prevent OpenSearch mapping conflicts
           - set(attributes["db_system_name"], attributes["db.system.name"]) where attributes["db.system.name"] != nil
           - delete_key(attributes, "db.system.name")
           - set(attributes["code_function_name"], attributes["code.function.name"]) where attributes["code.function.name"] != nil
           - delete_key(attributes, "code.function.name")
           - set(attributes["user_agent_original"], attributes["user_agent.original"]) where attributes["user_agent.original"] != nil
           - delete_key(attributes, "user_agent.original")
+          - set(attributes["upstream_cluster_name"], attributes["upstream_cluster.name"]) where attributes["upstream_cluster.name"] != nil
+          - delete_key(attributes, "upstream_cluster.name")
           - set(attributes["error_type"], attributes["error.type"]) where attributes["error.type"] != nil
           - delete_key(attributes, "error.type")
-          - set(attributes["upstream_cluster"], attributes["upstream_cluster"]) where attributes["upstream_cluster"] != nil
-          - delete_key(attributes, "upstream_cluster")
+          - set(attributes["app_ads_contextKeys"], attributes["app.ads.contextKeys"]) where attributes["app.ads.contextKeys"] != nil
+          - delete_key(attributes, "app.ads.contextKeys")
           - set(attributes["rpc_system"], attributes["rpc.system"]) where attributes["rpc.system"] != nil
           - delete_key(attributes, "rpc.system")
     log_statements:
