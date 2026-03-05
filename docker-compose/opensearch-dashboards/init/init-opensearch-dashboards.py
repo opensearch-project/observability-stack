@@ -1005,14 +1005,14 @@ Follow requests end-to-end across services to pinpoint latency and errors.
 Query Prometheus metrics for throughput, latency percentiles, and error rates.
 
 ### APM & services
-**APM services** — [Service list]({w}/app/observability-traces#/services)
+**APM services** — [Service list]({w}/app/observability-apm-services#/services)
 View latency, error rate, and throughput (RED metrics) for every instrumented service.
 
-**Service map** — [View service map]({w}/app/observability-traces#/service-map)
+**Service map** — [View service map]({w}/app/observability-apm-application-map)
 Visualize service-to-service dependencies and traffic flow across your system.
 
 ### Agent observability
-**Agent traces** — [Explore agent traces]({w}/app/explore/agent-traces)
+**Agent traces** — [Explore agent traces]({w}/app/agentTraces)
 Inspect individual AI agent invocations, tool calls, and LLM interactions.
 
 **Agent dashboard** — [Agent observability dashboard]({w}/app/dashboards#/view/agent-observability-dashboard)
