@@ -125,6 +125,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
@@ -140,17 +141,16 @@ DEFAULT_INSTALL_DIR="observability-stack"
 
 # Print functions
 print_header() {
-    echo -e "\n${CYAN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}║              🔭 Observability Stack Installer v0.1                    ║${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}║            Open-source Agent Observability                 ║${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo -e ""
+    echo -e "  ${PURPLE}${BOLD}🔭 Observability Stack${RESET}"
+    echo -e ""
+    echo -e "  ${DIM}Installer v0.1${RESET}"
+    echo -e "  ${DIM}Agents, Services, Logs, Metrics, Traces & Evals${RESET}"
+    echo -e ""
 }
 
 print_step() {
-    echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}$1${RESET}"
+    echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}$1${RESET}"
 }
 
 print_success() {
@@ -415,7 +415,7 @@ pull_images() {
     
     # Show spinner while building
     while kill -0 $build_pid 2>/dev/null; do
-        echo -ne "\r${DIM}Building custom OpenSearch image...${RESET} ${CYAN}${spinner[$spinner_idx]}${RESET}"
+        echo -ne "\r${DIM}Building custom OpenSearch image...${RESET} ${PURPLE}${spinner[$spinner_idx]}${RESET}"
         spinner_idx=$(( (spinner_idx + 1) % ${#spinner[@]} ))
         sleep 0.1
     done
@@ -501,7 +501,7 @@ EOF
             echo -ne "\r${DIM}[$current/$total]${RESET} ["
             printf "%${filled}s" | tr ' ' '█'
             printf "%${empty}s" | tr ' ' '░'
-            echo -ne "] ${percent}% ${CYAN}${spinner[$spinner_idx]}${RESET} ${DIM}Pulling ${image}${RESET}"
+            echo -ne "] ${percent}% ${PURPLE}${spinner[$spinner_idx]}${RESET} ${DIM}Pulling ${image}${RESET}"
             spinner_idx=$(( (spinner_idx + 1) % ${#spinner[@]} ))
             sleep 0.1
         done
@@ -654,33 +654,30 @@ wait_for_services() {
 # Print summary
 print_summary() {
     echo ""
-    echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${GREEN}${BOLD}║              ${STAR} Installation Complete! ${STAR}                    ║${RESET}"
-    echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "  ${GREEN}${BOLD}${STAR} Observability Stack Install Complete! ${STAR}${RESET}"
     echo ""
-    
-    echo -e "${BOLD}Access Points:${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch Dashboards: ${BOLD}http://localhost:5601${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Prometheus:            ${BOLD}http://localhost:9090${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch API:        ${BOLD}https://localhost:9200${RESET}"
-    
+
+    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}http://localhost:5601${RESET}"
+    echo -e "           ${DIM}Username: ${RESET}${BOLD}$OPENSEARCH_USER${RESET}  ${DIM}Password: ${RESET}${BOLD}$OPENSEARCH_PASSWORD${RESET}"
+    echo ""
+    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}Send OTLP:${RESET} OTel Collector         ${BOLD}grpc://localhost:4317${RESET}"
+    echo -e "                                      ${BOLD}http://localhost:4318${RESET}"
+    echo ""
+
+    echo -e "${DIM}Other Services:${RESET}"
+    echo -e "  ${DIM}${ARROW} Prometheus:            http://localhost:9090${RESET}"
+    echo -e "  ${DIM}${ARROW} OpenSearch API:        https://localhost:9200${RESET}"
+
     if [[ "$INCLUDE_EXAMPLES" =~ ^[Yy]$ ]]; then
-        echo -e "  ${CYAN}${ARROW}${RESET} Weather Agent:        ${BOLD}http://localhost:8000${RESET}"
-        echo -e "  ${CYAN}${ARROW}${RESET} Travel Planner:       ${BOLD}http://localhost:8003${RESET}"
+        echo -e "  ${DIM}${ARROW} Weather Agent:         http://localhost:8000${RESET}"
+        echo -e "  ${DIM}${ARROW} Travel Planner:        http://localhost:8003${RESET}"
     fi
-    
+
     if [[ "$INCLUDE_OTEL_DEMO" =~ ^[Yy]$ ]]; then
-        echo -e "  ${CYAN}${ARROW}${RESET} OTel Demo Frontend:   ${BOLD}http://localhost:8080${RESET}"
-        echo -e "  ${CYAN}${ARROW}${RESET} Load Generator:       ${BOLD}http://localhost:8089${RESET}"
+        echo -e "  ${DIM}${ARROW} OTel Demo Frontend:    http://localhost:8080${RESET}"
+        echo -e "  ${DIM}${ARROW} Load Generator:        http://localhost:8089${RESET}"
     fi
-    
-    echo ""
-    echo -e "${BOLD}Credentials:${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Username: ${BOLD}$OPENSEARCH_USER${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Password: ${BOLD}$OPENSEARCH_PASSWORD${RESET}"
-    
+
     echo ""
     echo -e "${BOLD}Useful Commands:${RESET}"
     echo -e "  ${DIM}# View logs${RESET}"
@@ -691,13 +688,13 @@ print_summary() {
     echo ""
     echo -e "  ${DIM}# Stop and remove data${RESET}"
     echo -e "  ${BOLD}cd $INSTALL_DIR && $CONTAINER_RUNTIME compose down -v${RESET}"
-    
+
     echo ""
-    echo -e "${BOLD}Next Steps:${RESET}"
-    echo -e "  1. Visit ${CYAN}http://localhost:5601${RESET} to explore your data"
-    echo -e "  2. Check out ${CYAN}$INSTALL_DIR/examples/${RESET} for instrumentation examples"
-    echo -e "  3. Read ${CYAN}$INSTALL_DIR/README.md${RESET} for detailed documentation"
-    
+    echo -e "${PURPLE}${BOLD}Next Steps:${RESET}"
+    echo -e "  1. Visit ${PURPLE}http://localhost:5601${RESET} to explore your data"
+    echo -e "  2. To send data, point your OTLP exporter at ${PURPLE}localhost:4317${RESET} (gRPC) or ${PURPLE}localhost:4318${RESET} (HTTP)"
+    echo -e "  3. Learn more at ${PURPLE}https://opensearch.org/platform/observability/${RESET}"
+
     echo ""
     echo -e "${DIM}For support, visit: https://github.com/opensearch-project/observability-stack${RESET}"
     echo ""
@@ -721,10 +718,10 @@ main() {
     # fi
     
     if [ "$INSTALL_METHOD" = "tui" ]; then
-        echo -e "${CYAN}${BOLD}Starting TUI installer...${RESET}\n"
+        echo -e "${PURPLE}${BOLD}Starting TUI installer...${RESET}\n"
         run_tui_installer
     else
-        echo -e "${CYAN}${BOLD}Starting installation...${RESET}\n"
+        echo -e "${PURPLE}${BOLD}Starting installation...${RESET}\n"
         run_manual_installer
     fi
 }
