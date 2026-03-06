@@ -1,14 +1,20 @@
-name: PR Preview
+name: Docs PR Preview
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+    paths:
+      - 'docs/**'
+
+defaults:
+  run:
+    working-directory: ./docs
 
 jobs:
   preview:
     name: Build Preview
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -16,8 +22,9 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
+          cache-dependency-path: docs/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -36,5 +43,5 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '✅ Preview build completed successfully! All tests passed.'
+              body: '✅ Docs preview build completed successfully! All tests passed.'
             })
