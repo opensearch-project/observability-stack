@@ -12,7 +12,7 @@ docker-compose/
 ├── otel-collector/                 # OpenTelemetry Collector configuration
 │   └── config.yaml
 ├── data-prepper/                   # Data Prepper configuration
-│   ├── pipelines.yaml
+│   ├── pipelines.template.yaml
 │   └── data-prepper-config.yaml
 ├── prometheus/                     # Prometheus configuration
 │   └── prometheus.yml
@@ -136,7 +136,7 @@ All configuration files are organized by service in subdirectories:
 - **docker-compose.yml**: Main service definitions for core observability stack (in repository root)
 - **docker-compose.examples.yml**: Example services (weather-agent, canary) included via .env (in repository root)
 - **otel-collector/config.yaml**: OpenTelemetry Collector receivers, processors, and exporters
-- **data-prepper/pipelines.yaml**: Data transformation pipelines for logs and traces
+- **data-prepper/pipelines.template.yaml**: Data transformation pipeline template for logs and traces (credentials injected at container startup)
 - **data-prepper/data-prepper-config.yaml**: Data Prepper server settings
 - **prometheus/prometheus.yml**: Prometheus scrape targets and storage configuration
 - **opensearch-dashboards/opensearch_dashboards.yml**: Dashboard UI settings

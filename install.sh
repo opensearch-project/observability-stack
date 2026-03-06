@@ -11,7 +11,8 @@ set -o pipefail
 # Configuration
 REPO_URL="https://github.com/opensearch-project/observability-stack.git"
 TEMP_DIR=$(mktemp -d)
-INSTALL_METHOD="auto"
+SIMULATE_MODE=false
+SKIP_PULL=false
 CURRENT_STEP=""  # Track current installation step
 
 # Cleanup on exit
@@ -101,15 +102,38 @@ interrupt_handler() {
 
 trap interrupt_handler INT TERM
 
+# Help text
+usage() {
+    cat <<EOF
+Observability Stack Installer
+
+Usage: install.sh [OPTIONS]
+
+Options:
+  --simulate   Preview the installer output without actually installing
+  --skip-pull  Skip building and pulling container images (uses cached images)
+  --help       Show this help message
+
+Examples:
+  curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash
+  ./install.sh --simulate
+  ./install.sh --skip-pull
+EOF
+    exit 0
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --manual)
-            INSTALL_METHOD="manual"
+        --help|-h)
+            usage
+            ;;
+        --simulate)
+            SIMULATE_MODE=true
             shift
             ;;
-        --tui)
-            INSTALL_METHOD="tui"
+        --skip-pull)
+            SKIP_PULL=true
             shift
             ;;
         *)
@@ -125,6 +149,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
+PURPLE='\033[0;35m'
 BOLD='\033[1m'
 DIM='\033[2m'
 RESET='\033[0m'
@@ -140,17 +165,16 @@ DEFAULT_INSTALL_DIR="observability-stack"
 
 # Print functions
 print_header() {
-    echo -e "\n${CYAN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}║              🔭 Observability Stack Installer v0.1                    ║${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}║            Open-source Agent Observability                 ║${RESET}"
-    echo -e "${CYAN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${CYAN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}\n"
+    echo -e ""
+    echo -e "  ${PURPLE}${BOLD}🔭 Observability Stack${RESET}"
+    echo -e ""
+    echo -e "  ${DIM}Installer v0.1${RESET}"
+    echo -e "  ${DIM}Agents, Services, Logs, Metrics, Traces & Evals${RESET}"
+    echo -e ""
 }
 
 print_step() {
-    echo -e "${BLUE}${BOLD}${ARROW}${RESET} ${BOLD}$1${RESET}"
+    echo -e "${PURPLE}${BOLD}${ARROW}${RESET} ${BOLD}$1${RESET}"
 }
 
 print_success() {
@@ -377,10 +401,6 @@ configure_environment() {
         sed -i.bak "s/^OPENSEARCH_USER=.*/OPENSEARCH_USER=$OPENSEARCH_USER/" .env
         sed -i.bak "s/^OPENSEARCH_PASSWORD=.*/OPENSEARCH_PASSWORD='$OPENSEARCH_PASSWORD'/" .env
         
-        # Update Data Prepper configuration
-        sed -i.bak "s/username: admin/username: $OPENSEARCH_USER/g" docker-compose/data-prepper/pipelines.yaml
-        sed -i.bak "s/password: \"My_password_123!@#\"/password: \"$OPENSEARCH_PASSWORD\"/g" docker-compose/data-prepper/pipelines.yaml
-        
         print_info "Credentials updated"
     fi
     
@@ -393,11 +413,17 @@ configure_environment() {
 # Pull Docker images
 pull_images() {
     CURRENT_STEP="Building and pulling container images"
+
+    if [ "$SKIP_PULL" = true ]; then
+        print_step "Skipping image build/pull (--skip-pull)"
+        return
+    fi
+
     print_step "Building and pulling container images..."
     echo ""
-    
+
     cd "$INSTALL_DIR" || exit 1
-    
+
     # First, build any custom images with progress indicator
     echo -ne "${DIM}Building custom OpenSearch image...${RESET}"
     
@@ -415,7 +441,7 @@ pull_images() {
     
     # Show spinner while building
     while kill -0 $build_pid 2>/dev/null; do
-        echo -ne "\r${DIM}Building custom OpenSearch image...${RESET} ${CYAN}${spinner[$spinner_idx]}${RESET}"
+        echo -ne "\r${DIM}Building custom OpenSearch image...${RESET} ${PURPLE}${spinner[$spinner_idx]}${RESET}"
         spinner_idx=$(( (spinner_idx + 1) % ${#spinner[@]} ))
         sleep 0.1
     done
@@ -501,7 +527,7 @@ EOF
             echo -ne "\r${DIM}[$current/$total]${RESET} ["
             printf "%${filled}s" | tr ' ' '█'
             printf "%${empty}s" | tr ' ' '░'
-            echo -ne "] ${percent}% ${CYAN}${spinner[$spinner_idx]}${RESET} ${DIM}Pulling ${image}${RESET}"
+            echo -ne "] ${percent}% ${PURPLE}${spinner[$spinner_idx]}${RESET} ${DIM}Pulling ${image}${RESET}"
             spinner_idx=$(( (spinner_idx + 1) % ${#spinner[@]} ))
             sleep 0.1
         done
@@ -654,33 +680,30 @@ wait_for_services() {
 # Print summary
 print_summary() {
     echo ""
-    echo -e "${GREEN}${BOLD}╔════════════════════════════════════════════════════════════╗${RESET}"
-    echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${GREEN}${BOLD}║              ${STAR} Installation Complete! ${STAR}                    ║${RESET}"
-    echo -e "${GREEN}${BOLD}║                                                            ║${RESET}"
-    echo -e "${GREEN}${BOLD}╚════════════════════════════════════════════════════════════╝${RESET}"
+    echo -e "  ${GREEN}${BOLD}${STAR} Observability Stack Install Complete! ${STAR}${RESET}"
     echo ""
-    
-    echo -e "${BOLD}Access Points:${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch Dashboards: ${BOLD}http://localhost:5601${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Prometheus:            ${BOLD}http://localhost:9090${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} OpenSearch API:        ${BOLD}https://localhost:9200${RESET}"
-    
-    if [[ "$INCLUDE_EXAMPLES" =~ ^[Yy]$ ]]; then
-        echo -e "  ${CYAN}${ARROW}${RESET} Weather Agent:        ${BOLD}http://localhost:8000${RESET}"
-        echo -e "  ${CYAN}${ARROW}${RESET} Travel Planner:       ${BOLD}http://localhost:8003${RESET}"
-    fi
-    
+
+    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}http://localhost:5601${RESET}"
+    echo -e "           ${DIM}Username: ${RESET}${BOLD}$OPENSEARCH_USER${RESET}  ${DIM}Password: ${RESET}${BOLD}$OPENSEARCH_PASSWORD${RESET}"
+    echo ""
+
     if [[ "$INCLUDE_OTEL_DEMO" =~ ^[Yy]$ ]]; then
-        echo -e "  ${CYAN}${ARROW}${RESET} OTel Demo Frontend:   ${BOLD}http://localhost:8080${RESET}"
-        echo -e "  ${CYAN}${ARROW}${RESET} Load Generator:       ${BOLD}http://localhost:8089${RESET}"
+        echo -e "${GREEN}${ARROW}${RESET} ${BOLD}OTel Demo:${RESET}"
+        echo -e "  ${DIM}${ARROW} Web Store:             http://localhost:8080/${RESET}"
+        echo -e "  ${DIM}${ARROW} Load Generator UI:     http://localhost:8080/loadgen/${RESET}"
+        echo -e "  ${DIM}${ARROW} Feature Flags UI:      http://localhost:8080/feature${RESET}"
+        echo ""
     fi
-    
-    echo ""
-    echo -e "${BOLD}Credentials:${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Username: ${BOLD}$OPENSEARCH_USER${RESET}"
-    echo -e "  ${CYAN}${ARROW}${RESET} Password: ${BOLD}$OPENSEARCH_PASSWORD${RESET}"
-    
+
+    echo -e "${DIM}Other Services:${RESET}"
+    echo -e "  ${DIM}${ARROW} Prometheus:            http://localhost:9090${RESET}"
+    echo -e "  ${DIM}${ARROW} OpenSearch API:        https://localhost:9200${RESET}"
+
+    if [[ "$INCLUDE_EXAMPLES" =~ ^[Yy]$ ]]; then
+        echo -e "  ${DIM}${ARROW} Weather Agent:         http://localhost:8000${RESET}"
+        echo -e "  ${DIM}${ARROW} Travel Planner:        http://localhost:8003${RESET}"
+    fi
+
     echo ""
     echo -e "${BOLD}Useful Commands:${RESET}"
     echo -e "  ${DIM}# View logs${RESET}"
@@ -691,77 +714,179 @@ print_summary() {
     echo ""
     echo -e "  ${DIM}# Stop and remove data${RESET}"
     echo -e "  ${BOLD}cd $INSTALL_DIR && $CONTAINER_RUNTIME compose down -v${RESET}"
-    
+
     echo ""
-    echo -e "${BOLD}Next Steps:${RESET}"
-    echo -e "  1. Visit ${CYAN}http://localhost:5601${RESET} to explore your data"
-    echo -e "  2. Check out ${CYAN}$INSTALL_DIR/examples/${RESET} for instrumentation examples"
-    echo -e "  3. Read ${CYAN}$INSTALL_DIR/README.md${RESET} for detailed documentation"
-    
+    echo -e "${PURPLE}${BOLD}Send Telemetry:${RESET}"
+    echo -e "  ${BOLD}OTLP gRPC${RESET}  ${ARROW} localhost:4317  ${DIM}(OpenTelemetry SDK default)${RESET}"
+    echo -e "  ${BOLD}OTLP HTTP${RESET}  ${ARROW} localhost:4318  ${DIM}(Strands SDK, HTTP-based exporters)${RESET}"
+    echo ""
+    echo -e "  ${DIM}# Set environment variables for your application:${RESET}"
+    echo -e "  ${BOLD}export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317${RESET}  ${DIM}# gRPC (most SDKs)${RESET}"
+    echo -e "  ${BOLD}export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318${RESET}  ${DIM}# HTTP/protobuf${RESET}"
+
+    echo ""
+    echo -e "${PURPLE}${BOLD}Next Steps:${RESET}"
+    echo -e "  1. Visit ${PURPLE}http://localhost:5601${RESET} to explore your data"
+    echo -e "  2. Learn more at ${PURPLE}https://opensearch.org/platform/observability/${RESET}"
+
     echo ""
     echo -e "${DIM}For support, visit: https://github.com/opensearch-project/observability-stack${RESET}"
     echo ""
+}
+
+# Run simulated installer (preview output without installing)
+run_simulated_installer() {
+    OPENSEARCH_USER="admin"
+    OPENSEARCH_PASSWORD="My_password_123!@#"
+    INCLUDE_EXAMPLES="Y"
+    INCLUDE_OTEL_DEMO="Y"
+    INSTALL_DIR="observability-stack"
+    CONTAINER_RUNTIME="docker"
+
+    print_step "Checking system requirements..."
+    sleep 0.5
+    print_success "Git installed: git version 2.39.0"
+    sleep 0.3
+    print_success "Container runtime: docker"
+    sleep 0.3
+    print_success "Docker Compose: v2.23.0"
+    sleep 0.3
+    print_success "Available memory: 16GB"
+    sleep 0.5
+
+    echo ""
+    print_step "Configuration"
+    echo ""
+    sleep 0.5
+    echo -e "${BOLD}Installation directory${RESET} ${DIM}(default: observability-stack)${RESET}: observability-stack"
+    sleep 0.5
+    echo -e "${BOLD}Include example services?${RESET} ${DIM}(Y/n)${RESET}: Y"
+    sleep 0.5
+    echo -e "${BOLD}Include OpenTelemetry Demo?${RESET} ${DIM}(Y/n)${RESET}: Y"
+    sleep 0.5
+    echo -e "${BOLD}Customize OpenSearch credentials?${RESET} ${DIM}(y/N)${RESET}: N"
+    sleep 0.5
+
+    echo ""
+    print_step "Cloning Observability Stack repository..."
+    sleep 1
+    print_success "Repository cloned to observability-stack"
+    sleep 0.5
+
+    echo ""
+    print_step "Configuring environment..."
+    sleep 0.5
+    print_info "Example services enabled"
+    sleep 0.3
+    print_success "Environment configured"
+    sleep 0.5
+
+    echo ""
+    print_step "Building and pulling container images..."
+    echo ""
+    sleep 0.5
+
+    # Demo image list
+    local images=(
+        "opensearchproject/opensearch:3.5.0"
+        "opensearchproject/opensearch-dashboards:3.5.0"
+        "otel/opentelemetry-collector-contrib:0.143.0"
+        "opensearchproject/data-prepper:2.13.0"
+        "prom/prometheus:v3.8.1"
+        "python:3.11-slim"
+    )
+
+    local spinner=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+
+    for i in "${!images[@]}"; do
+        local num=$((i + 1))
+        local total=${#images[@]}
+        local percent=$((num * 100 / total))
+        local filled=$((percent / 5))
+        local empty=$((20 - filled))
+
+        # Show progress bar with spinner animation
+        for spin_idx in {0..9}; do
+            echo -ne "\r${DIM}[$num/$total]${RESET} ["
+            printf "%${filled}s" | tr ' ' '█'
+            printf "%${empty}s" | tr ' ' '░'
+            echo -ne "] ${percent}% ${PURPLE}${spinner[$spin_idx]}${RESET} ${DIM}Pulling ${images[$i]}${RESET}"
+            sleep 0.08
+        done
+
+        # Show completion
+        echo -ne "\r${DIM}[$num/$total]${RESET} ["
+        printf "%${filled}s" | tr ' ' '█'
+        printf "%${empty}s" | tr ' ' '░'
+        echo -e "] ${percent}% ${GREEN}${CHECK}${RESET} ${DIM}${images[$i]}${RESET}"
+    done
+
+    echo ""
+    print_success "Images ready: 6 pulled, 0 cached"
+    sleep 0.5
+
+    echo ""
+    print_step "Starting Observability Stack services..."
+    echo ""
+    sleep 1
+
+    echo -e "${DIM}[+] Running 8/8${RESET}"
+    echo -e "${DIM} ✔ Network observability-stack-network           Created${RESET}"
+    echo -e "${DIM} ✔ Volume \"observability-stack_opensearch-data\"  Created${RESET}"
+    echo -e "${DIM} ✔ Volume \"observability-stack_prometheus-data\"  Created${RESET}"
+    echo -e "${DIM} ✔ Container opensearch               Started${RESET}"
+    echo -e "${DIM} ✔ Container otel-collector           Started${RESET}"
+    echo -e "${DIM} ✔ Container data-prepper             Started${RESET}"
+    echo -e "${DIM} ✔ Container prometheus               Started${RESET}"
+    echo -e "${DIM} ✔ Container opensearch-dashboards    Started${RESET}"
+
+    sleep 1
+    echo ""
+    print_success "Services started"
+    sleep 0.5
+
+    echo ""
+    print_step "Waiting for services to be ready..."
+    echo ""
+    sleep 0.5
+
+    echo -ne "${DIM}Waiting for OpenSearch${RESET}"
+    for i in {1..8}; do
+        sleep 0.3
+        echo -ne "."
+    done
+    echo -e "${GREEN}${CHECK}${RESET}"
+    sleep 0.3
+
+    echo -ne "${DIM}Waiting for OpenSearch Dashboards${RESET}"
+    for i in {1..8}; do
+        sleep 0.3
+        echo -ne "."
+    done
+    echo -e "${GREEN}${CHECK}${RESET}"
+    sleep 0.5
+
+    echo ""
+    print_success "Services are ready"
+    sleep 1
+
+    print_summary
 }
 
 # Main installation flow
 main() {
     print_header
     
-    # For now, always use manual installation since TUI installer is in development
-    # TODO: Enable TUI installer once it's merged to main branch
-    INSTALL_METHOD="manual"
-    
-    # Check if Node.js is available for TUI (future use)
-    # if [ "$INSTALL_METHOD" = "auto" ]; then
-    #     if command_exists node && command_exists npm; then
-    #         INSTALL_METHOD="tui"
-    #     else
-    #         INSTALL_METHOD="manual"
-    #     fi
-    # fi
-    
-    if [ "$INSTALL_METHOD" = "tui" ]; then
-        echo -e "${CYAN}${BOLD}Starting TUI installer...${RESET}\n"
-        run_tui_installer
+    echo -e "${PURPLE}${BOLD}Starting installation...${RESET}\n"
+
+    if [ "$SIMULATE_MODE" = true ]; then
+        run_simulated_installer
     else
-        echo -e "${CYAN}${BOLD}Starting installation...${RESET}\n"
         run_manual_installer
     fi
 }
 
-# Run TUI installer
-run_tui_installer() {
-    print_step "Downloading TUI installer..."
-    
-    if ! git clone --depth 1 "$REPO_URL" "$TEMP_DIR/observability-stack" >/dev/null 2>&1; then
-        print_error "Failed to clone repository"
-        exit 1
-    fi
-    
-    # Check if installer directory exists
-    if [ ! -d "$TEMP_DIR/observability-stack/installer" ]; then
-        print_warning "TUI installer not available yet, falling back to manual installation"
-        echo ""
-        INSTALL_METHOD="manual"
-        run_manual_installer
-        return
-    fi
-    
-    print_step "Installing dependencies..."
-    if ! (cd "$TEMP_DIR/observability-stack/installer" && npm install --silent >/dev/null 2>&1); then
-        print_error "Failed to install dependencies"
-        print_warning "Falling back to manual installation"
-        echo ""
-        INSTALL_METHOD="manual"
-        run_manual_installer
-        return
-    fi
-    
-    print_step "Launching TUI..."
-    cd "$TEMP_DIR/observability-stack/installer" && npm run dev
-}
-
-# Run manual installer (original bash script logic)
+# Run manual installer
 run_manual_installer() {
     check_requirements
     configure_installation

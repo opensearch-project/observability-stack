@@ -7,7 +7,7 @@ import yaml
 
 BASE_URL = "http://opensearch-dashboards:5601"
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
-PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "admin")
+PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
 PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
 

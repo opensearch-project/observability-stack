@@ -25,7 +25,7 @@ observability-stack/
 │   ├── otel-collector/          # OpenTelemetry Collector configuration
 │   │   └── config.yaml
 │   ├── data-prepper/            # Data Prepper pipeline configuration
-│   │   ├── pipelines.yaml
+│   │   ├── pipelines.template.yaml
 │   │   └── data-prepper-config.yaml
 │   ├── prometheus/              # Prometheus configuration
 │   │   └── prometheus.yml
@@ -80,7 +80,7 @@ Contains all files needed for local Docker Compose deployment. Each component ha
 - `QUICK_START.md`: Step-by-step quick start guide
 - `CHANGELOG.md`: History of configuration changes and updates
 - `otel-collector/config.yaml`: OpenTelemetry Collector receivers, processors, and exporters
-- `data-prepper/pipelines.yaml`: Data transformation pipelines for logs and traces
+- `data-prepper/pipelines.template.yaml`: Data transformation pipeline template for logs and traces (credentials injected at container startup)
 - `data-prepper/data-prepper-config.yaml`: Data Prepper server configuration
 - `prometheus/prometheus.yml`: Prometheus scrape and storage configuration
 - `opensearch-dashboards/opensearch_dashboards.yml`: Dashboard UI configuration
@@ -183,7 +183,7 @@ Contains context-specific guidance for AI coding assistants. These files are aut
 
 - **Component-specific**: Configuration files are named after their component
   - `config.yaml` for OpenTelemetry Collector
-  - `pipelines.yaml` for Data Prepper
+  - `pipelines.template.yaml` for Data Prepper
   - `prometheus.yml` for Prometheus
 
 ### Services in docker-compose.yml
@@ -201,7 +201,7 @@ The `.env` file in the docker-compose directory provides centralized configurati
 # OpenSearch Configuration
 OPENSEARCH_VERSION=3.4.0
 OPENSEARCH_USER=admin
-OPENSEARCH_PASSWORD=admin
+OPENSEARCH_PASSWORD='My_password_123!@#'
 OPENSEARCH_HOST=opensearch
 OPENSEARCH_PORT=9200
 
@@ -376,8 +376,8 @@ otel-logs-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: admin
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         insecure: true
         index_type: log-analytics-plain
 
@@ -403,8 +403,8 @@ traces-raw-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: admin
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         insecure: true
         index_type: trace-analytics-plain-raw
 
@@ -419,8 +419,8 @@ service-map-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: admin
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         insecure: true
         index_type: trace-analytics-service-map
 ```
@@ -619,21 +619,13 @@ Example services (weather-agent and canary) are defined in `docker-compose.examp
    OPENSEARCH_PASSWORD=your-new-password
    ```
 
-2. **Update opensearch-dashboards/opensearch_dashboards.yml**:
-   ```yaml
-   opensearch.password: "your-new-password"
-   ```
-
-3. **Update data-prepper/pipelines.yaml** (all opensearch sinks):
-   ```yaml
-   password: your-new-password
-   ```
-
-4. **Restart services**:
+2. **Restart services** (remove volumes to clear stale credentials):
    ```bash
-   docker-compose down
+   docker compose down -v
    docker compose up -d
    ```
+
+Data Prepper uses a template (`pipelines.template.yaml`) with credential placeholders that are injected from `.env` at container startup — no manual edits needed. OpenSearch Dashboards also reads credentials from `.env` automatically.
 
 1. Add service definition to `docker-compose.yml`:
 ```yaml
@@ -900,16 +892,16 @@ When creating examples or documentation, always reference the OpenTelemetry Gen-
 ### Authentication Changes
 
 When modifying OpenSearch credentials:
-1. Update `.env` file
-2. Update `opensearch-dashboards/opensearch_dashboards.yml`
-3. Update all OpenSearch sinks in `data-prepper/pipelines.yaml`
-4. Restart all services with `docker-compose down && docker compose up -d`
+1. Update `.env` file (single source of truth)
+2. Restart all services with `docker compose down -v && docker compose up -d`
+
+Data Prepper uses a template (`pipelines.template.yaml`) with placeholders processed at container startup via `command:` in docker-compose.yml. No manual credential edits needed in pipeline configs.
 
 ### Configuration File Locations
 
 - **OpenSearch**: No custom config file - uses environment variables in docker-compose.yml
 - **OpenTelemetry Collector**: `docker-compose/otel-collector/config.yaml`
-- **Data Prepper**: `docker-compose/data-prepper/pipelines.yaml` and `docker-compose/data-prepper/data-prepper-config.yaml`
+- **Data Prepper**: `docker-compose/data-prepper/pipelines.template.yaml` (credentials injected at startup) and `docker-compose/data-prepper/data-prepper-config.yaml`
 - **Prometheus**: `docker-compose/prometheus/prometheus.yml`
 - **OpenSearch Dashboards**: `docker-compose/opensearch-dashboards/opensearch_dashboards.yml`
 - **Environment Variables**: `.env` file in repository root

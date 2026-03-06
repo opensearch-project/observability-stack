@@ -45,8 +45,8 @@ otel-logs-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: "My_password_123!@#"
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         # Disable SSL verification for development
         insecure: true
         # Use log analytics index type for automatic index management
@@ -78,8 +78,8 @@ traces-raw-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: "My_password_123!@#"
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         insecure: true
         # Use trace analytics index type for automatic index management
         index_type: trace-analytics-plain-raw
@@ -102,8 +102,8 @@ service-map-pipeline:
   sink:
     - opensearch:
         hosts: ["https://opensearch:9200"]
-        username: admin
-        password: "My_password_123!@#"
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
         index_type: otel-v2-apm-service-map
         routes: [otel_apm_service_map_route]
         insecure: true

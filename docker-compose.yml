@@ -29,7 +29,7 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION}
     container_name: otel-collector
-    pull_policy: always
+    # pull_policy: always
     command: ["--config=/etc/otelcol-config.yml"]
     volumes:
       - ./docker-compose/otel-collector/config.yaml:/etc/otelcol-config.yml
@@ -63,10 +63,18 @@ services:
   data-prepper:
     image: ${DATA_PREPPER_DOCKER_REPO}/opensearch-data-prepper:${DATA_PREPPER_VERSION}
     container_name: data-prepper
-    pull_policy: always
+    # pull_policy: always
     platform: linux/amd64
+    command: >
+      /bin/bash -c "
+      cp /tmp/pipelines.template.yaml /tmp/pipelines.yaml &&
+      chmod +w /tmp/pipelines.yaml &&
+      sed -i 's|OPENSEARCH_USER|${OPENSEARCH_USER}|g' /tmp/pipelines.yaml &&
+      sed -i 's|OPENSEARCH_PASSWORD|${OPENSEARCH_PASSWORD}|g' /tmp/pipelines.yaml &&
+      mv /tmp/pipelines.yaml /usr/share/data-prepper/pipelines/pipelines.yaml &&
+      exec /usr/share/data-prepper/bin/data-prepper"
     volumes:
-      - ./docker-compose/data-prepper/pipelines.yaml:/usr/share/data-prepper/pipelines/pipelines.yaml
+      - ./docker-compose/data-prepper/pipelines.template.yaml:/tmp/pipelines.template.yaml
       - ./docker-compose/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml
     ports:
       # OTLP gRPC receiver from OpenTelemetry Collector
@@ -94,7 +102,7 @@ services:
   opensearch:
     image: ${OPENSEARCH_DOCKER_REPO}/opensearch:${OPENSEARCH_VERSION}
     container_name: opensearch
-    pull_policy: always
+    # pull_policy: always
     environment:
       # Single-node cluster for development
       - cluster.name=observability-stack-cluster
@@ -140,7 +148,7 @@ services:
   prometheus:
     image: prom/prometheus:${PROMETHEUS_VERSION}
     container_name: prometheus
-    pull_policy: always
+    # pull_policy: always
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -174,7 +182,7 @@ services:
   opensearch-dashboards:
     image: ${OPENSEARCH_DOCKER_REPO}/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
     container_name: opensearch-dashboards
-    pull_policy: always
+    # pull_policy: always
     environment:
       - OPENSEARCH_HOSTS=["https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"]
       - OPENSEARCH_DASHBOARD_PORT=${OPENSEARCH_DASHBOARDS_PORT}

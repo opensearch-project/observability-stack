@@ -25,10 +25,26 @@ curl -fsSL https://raw.githubusercontent.com/opensearch-project/observability-st
 ```
 
 The installer will:
-- ✅ Check system requirements
+- ✅ Check system requirements (Docker/Finch, Git, memory)
 - 🎨 Guide you through configuration with a beautiful TUI
 - 📦 Pull and start all services automatically
-- 🔐 Display credentials and access points
+- 🔐 Optionally set custom OpenSearch credentials
+- 📊 Display credentials and access points
+
+**Installer flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--simulate` | Preview the installer output without actually installing |
+| `--skip-pull` | Skip pulling container images (uses cached images) |
+| `--help` | Show help message |
+
+To run the installer locally (e.g. after cloning):
+```bash
+./install.sh                # Full install
+./install.sh --simulate     # Dry run
+./install.sh --skip-pull    # Skip image pulls (useful for re-installs)
+```
 
 **Installation takes 8-15 minutes.** After completion, access:
 
@@ -84,17 +100,37 @@ docker compose down -v
 
 ## Instrumenting Your Agent
 
-Observability Stack accepts telemetry data via the OpenTelemetry Protocol (OTLP) and follows the [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for standardized attribute naming and structure for AI agents. 
+Observability Stack accepts telemetry data via the OpenTelemetry Protocol (OTLP) and follows the [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for standardized attribute naming and structure for AI agents.
 
-### Example: Manual Instrumentation with OpenTelemetry  
-For complete example, see [examples/plain-agents/weather-agent](./examples/plain-agents/weather-agent)  
+### OTLP Endpoint Configuration
+
+The OTel Collector exposes two OTLP endpoints — choose the one that matches your SDK's protocol:
+
+| Port | Protocol | Endpoint | Used By |
+|------|----------|----------|---------|
+| **4317** | gRPC | `http://localhost:4317` | OpenTelemetry SDK (default), most language SDKs |
+| **4318** | HTTP/protobuf | `http://localhost:4318` | Strands SDK (`setup_otlp_exporter()`), HTTP-based exporters |
+
+Configure via environment variables:
+```bash
+# For gRPC-based exporters (OpenTelemetry SDK default)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+
+# For HTTP/protobuf exporters (Strands SDK, OTLP HTTP exporters)
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318"
+```
+
+> **Note:** The Strands Agents SDK's `StrandsTelemetry().setup_otlp_exporter()` uses HTTP/protobuf, which requires **port 4318**. Using port 4317 with Strands will silently fail. When using `OTLPSpanExporter` directly with gRPC (as in the examples below), use **port 4317**.
+
+### Example: Manual Instrumentation with OpenTelemetry
+For complete example, see [examples/plain-agents/weather-agent](./examples/plain-agents/weather-agent)
 ```python
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-# Configure OTLP exporter
+# Configure OTLP exporter (gRPC — port 4317)
 tracer_provider = TracerProvider()
 otlp_exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
 tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
@@ -116,7 +152,7 @@ with tracer.start_as_current_span("invoke_agent") as span:
     span.set_attribute("gen_ai.usage.output_tokens", 75)
 ```
 ### Example: Instrument with StrandsTelemetry
-For complete example, see [examples/strands/code-assistant](./examples/strands/code-assistant)  
+For complete example, see [examples/strands/code-assistant](./examples/strands/code-assistant)
 ```python
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -128,6 +164,8 @@ from strands.telemetry import StrandsTelemetry
 telemetry = StrandsTelemetry()
 
 # 2. Configure OTLP exporter to send traces to your observability stack
+#    Note: This example uses gRPC (port 4317) with OTLPSpanExporter directly.
+#    If using setup_otlp_exporter() instead, it uses HTTP/protobuf (port 4318).
 exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
 telemetry.tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 
@@ -170,6 +208,33 @@ docker compose restart opensearch
 docker compose ps
 ```
 
+## Ports
+
+| Port | Service | Protocol | Description |
+|------|---------|----------|-------------|
+| **4317** | OTel Collector | gRPC | OTLP gRPC receiver — used by most OpenTelemetry SDKs |
+| **4318** | OTel Collector | HTTP | OTLP HTTP receiver — used by Strands SDK, browser-based exporters |
+| **5601** | OpenSearch Dashboards | HTTP | Web UI for logs, traces, and dashboards |
+| **9090** | Prometheus | HTTP | Prometheus Web UI and API |
+| **9200** | OpenSearch | HTTPS | REST API (self-signed cert, use `curl -k`) |
+| **21890** | Data Prepper | gRPC | Internal OTLP receiver (from OTel Collector) |
+
+When example services are enabled:
+
+| Port | Service | Description |
+|------|---------|-------------|
+| **8000** | weather-agent | Weather lookup API with fault injection |
+| **8002** | events-agent | Local events lookup API |
+| **8003** | travel-planner | Multi-agent orchestrator |
+
+When OpenTelemetry Demo is enabled:
+
+| Port | Service | Description |
+|------|---------|-------------|
+| **8080** | frontend-proxy | Demo telescope web store |
+| **8080/loadgen/** | load-generator | Load generator dashboard |
+| **8080/feature** | feature-flag | Feature flag management UI |
+
 ## Configuration
 
 ### Environment Variables
@@ -209,42 +274,35 @@ docker compose down && docker compose up -d
 ```
 
 **Access points when running with OTel Demo:**
-- Frontend Proxy: http://localhost:8080
-- Load Generator UI: http://localhost:8089
+- Web Store: http://localhost:8080/
+- Load Generator UI: http://localhost:8080/loadgen/
+- Feature Flags UI: http://localhost:8080/feature
 
 **Note:** Running with OTel Demo significantly increases resource requirements. See [Resource Requirements](#resource-requirements) below.
 
-### Changing OpenSearch Credentials
+### OpenSearch Credentials
 
-To change the OpenSearch username and password:
+The default credentials are `admin` / `My_password_123!@#` (development only).
 
-1. **Edit `.env` file**:
+**Setting credentials during install:**
+
+The interactive installer prompts "Customize OpenSearch credentials?" — enter `Y` to set a custom username and password. The installer writes them to `.env`, and all services pick them up automatically.
+
+**Changing credentials after install:**
+
+1. **Edit `.env` file** (single source of truth):
    ```env
    OPENSEARCH_USER=your-new-username
    OPENSEARCH_PASSWORD=your-new-password
    ```
 
-2. **Update [Data Prepper configuration](docker-compose/data-prepper/pipelines.yaml)**:
-   
-   The Data Prepper configuration has hardcoded credentials in three OpenSearch sink definitions. You can update them automatically:
-   
-   ```bash
-   # Replace username (default: admin)
-   sed -i.bak 's/username: admin/username: your-new-username/g' docker-compose/data-prepper/pipelines.yaml
-   
-   # Replace password (default: My_password_123!@#)
-   sed -i.bak 's/password: "My_password_123!@#"/password: "your-new-password"/g' docker-compose/data-prepper/pipelines.yaml
-   ```
-   
-   Or manually update the `username` and `password` fields in all `opensearch:` sink sections.
-
-3. **Restart the stack** (remove volumes to clear stale credentials):
+2. **Restart the stack** (remove volumes to clear stale credentials):
    ```bash
    docker compose down -v
    docker compose up -d
    ```
 
-**Note**: The `opensearch-dashboards` and `opensearch-dashboards-init` services automatically use the values from `.env`, so no manual changes are needed for those components. OpenSearch uses HTTPS with self-signed certificates, so use `-k` flag with curl commands.
+**How it works:** `.env` is the single source of truth for credentials. OpenSearch, Dashboards, and the init script read from `.env` via environment variables. Data Prepper uses a [template](docker-compose/data-prepper/pipelines.template.yaml) with `OPENSEARCH_USER`/`OPENSEARCH_PASSWORD` placeholders that are injected via `sed` at container startup — no manual config edits needed. OpenSearch uses HTTPS with self-signed certificates, so use `-k` flag with curl commands.
 
 ## Resource Requirements
 
