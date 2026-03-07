@@ -1,0 +1,172 @@
+---
+// ProblemSolution component for OpenSearch AgentOps marketing website
+// Displays problem cards and solution block with stats
+
+interface ProblemCard {
+  icon: string;
+  title: string;
+  description: string;
+  theme: 'red' | 'orange' | 'yellow';
+}
+
+interface StatCard {
+  value: string;
+  label: string;
+}
+
+const problems: ProblemCard[] = [
+  {
+    icon: 'layers',
+    title: 'Tool Sprawl',
+    description: 'Separate tools for APM, logs, metrics, dashboards, and AI observability. Fragmented views, fragmented teams.',
+    theme: 'red',
+  },
+  {
+    icon: 'trending-up',
+    title: 'Cost Explosion',
+    description: 'Per-host, per-GB, per-query pricing from multiple vendors adds up fast as your infrastructure scales.',
+    theme: 'orange',
+  },
+  {
+    icon: 'lock',
+    title: 'Vendor Lock-in',
+    description: 'Proprietary agents, query languages, and data formats make it painful and expensive to switch.',
+    theme: 'yellow',
+  },
+];
+
+const stats: StatCard[] = [
+  { value: '70% Cost Savings', label: 'vs. multiple vendors' },
+  { value: '1 Unified Platform', label: 'services + AI observability' },
+  { value: 'SLO/SLI', label: 'built-in tracking & alerts' },
+  { value: '100% Data Ownership', label: 'self-hosted, open source' },
+];
+
+const themeColors = {
+  red: {
+    icon: 'text-red-500',
+    border: 'border-red-500/20',
+    bg: 'bg-red-500/5',
+  },
+  orange: {
+    icon: 'text-orange-500',
+    border: 'border-orange-500/20',
+    bg: 'bg-orange-500/5',
+  },
+  yellow: {
+    icon: 'text-yellow-500',
+    border: 'border-yellow-500/20',
+    bg: 'bg-yellow-500/5',
+  },
+};
+
+// SVG icon paths
+const iconPaths = {
+  layers: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+  'trending-up': 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
+  lock: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z',
+};
+---
+
+<section id="problem-solution" class="py-20 bg-slate-950">
+  <div class="container mx-auto px-6">
+    <div class="max-w-6xl mx-auto">
+      <!-- Problems Section -->
+      <div class="mb-20">
+        <h2 class="text-3xl md:text-4xl font-bold text-white text-center mb-4">
+          The Problem with Current Solutions
+        </h2>
+        <p class="text-lg text-slate-400 text-center mb-12 max-w-3xl mx-auto">
+          Teams struggle with fragmented tools, escalating costs, and vendor dependencies
+        </p>
+
+        <!-- Problem Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {problems.map((problem) => {
+            const colors = themeColors[problem.theme];
+            return (
+              <div 
+                class={`problem-card p-6 rounded-xl border ${colors.border} ${colors.bg} backdrop-blur-sm transition-transform duration-300 hover:scale-105`}
+                data-theme={problem.theme}
+              >
+                <!-- Icon -->
+                <div class={`w-12 h-12 rounded-lg ${colors.bg} border ${colors.border} flex items-center justify-center mb-4`}>
+                  <svg 
+                    class={`w-6 h-6 ${colors.icon}`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path 
+                      stroke-linecap="round" 
+                      stroke-linejoin="round" 
+                      stroke-width="2" 
+                      d={iconPaths[problem.icon]}
+                    />
+                  </svg>
+                </div>
+
+                <!-- Title -->
+                <h3 class="text-xl font-bold text-white mb-3">
+                  {problem.title}
+                </h3>
+
+                <!-- Description -->
+                <p class="text-slate-400 leading-relaxed">
+                  {problem.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <!-- Solution Section -->
+      <div class="relative">
+        <!-- Gradient Border Effect -->
+        <div class="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 rounded-2xl blur-sm opacity-20"></div>
+        
+        <div class="relative bg-slate-900 rounded-2xl p-8 md:p-12 border border-slate-800">
+          <!-- Solution Headline -->
+          <h2 class="text-3xl md:text-4xl font-bold text-center mb-4">
+            <span class="bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 bg-clip-text text-transparent">
+              One Platform. Everything You Need.
+            </span>
+          </h2>
+
+          <p class="text-lg text-slate-400 text-center mb-12 max-w-2xl mx-auto">
+            OpenSearch - Observability Stack unifies APM traces, logs, Prometheus metrics, dashboards, alerts, anomaly detection, and AI agent observability in a single open-source platform
+          </p>
+
+          <!-- Stat Cards Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {stats.map((stat) => (
+              <div class="stat-card text-center p-6 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-indigo-500/50 transition-colors duration-300">
+                <div class="text-2xl md:text-3xl font-bold text-white mb-2">
+                  {stat.value}
+                </div>
+                <div class="text-sm text-slate-400">
+                  {stat.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .problem-card {
+      transition: none;
+    }
+    
+    .stat-card {
+      transition: none;
+    }
+  }
+</style>

@@ -1,0 +1,167 @@
+---
+// WhyOTEL.astro - Why OpenTelemetry Matters section
+// Displays six cards explaining OpenTelemetry benefits
+
+interface OTELCard {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  learnMoreLink: string;
+}
+
+const otelCards: OTELCard[] = [
+  {
+    id: 'industry-standard',
+    icon: '🏆',
+    title: 'Industry Standard (CNCF)',
+    description: 'OpenTelemetry is a CNCF graduated project, backed by major tech companies and trusted by thousands of organizations worldwide.',
+    learnMoreLink: 'https://www.cncf.io/projects/opentelemetry/',
+  },
+  {
+    id: 'your-data',
+    icon: '🔒',
+    title: 'Your Data, Your Rules',
+    description: 'Own your observability data completely. Export to any backend, store locally, or switch providers anytime without losing history.',
+    learnMoreLink: '#',
+  },
+  {
+    id: 'future-proof',
+    icon: '🚀',
+    title: 'Future-Proof Investment',
+    description: 'Built on open standards that evolve with the industry. Your instrumentation code stays relevant as technology advances.',
+    learnMoreLink: '#',
+  },
+  {
+    id: 'no-lock-in',
+    icon: '🔓',
+    title: 'No Vendor Lock-In',
+    description: 'Switch observability backends in minutes, not months. Your instrumentation is portable across any OTEL-compatible platform.',
+    learnMoreLink: '#',
+  },
+  {
+    id: 'language-agnostic',
+    icon: '🌐',
+    title: 'Language Agnostic',
+    description: 'Consistent instrumentation across Python, JavaScript, Go, Java, and 10+ languages. One standard for your entire stack.',
+    learnMoreLink: '#',
+  },
+  {
+    id: 'community-driven',
+    icon: '👥',
+    title: 'Community Driven',
+    description: 'Benefit from contributions by thousands of developers. Active community, extensive documentation, and continuous improvements.',
+    learnMoreLink: '#',
+  },
+];
+---
+
+<section id="why-otel" class="py-20 px-6 bg-slate-950">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-16">
+      <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">
+        Why OpenTelemetry Matters
+      </h2>
+      <p class="text-xl text-slate-300 max-w-3xl mx-auto">
+        The foundation for traces, metrics, and logs across services and AI. No compromises, no lock-in.
+      </p>
+    </div>
+
+    <!-- OTEL Cards Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {otelCards.map((card) => (
+        <div
+          class="otel-card group bg-slate-900 rounded-xl border border-slate-800 p-6 card-transition hover:border-cyan-500"
+          data-card-id={card.id}
+        >
+          <!-- Icon -->
+          <div class="text-5xl mb-4" aria-hidden="true">
+            {card.icon}
+          </div>
+
+          <!-- Title -->
+          <h3 class="text-xl font-bold text-white mb-3">
+            {card.title}
+          </h3>
+
+          <!-- Description -->
+          <p class="text-slate-400 leading-relaxed mb-4">
+            {card.description}
+          </p>
+
+          <!-- Learn More Link -->
+          <a
+            href={card.learnMoreLink}
+            class="inline-flex items-center gap-2 text-cyan-400 hover:text-cyan-300 font-semibold text-sm transition-colors duration-200"
+            target={card.learnMoreLink.startsWith('http') ? '_blank' : undefined}
+            rel={card.learnMoreLink.startsWith('http') ? 'noopener noreferrer' : undefined}
+          >
+            Learn more
+            <svg class="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </a>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Hover effects with smooth transitions */
+  .otel-card {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  }
+
+  .otel-card:hover {
+    box-shadow: 0 20px 25px -5px rgba(0, 212, 255, 0.1), 0 10px 10px -5px rgba(0, 212, 255, 0.04);
+  }
+
+  /* Arrow transition on hover */
+  .otel-card a svg {
+    transition: transform 0.2s ease;
+  }
+
+  .otel-card:hover a svg {
+    transform: translateX(4px);
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .otel-card {
+      transition: none;
+    }
+    
+    .otel-card:hover {
+      transform: none;
+    }
+
+    .otel-card a svg {
+      transition: none;
+    }
+
+    .otel-card:hover a svg {
+      transform: none;
+    }
+  }
+
+  /* Responsive grid adjustments */
+  @media (max-width: 767px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+</style>

@@ -1,0 +1,138 @@
+---
+// Testimonials component for OpenSearch AgentOps marketing website
+// Displays customer testimonials with quotes, author info, and optional metrics
+import { Image } from 'astro:assets';
+
+interface Testimonial {
+  quote: string;
+  author: string;
+  role: string;
+  company: string;
+  avatar?: string;
+  companyLogo?: string;
+  metrics?: string;
+}
+
+const testimonials: Testimonial[] = [
+  {
+    quote: "OpenSearch Observability Stack replaced three separate monitoring tools for us — APM, log analytics, and our LLM tracing setup. The self-hosted option was crucial for our compliance requirements.",
+    author: "Sarah Chen",
+    role: "VP of Engineering",
+    company: "TechCorp AI",
+    avatar: "/avatars/sarah-chen.jpg",
+    companyLogo: "/logos/techcorp.svg",
+    metrics: "70% cost reduction, 3x faster debugging",
+  },
+  {
+    quote: "The unified platform approach is a game-changer. We went from juggling three different tools to having everything in one place. The evaluation framework alone saved us weeks of development time.",
+    author: "Michael Rodriguez",
+    role: "Lead AI Engineer",
+    company: "DataFlow Systems",
+    avatar: "/avatars/michael-rodriguez.jpg",
+    companyLogo: "/logos/dataflow.svg",
+    metrics: "3 tools → 1 platform, 40% faster iteration",
+  },
+  {
+    quote: "Being open source means we can customize it to our exact needs and never worry about vendor lock-in. The community support has been outstanding, and the Apache 2.0 license gives us complete peace of mind.",
+    author: "Emily Watson",
+    role: "CTO",
+    company: "InnovateLabs",
+    avatar: "/avatars/emily-watson.jpg",
+    companyLogo: "/logos/innovatelabs.svg",
+  },
+];
+---
+
+<section id="testimonials" class="py-20 bg-slate-950">
+  <div class="container mx-auto px-6">
+    <div class="max-w-6xl mx-auto">
+      <!-- Section Header -->
+      <div class="text-center mb-16">
+        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+          Trusted by AI Teams Worldwide
+        </h2>
+        <p class="text-lg text-slate-400 max-w-3xl mx-auto">
+          See how teams are using OpenSearch - Observability Stack across services and AI
+        </p>
+      </div>
+
+      <!-- Testimonials Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {testimonials.map((testimonial) => (
+          <div
+            class="testimonial-card flex flex-col p-8 rounded-xl bg-slate-900/50 border border-slate-800 hover:border-indigo-500/50 transition-all duration-300"
+            data-testimonial-author={testimonial.author.toLowerCase().replace(/\s+/g, '-')}
+          >
+            <!-- Quote -->
+            <div class="flex-grow mb-6">
+              <svg 
+                class="w-10 h-10 text-indigo-500/30 mb-4" 
+                fill="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z" />
+              </svg>
+              <p class="testimonial-quote text-slate-300 leading-relaxed">
+                {testimonial.quote}
+              </p>
+            </div>
+
+            <!-- Metrics (conditional) -->
+            {testimonial.metrics && (
+              <div class="testimonial-metrics mb-6 p-4 rounded-lg bg-indigo-500/10 border border-indigo-500/20">
+                <p class="text-sm font-semibold text-indigo-300">
+                  {testimonial.metrics}
+                </p>
+              </div>
+            )}
+
+            <!-- Author Info -->
+            <div class="flex items-center gap-4">
+              {testimonial.avatar && (
+                <img
+                  src={testimonial.avatar}
+                  alt={testimonial.author}
+                  class="testimonial-avatar w-12 h-12 rounded-full object-cover border-2 border-slate-700"
+                  loading="lazy"
+                  decoding="async"
+                  width="48"
+                  height="48"
+                />
+              )}
+              <div class="flex-grow">
+                <p class="testimonial-author font-semibold text-white">
+                  {testimonial.author}
+                </p>
+                <p class="testimonial-role text-sm text-slate-400">
+                  {testimonial.role}
+                </p>
+                <p class="testimonial-company text-sm text-slate-500">
+                  {testimonial.company}
+                </p>
+              </div>
+              {testimonial.companyLogo && (
+                <img
+                  src={testimonial.companyLogo}
+                  alt={testimonial.company}
+                  class="testimonial-company-logo h-8 w-auto object-contain opacity-60"
+                  loading="lazy"
+                  decoding="async"
+                />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .testimonial-card {
+      transition: none;
+    }
+  }
+</style>

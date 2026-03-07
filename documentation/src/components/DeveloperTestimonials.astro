@@ -1,0 +1,139 @@
+---
+// Developer Testimonials component for OpenSearch AgentOps OTEL redesign
+// Displays filterable developer testimonials with React island for interactivity
+import DeveloperTestimonialsClient from './DeveloperTestimonials.tsx';
+
+interface Testimonial {
+  id: number;
+  quote: string;
+  category: string;
+  author: string;
+  role: string;
+  company: string;
+  image?: string;
+  companyLogo?: string;
+  highlight: string;
+}
+
+const testimonials: Testimonial[] = [
+  {
+    id: 1,
+    quote: "5-minute setup. Tracing production requests immediately. This is what developer experience should feel like.",
+    category: "Speed Wins",
+    author: "Sarah Chen",
+    role: "Senior Backend Engineer",
+    company: "TechCorp AI",
+    image: "/avatars/sarah-chen.jpg",
+    companyLogo: "/logos/techcorp.svg",
+    highlight: "5-minute setup vs 3-week integration"
+  },
+  {
+    id: 2,
+    quote: "Finally, an observability platform that doesn't lock me into proprietary formats. OTEL means I can switch backends anytime without rewriting instrumentation.",
+    category: "OTEL Love",
+    author: "Marcus Johnson",
+    role: "Staff Engineer",
+    company: "DataFlow Systems",
+    image: "/avatars/marcus-johnson.jpg",
+    companyLogo: "/logos/dataflow.svg",
+    highlight: "Zero vendor lock-in, full data portability"
+  },
+  {
+    id: 3,
+    quote: "Running everything locally during development is a game-changer. No more waiting for cloud deployments to debug issues.",
+    category: "Local Development",
+    author: "Emily Watson",
+    role: "Lead Developer",
+    company: "InnovateLabs",
+    image: "/avatars/emily-watson.jpg",
+    companyLogo: "/logos/innovatelabs.svg",
+    highlight: "Debug locally, deploy confidently"
+  },
+  {
+    id: 4,
+    quote: "CNCF-backed OpenTelemetry gives me confidence this won't be deprecated next year. Standards matter for long-term projects.",
+    category: "Standards-First",
+    author: "David Park",
+    role: "Principal Architect",
+    company: "CloudScale Inc",
+    image: "/avatars/david-park.jpg",
+    companyLogo: "/logos/cloudscale.svg",
+    highlight: "Future-proof with industry standards"
+  },
+  {
+    id: 5,
+    quote: "Works seamlessly with LangChain, LlamaIndex, and our custom frameworks. The auto-instrumentation is brilliant.",
+    category: "Framework Support",
+    author: "Priya Sharma",
+    role: "ML Engineer",
+    company: "AI Dynamics",
+    image: "/avatars/priya-sharma.jpg",
+    companyLogo: "/logos/aidynamics.svg",
+    highlight: "Auto-instrumentation for all major frameworks"
+  },
+  {
+    id: 6,
+    quote: "From zero to full observability in under 10 minutes. The quickstart guide is the best I've seen in any dev tool.",
+    category: "Speed Wins",
+    author: "Alex Rivera",
+    role: "DevOps Engineer",
+    company: "StartupHub",
+    image: "/avatars/alex-rivera.jpg",
+    companyLogo: "/logos/startuphub.svg",
+    highlight: "10-minute quickstart, production-ready"
+  },
+  {
+    id: 7,
+    quote: "OpenTelemetry compatibility means I can use Jaeger, Prometheus, or any OTEL-compatible backend. True flexibility.",
+    category: "OTEL Love",
+    author: "Lisa Zhang",
+    role: "Platform Engineer",
+    company: "MegaCorp",
+    image: "/avatars/lisa-zhang.jpg",
+    companyLogo: "/logos/megacorp.svg",
+    highlight: "Works with any OTEL backend"
+  },
+  {
+    id: 8,
+    quote: "Docker Compose setup for local dev is perfect. Spin up the entire stack in seconds, tear it down just as fast.",
+    category: "Local Development",
+    author: "Tom Anderson",
+    role: "Full Stack Developer",
+    company: "WebWorks",
+    image: "/avatars/tom-anderson.jpg",
+    companyLogo: "/logos/webworks.svg",
+    highlight: "Local stack in seconds with Docker"
+  }
+];
+---
+
+<section id="testimonials" class="py-20 bg-slate-950">
+  <div class="container mx-auto px-6">
+    <div class="max-w-7xl mx-auto">
+      <!-- Section Header -->
+      <div class="text-center mb-16">
+        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+          Loved by Developers
+        </h2>
+        <p class="text-lg text-slate-400 max-w-3xl mx-auto">
+          See what developers are saying about building with OpenTelemetry standards
+        </p>
+      </div>
+
+      <!-- React Island for Interactive Filtering -->
+      <DeveloperTestimonialsClient 
+        client:load 
+        testimonials={testimonials}
+      />
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    :global(.testimonial-card) {
+      transition: none !important;
+    }
+  }
+</style>

@@ -1,0 +1,350 @@
+@import "tailwindcss";
+
+/* Tailwind CSS v4 automatically purges unused classes during build
+ * No additional configuration needed - the @tailwindcss/vite plugin
+ * handles tree-shaking and optimization automatically
+ */
+
+@theme {
+  /* OTEL-Focused Colors - Cyan Primary */
+  --color-otel-cyan: #00d4ff;
+  --color-otel-blue: #0099ff;
+  --color-otel-dark: #0a0e1a;
+  --color-otel-darker: #050810;
+  
+  /* Primary Colors (OTEL Cyan) */
+  --color-primary-50: #e0f7ff;
+  --color-primary-100: #b3ebff;
+  --color-primary-200: #80dfff;
+  --color-primary-300: #4dd3ff;
+  --color-primary-400: #26c9ff;
+  --color-primary-500: #00d4ff;
+  --color-primary-600: #00b8e6;
+  --color-primary-700: #0099cc;
+  --color-primary-800: #007ab3;
+  --color-primary-900: #005580;
+  
+  /* Secondary Colors (Deep Blue) */
+  --color-secondary-50: #e6f0ff;
+  --color-secondary-100: #b3d1ff;
+  --color-secondary-200: #80b3ff;
+  --color-secondary-300: #4d94ff;
+  --color-secondary-400: #267aff;
+  --color-secondary-500: #0099ff;
+  --color-secondary-600: #0080e6;
+  --color-secondary-700: #0066cc;
+  --color-secondary-800: #004db3;
+  --color-secondary-900: #003380;
+  
+  /* Accent Colors (Cyan variations) */
+  --color-accent-50: #e0f9ff;
+  --color-accent-100: #b3f0ff;
+  --color-accent-200: #80e7ff;
+  --color-accent-300: #4dddff;
+  --color-accent-400: #26d6ff;
+  --color-accent-500: #00d4ff;
+  --color-accent-600: #00c2e6;
+  --color-accent-700: #00a3cc;
+  --color-accent-800: #0085b3;
+  --color-accent-900: #006080;
+  
+  /* Dark Backgrounds */
+  --color-dark-950: #0a0e1a;
+  --color-dark-900: #0f1729;
+  --color-dark-800: #1a2332;
+  --color-dark-700: #252f3f;
+  --color-dark-600: #303b4d;
+  
+  /* Custom Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Fira Code', 'Monaco', 'Courier New', monospace;
+  
+  /* Custom Spacing */
+  --spacing-18: 4.5rem;
+  --spacing-22: 5.5rem;
+  --spacing-26: 6.5rem;
+  --spacing-30: 7.5rem;
+}
+
+/* Base Styles - OTEL Dark Theme */
+body {
+  @apply text-slate-100;
+  background-color: #0a0e1a;
+  font-family: var(--font-sans);
+}
+
+/* Smooth Scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Keyboard Navigation - Focus Indicators - OTEL Cyan */
+/* Visible focus indicators for all interactive elements */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:not([tabindex="-1"]):focus-visible {
+  outline: 2px solid #00d4ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Enhanced focus for buttons and links */
+button:focus-visible,
+a:focus-visible {
+  box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.3);
+}
+
+/* Remove default outline and use custom focus styles */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid #00d4ff;
+  outline-offset: 2px;
+}
+
+/* Touch Target Sizing - Ensure minimum 44px touch targets */
+button,
+a,
+input[type="button"],
+input[type="submit"],
+input[type="reset"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Ensure interactive elements have adequate spacing */
+button:not(:last-child),
+a:not(:last-child) {
+  margin-right: 0.25rem;
+}
+
+/* Scroll-triggered animations */
+.animate-on-scroll {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+}
+
+.animate-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Stagger animation delays for child elements */
+.animate-on-scroll:nth-child(1) { transition-delay: 0ms; }
+.animate-on-scroll:nth-child(2) { transition-delay: 100ms; }
+.animate-on-scroll:nth-child(3) { transition-delay: 200ms; }
+.animate-on-scroll:nth-child(4) { transition-delay: 300ms; }
+.animate-on-scroll:nth-child(5) { transition-delay: 400ms; }
+.animate-on-scroll:nth-child(6) { transition-delay: 500ms; }
+
+/* Card hover effects */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
+}
+
+/* Button hover effects */
+.button-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.button-hover:hover {
+  transform: translateY(-2px);
+}
+
+.button-hover:active {
+  transform: translateY(0);
+}
+
+/* Gradient text animation - OTEL Cyan theme */
+.gradient-text {
+  background: linear-gradient(135deg, #00d4ff, #0099ff, #00b8e6);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 8s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+/* Floating animation for background orbs */
+.float-animation {
+  animation: float 6s ease-in-out infinite;
+}
+
+.float-animation-delayed {
+  animation: float 8s ease-in-out infinite;
+  animation-delay: 1s;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  33% {
+    transform: translateY(-20px) translateX(10px);
+  }
+  66% {
+    transform: translateY(10px) translateX(-10px);
+  }
+}
+
+/* Pulse animation for badges */
+.pulse-animation {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Fade in animation - for tab content switches */
+.fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Smooth transitions for cards - GPU accelerated */
+.card-transition {
+  transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform;
+}
+
+.card-transition:hover {
+  transform: translateY(-4px);
+}
+
+/* Smooth transitions for filter buttons */
+.filter-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+/* Testimonial card fade-in on filter change */
+.testimonial-fade-in {
+  animation: testimonialFadeIn 0.4s ease-out forwards;
+}
+
+@keyframes testimonialFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Scale on hover for logos */
+.logo-hover {
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.logo-hover:hover {
+  transform: scale(1.1);
+  filter: grayscale(0%) brightness(1.2);
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  
+  /* Disable all animations and transitions */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  
+  /* Disable scroll animations */
+  .animate-on-scroll {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  
+  /* Disable hover transform effects but keep color changes */
+  .card-hover:hover,
+  .button-hover:hover,
+  .logo-hover:hover,
+  .card-transition:hover {
+    transform: none !important;
+  }
+  
+  /* Disable fade-in animations */
+  .fade-in,
+  .animate-fade-in,
+  .testimonial-fade-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  
+  /* Disable gradient animation */
+  .gradient-text {
+    animation: none !important;
+  }
+  
+  /* Disable floating animations */
+  .float-animation,
+  .float-animation-delayed {
+    animation: none !important;
+  }
+  
+  /* Disable pulse animation */
+  .pulse-animation {
+    animation: none !important;
+  }
+  
+  /* Keep focus indicators but remove transitions */
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    transition: none !important;
+  }
+}

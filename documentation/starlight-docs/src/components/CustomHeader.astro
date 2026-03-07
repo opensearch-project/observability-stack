@@ -1,0 +1,92 @@
+---
+// Custom header for Starlight matching main site branding
+import type { Props } from '@astrojs/starlight/props';
+import Search from '@astrojs/starlight/components/Search.astro';
+import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
+---
+
+<div class="header sl-flex">
+	<div class="title-wrapper sl-flex">
+		<a href="/opensearch-agentops-website/" class="site-title sl-flex">
+			<img src="/opensearch-agentops-website/opensearch-logo-darkmode.svg" alt="OpenSearch" class="logo" />
+			<span class="brand-text">Observability Stack</span>
+		</a>
+	</div>
+	<div class="sl-flex nav-links">
+		<Search {...Astro.props} />
+		<a href="https://github.com/anirudha/opensearch-agentops-website" target="_blank" rel="noopener noreferrer" class="sl-flex social-icon">
+			<span class="sr-only">GitHub</span>
+			<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+				<path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+			</svg>
+		</a>
+		<ThemeSelect {...Astro.props} />
+	</div>
+</div>
+
+<style>
+	.header {
+		gap: var(--sl-nav-gap);
+		justify-content: space-between;
+		align-items: center;
+		height: 100%;
+	}
+
+	.title-wrapper {
+		flex-grow: 1;
+		align-items: center;
+		gap: var(--sl-nav-gap);
+	}
+
+	.site-title {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		text-decoration: none;
+	}
+
+	.logo {
+		height: 2rem;
+		width: auto;
+	}
+
+	.brand-text {
+		font-size: 1.5rem;
+		font-weight: 600;
+		background: linear-gradient(to right, #c084fc, #f472b6);
+		-webkit-background-clip: text;
+		background-clip: text;
+		-webkit-text-fill-color: transparent;
+		color: transparent;
+		filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.5));
+	}
+
+	.nav-links {
+		gap: 1rem;
+		align-items: center;
+	}
+
+	.social-icon {
+		color: var(--sl-color-gray-2);
+		padding: 0.5rem;
+		border-radius: 0.5rem;
+		transition: color 0.2s, background-color 0.2s;
+	}
+
+	.social-icon:hover {
+		color: var(--sl-color-white);
+		background-color: var(--sl-color-gray-6);
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border-width: 0;
+	}
+</style>

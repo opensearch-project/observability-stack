@@ -1,0 +1,86 @@
+---
+// Final CTA Section component for OpenSearch AgentOps marketing website
+// Displays compelling final call-to-action with trust badges
+---
+
+<section id="cta-final" class="relative py-20 overflow-hidden">
+  <!-- Gradient Background -->
+  <div class="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-cyan-600 opacity-90"></div>
+  <div class="absolute inset-0 bg-slate-950 opacity-40"></div>
+  
+  <div class="container mx-auto px-6 relative z-10">
+    <div class="max-w-4xl mx-auto text-center">
+      <!-- Compelling Headline -->
+      <h2 class="text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-6">
+        Ready to Transform Your AI Development?
+      </h2>
+
+      <!-- Subtext Reinforcing Value Proposition -->
+      <p class="text-lg md:text-xl text-white/90 mb-12 max-w-2xl mx-auto">
+        Join thousands of AI teams building better applications with unified observability, 
+        evaluation, and prompt management. Start free today.
+      </p>
+
+      <!-- CTAs -->
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+        <!-- Primary CTA: Start Free Trial -->
+        <a 
+          href="/signup" 
+          class="px-8 py-4 bg-white hover:bg-slate-100 text-indigo-600 font-semibold rounded-lg transition-colors duration-200 shadow-lg"
+          data-analytics="cta_final_start_trial"
+        >
+          Start Free Trial
+        </a>
+
+        <!-- Secondary CTA: Talk to Sales -->
+        <a 
+          href="/contact-sales" 
+          class="px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition-colors duration-200 border border-white/30 backdrop-blur-sm"
+          data-analytics="cta_final_talk_sales"
+        >
+          Talk to Sales
+        </a>
+      </div>
+
+      <!-- Trust Badges (Repeated from Hero) -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto">
+        <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm">
+          <svg class="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span class="text-sm font-semibold text-white">70% Cost Savings</span>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm">
+          <svg class="w-8 h-8 text-indigo-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+          </svg>
+          <span class="text-sm font-semibold text-white">100% Open Source</span>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm">
+          <svg class="w-8 h-8 text-cyan-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
+          </svg>
+          <span class="text-sm font-semibold text-white">Self-Hosted Available</span>
+        </div>
+
+        <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-white/10 border border-white/20 backdrop-blur-sm">
+          <svg class="w-8 h-8 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+          <span class="text-sm font-semibold text-white">SOC 2 & HIPAA Ready</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
+  }
+</style>

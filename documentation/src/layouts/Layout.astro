@@ -1,0 +1,239 @@
+---
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+}
+
+const {
+  title = 'OpenSearch - Observability Stack | Full-Stack Observability for Services & AI',
+  description = 'Traces, logs, metrics, dashboards, alerts, anomaly detection, SLO/SLI, service maps, APM, and AI agent observability. One open-source platform, zero vendor lock-in.',
+  ogImage = '/og-image-otel.png'
+} = Astro.props;
+
+const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url.pathname;
+
+import { ViewTransitions } from 'astro:transitions';
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href={canonicalURL} />
+    
+    <ViewTransitions />
+    
+    <!-- Primary Meta Tags -->
+    <title>{title}</title>
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={ogImage} />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+    
+    <!-- Structured Data - OTEL Positioning -->
+    <script is:inline type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "OpenSearch - Observability Stack",
+        "applicationCategory": "DeveloperApplication",
+        "description": "Full-stack observability platform — APM, traces, logs, metrics, dashboards, alerts, anomaly detection, and AI agent observability",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "USD"
+        },
+        "operatingSystem": "Web"
+      }
+    </script>
+    
+    <!-- Global Styles -->
+    <style is:global>
+      @import '../styles/global.css';
+    </style>
+    
+    <!-- Google Analytics 4 -->
+    <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+    <script is:inline>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-XXXXXXXXXX');
+    </script>
+    
+    <!-- Analytics Event Tracking -->
+    <script>
+      // Track CTA button clicks
+      function initAnalytics() {
+        // CTA click tracking
+        document.querySelectorAll('[data-analytics]').forEach(function(element) {
+          element.addEventListener('click', function() {
+            const ctaName = this.getAttribute('data-analytics');
+            if (typeof gtag !== 'undefined') {
+              gtag('event', 'cta_click', {
+                'cta_name': ctaName,
+                'page_location': window.location.href
+              });
+            }
+          });
+        });
+
+        // External link click tracking
+        document.querySelectorAll('a[target="_blank"], a[rel*="noopener"]').forEach(function(link) {
+          link.addEventListener('click', function() {
+            const href = this.getAttribute('href');
+            if (typeof gtag !== 'undefined') {
+              gtag('event', 'external_link_click', {
+                'link_url': href,
+                'link_text': this.textContent.trim(),
+                'page_location': window.location.href
+              });
+            }
+          });
+        });
+
+        // Form submission tracking
+        document.querySelectorAll('form').forEach(function(form) {
+          form.addEventListener('submit', function() {
+            const formId = this.id || 'unnamed_form';
+            const formAction = this.action || window.location.href;
+            if (typeof gtag !== 'undefined') {
+              gtag('event', 'form_submission', {
+                'form_id': formId,
+                'form_action': formAction,
+                'page_location': window.location.href
+              });
+            }
+          });
+        });
+
+        // Scroll depth tracking (25%, 50%, 75%, 100%)
+        const scrollDepths = [25, 50, 75, 100];
+        const trackedDepths = {};
+        
+        function trackScrollDepth() {
+          const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+          const scrolled = window.scrollY;
+          const scrollPercent = (scrolled / scrollHeight) * 100;
+          
+          scrollDepths.forEach(function(depth) {
+            if (scrollPercent >= depth && !trackedDepths[depth]) {
+              trackedDepths[depth] = true;
+              if (typeof gtag !== 'undefined') {
+                gtag('event', 'scroll_depth', {
+                  'depth_percentage': depth,
+                  'page_location': window.location.href
+                });
+              }
+            }
+          });
+        }
+        
+        // Throttle scroll events
+        let scrollTimeout;
+        window.addEventListener('scroll', function() {
+          if (scrollTimeout) {
+            clearTimeout(scrollTimeout);
+          }
+          scrollTimeout = setTimeout(trackScrollDepth, 100);
+        });
+      }
+
+      // Initial load
+      initAnalytics();
+      
+      // Re-run on View Transitions navigation
+      document.addEventListener('astro:page-load', initAnalytics);
+    </script>
+    
+    <!-- Scroll-triggered animations with Intersection Observer -->
+    <script>
+      function initAnimations() {
+        // Check if user prefers reduced motion
+        const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        
+        if (!prefersReducedMotion) {
+          // Create Intersection Observer for scroll animations
+          const observerOptions = {
+            root: null,
+            rootMargin: '0px',
+            threshold: 0.1
+          };
+          
+          const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('is-visible');
+                // Optionally unobserve after animation to improve performance
+                observer.unobserve(entry.target);
+              }
+            });
+          }, observerOptions);
+          
+          // Observe all elements with animate-on-scroll class
+          document.querySelectorAll('.animate-on-scroll').forEach(function(element) {
+            observer.observe(element);
+          });
+        } else {
+          // If reduced motion is preferred, make all elements visible immediately
+          document.querySelectorAll('.animate-on-scroll').forEach(function(element) {
+            element.classList.add('is-visible');
+          });
+        }
+      }
+
+      // Initial load
+      initAnimations();
+      
+      // Re-run on View Transitions navigation
+      document.addEventListener('astro:page-load', initAnimations);
+    </script>
+  </head>
+  <body>
+    <!-- Skip to main content link for keyboard navigation -->
+    <a href="#main-content" class="skip-to-main">
+      Skip to main content
+    </a>
+    <slot />
+  </body>
+</html>
+
+<style>
+  /* Skip to main content link - hidden until focused - OTEL Cyan */
+  .skip-to-main {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #00d4ff;
+    color: #0a0e1a;
+    padding: 8px 16px;
+    text-decoration: none;
+    font-weight: 600;
+    z-index: 100;
+    border-radius: 0 0 4px 0;
+  }
+
+  .skip-to-main:focus {
+    top: 0;
+  }
+</style>

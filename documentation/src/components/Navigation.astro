@@ -1,0 +1,263 @@
+---
+// Navigation component with fixed header, menu items, and CTAs
+interface NavItem {
+  label: string;
+  href: string;
+  isExternal: boolean;
+}
+
+const navigationItems: NavItem[] = [
+  { label: 'Features', href: '#features', isExternal: false },
+  { label: 'Use Cases', href: '#use-cases', isExternal: false },
+  { label: 'Why OTEL', href: '#why-otel', isExternal: false },
+  { label: 'Docs', href: `${import.meta.env.BASE_URL}/docs/`, isExternal: false },
+];
+---
+
+<nav class="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800" id="main-navigation">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="flex items-center justify-between h-16">
+      <!-- Logo -->
+      <div class="flex-shrink-0">
+        <a href={import.meta.env.BASE_URL} class="flex items-center space-x-4 text-white hover:text-primary-400 transition-colors">
+          <img src={`${import.meta.env.BASE_URL}/opensearch-logo-darkmode.svg`} alt="OpenSearch" class="h-8 w-auto" />
+          <span class="font-semibold text-2xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" style="filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.5));">Observability Stack</span>
+        </a>
+      </div>
+
+      <!-- Desktop Navigation -->
+      <div class="hidden md:flex items-center space-x-10">
+        {navigationItems.map((item) => (
+          <a
+            href={item.href}
+            class="text-slate-300 hover:text-white transition-colors text-lg font-medium px-4 py-2 smooth-scroll"
+            target={item.isExternal ? '_blank' : undefined}
+            rel={item.isExternal ? 'noopener noreferrer' : undefined}
+          >
+            {item.label}
+          </a>
+        ))}
+      </div>
+
+      <!-- Desktop CTAs -->
+      <div class="hidden md:flex items-center space-x-4">
+        <a
+          href="https://github.com/anirudha/opensearch-agentops-website"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="flex items-center gap-2 text-slate-300 hover:text-white transition-colors text-lg font-medium px-4 py-2"
+        >
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+          </svg>
+          GitHub
+        </a>
+      </div>
+
+      <!-- Mobile Menu Button -->
+      <div class="md:hidden">
+        <button
+          type="button"
+          class="text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 focus:ring-offset-slate-950 rounded-lg p-2"
+          id="mobile-menu-button"
+          aria-label="Toggle mobile menu"
+          aria-expanded="false"
+          aria-controls="mobile-menu"
+        >
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Menu (hidden by default) -->
+  <div
+    class="md:hidden hidden"
+    id="mobile-menu"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Mobile navigation menu"
+  >
+    <div class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-40" id="mobile-menu-backdrop"></div>
+    <div class="fixed inset-y-0 right-0 w-full max-w-sm bg-slate-900 shadow-xl z-50 transform transition-transform duration-300 ease-in-out translate-x-full" id="mobile-menu-drawer">
+      <div class="flex flex-col h-full">
+        <!-- Mobile Menu Header -->
+        <div class="flex items-center justify-between p-4 border-b border-slate-800">
+          <span class="font-semibold text-lg text-white">Menu</span>
+          <button
+            type="button"
+            class="text-slate-300 hover:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 rounded-lg p-2"
+            id="mobile-menu-close"
+            aria-label="Close mobile menu"
+          >
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Mobile Menu Items -->
+        <div class="flex-1 overflow-y-auto p-4">
+          <div class="space-y-2">
+            {navigationItems.map((item) => (
+              <a
+                href={item.href}
+                class="block text-slate-300 hover:text-white hover:bg-slate-800 transition-colors px-4 py-3 rounded-lg text-base font-medium mobile-menu-link"
+                target={item.isExternal ? '_blank' : undefined}
+                rel={item.isExternal ? 'noopener noreferrer' : undefined}
+              >
+                {item.label}
+              </a>
+            ))}
+          </div>
+
+          <!-- Mobile CTAs -->
+          <div class="mt-8 space-y-3">
+            <a
+              href="https://github.com/anirudha/opensearch-agentops-website"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="flex items-center justify-center gap-2 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors px-4 py-3 rounded-lg text-base font-medium"
+            >
+              <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd" />
+              </svg>
+              GitHub
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<script>
+  // Smooth scroll behavior for anchor links
+  document.addEventListener('DOMContentLoaded', () => {
+    const smoothScrollLinks = document.querySelectorAll('.smooth-scroll');
+    
+    smoothScrollLinks.forEach(link => {
+      link.addEventListener('click', (e) => {
+        const href = link.getAttribute('href');
+        if (href && href.startsWith('#')) {
+          e.preventDefault();
+          const targetId = href.substring(1);
+          const targetElement = document.getElementById(targetId);
+          
+          if (targetElement) {
+            targetElement.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
+        }
+      });
+    });
+
+    // Mobile menu functionality
+    const mobileMenuButton = document.getElementById('mobile-menu-button');
+    const mobileMenu = document.getElementById('mobile-menu');
+    const mobileMenuDrawer = document.getElementById('mobile-menu-drawer');
+    const mobileMenuBackdrop = document.getElementById('mobile-menu-backdrop');
+    const mobileMenuClose = document.getElementById('mobile-menu-close');
+    const mobileMenuLinks = document.querySelectorAll('.mobile-menu-link');
+
+    // Focus trap elements
+    let focusableElements: HTMLElement[] = [];
+    let firstFocusableElement: HTMLElement | null = null;
+    let lastFocusableElement: HTMLElement | null = null;
+
+    const updateFocusableElements = () => {
+      if (mobileMenuDrawer) {
+        const elements = mobileMenuDrawer.querySelectorAll<HTMLElement>(
+          'button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        focusableElements = Array.from(elements);
+        firstFocusableElement = focusableElements[0] || null;
+        lastFocusableElement = focusableElements[focusableElements.length - 1] || null;
+      }
+    };
+
+    const trapFocus = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+
+      if (e.shiftKey) {
+        // Shift + Tab
+        if (document.activeElement === firstFocusableElement) {
+          e.preventDefault();
+          lastFocusableElement?.focus();
+        }
+      } else {
+        // Tab
+        if (document.activeElement === lastFocusableElement) {
+          e.preventDefault();
+          firstFocusableElement?.focus();
+        }
+      }
+    };
+
+    const openMobileMenu = () => {
+      if (mobileMenu && mobileMenuDrawer && mobileMenuButton) {
+        mobileMenu.classList.remove('hidden');
+        // Trigger reflow to enable transition
+        mobileMenuDrawer.offsetHeight;
+        mobileMenuDrawer.classList.remove('translate-x-full');
+        mobileMenuButton.setAttribute('aria-expanded', 'true');
+        document.body.style.overflow = 'hidden';
+        
+        // Set up focus trap
+        updateFocusableElements();
+        document.addEventListener('keydown', trapFocus);
+        
+        // Focus the close button
+        setTimeout(() => {
+          mobileMenuClose?.focus();
+        }, 100);
+      }
+    };
+
+    const closeMobileMenu = () => {
+      if (mobileMenu && mobileMenuDrawer && mobileMenuButton) {
+        mobileMenuDrawer.classList.add('translate-x-full');
+        mobileMenuButton.setAttribute('aria-expanded', 'false');
+        document.body.style.overflow = '';
+        
+        // Remove focus trap
+        document.removeEventListener('keydown', trapFocus);
+        
+        // Wait for transition to complete before hiding
+        setTimeout(() => {
+          mobileMenu?.classList.add('hidden');
+        }, 300);
+        
+        // Return focus to menu button
+        mobileMenuButton.focus();
+      }
+    };
+
+    // Open menu on button click
+    mobileMenuButton?.addEventListener('click', openMobileMenu);
+
+    // Close menu on close button click
+    mobileMenuClose?.addEventListener('click', closeMobileMenu);
+
+    // Close menu when clicking backdrop
+    mobileMenuBackdrop?.addEventListener('click', closeMobileMenu);
+
+    // Close menu when clicking a link
+    mobileMenuLinks.forEach(link => {
+      link.addEventListener('click', () => {
+        closeMobileMenu();
+      });
+    });
+
+    // Close menu on Escape key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && mobileMenu && !mobileMenu.classList.contains('hidden')) {
+        closeMobileMenu();
+      }
+    });
+  });
+</script>

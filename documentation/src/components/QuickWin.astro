@@ -1,0 +1,123 @@
+---
+// QuickWin.astro - 5 Minutes to Production Observability section
+---
+
+<section id="quick-win" class="py-20 px-6 bg-slate-900">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12">
+      <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">
+        5 Minutes to Production Observability
+      </h2>
+      <p class="text-xl text-slate-300 max-w-3xl mx-auto">
+        From zero to full tracing in minutes. No complex configuration, no vendor lock-in.
+      </p>
+    </div>
+
+    <!-- Two-column grid: Code block left, Live output right -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+      <!-- Code Block (Left) -->
+      <div class="bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+        <div class="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center justify-between">
+          <span class="text-sm text-slate-400 font-mono">main.py</span>
+          <span class="text-xs text-slate-500">Python</span>
+        </div>
+        <div class="p-6 overflow-x-auto">
+          <pre class="text-sm font-mono"><code class="language-python"><span class="text-purple-400">from</span> <span class="text-blue-300">agentops</span> <span class="text-purple-400">import</span> <span class="text-blue-300">Client</span>
+
+<span class="text-slate-500"># Initialize with one line</span>
+<span class="text-blue-300">agentops</span>.<span class="text-yellow-300">init</span>(<span class="text-orange-300">api_key</span>=<span class="text-green-400">"your_key"</span>)
+
+<span class="text-slate-500"># Your existing code works as-is</span>
+<span class="text-purple-400">def</span> <span class="text-yellow-300">process_request</span>(<span class="text-orange-300">prompt</span>):
+    <span class="text-blue-300">response</span> = <span class="text-blue-300">llm</span>.<span class="text-yellow-300">generate</span>(<span class="text-orange-300">prompt</span>)
+    <span class="text-purple-400">return</span> <span class="text-blue-300">response</span>
+
+<span class="text-slate-500"># Automatic OTEL traces captured</span>
+<span class="text-blue-300">result</span> = <span class="text-yellow-300">process_request</span>(<span class="text-green-400">"Hello AI"</span>)</code></pre>
+        </div>
+      </div>
+
+      <!-- Live Output (Right) -->
+      <div class="bg-slate-950 rounded-lg border border-slate-800 overflow-hidden">
+        <div class="bg-slate-900 px-4 py-2 border-b border-slate-800 flex items-center">
+          <span class="text-sm text-slate-400 font-mono">Terminal Output</span>
+        </div>
+        <div class="p-6 font-mono text-sm space-y-2">
+          <div class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">✓</span>
+            <span class="text-slate-300">Instrumentation initialized</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">✓</span>
+            <span class="text-slate-300">OTEL exporter configured</span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">✓</span>
+            <span class="text-slate-300">Trace captured: <span class="text-cyan-400">process_request</span></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">✓</span>
+            <span class="text-slate-300">Cost tracked: <span class="text-cyan-400">$0.0023</span></span>
+          </div>
+          <div class="flex items-start gap-2">
+            <span class="text-green-400 mt-0.5">✓</span>
+            <span class="text-slate-300">Latency: <span class="text-cyan-400">342ms</span></span>
+          </div>
+          <div class="flex items-start gap-2 mt-4">
+            <span class="text-cyan-400 mt-0.5">→</span>
+            <span class="text-cyan-400">View dashboard at http://localhost:8000</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Button -->
+    <div class="text-center">
+      <a
+        href="#integration"
+        class="inline-flex items-center gap-2 px-8 py-4 bg-cyan-500 hover:bg-cyan-400 text-slate-900 font-semibold rounded-lg transition-colors duration-200"
+      >
+        See Full Interactive Demo
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Ensure proper syntax highlighting colors */
+  code {
+    color: #e2e8f0;
+  }
+  
+  /* CTA button hover effect with GPU acceleration */
+  a {
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    will-change: transform;
+  }
+  
+  a:hover {
+    transform: translateY(-2px);
+  }
+  
+  /* Responsive adjustments */
+  @media (max-width: 1023px) {
+    .grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
+    
+    a:hover {
+      transform: none;
+    }
+  }
+</style>

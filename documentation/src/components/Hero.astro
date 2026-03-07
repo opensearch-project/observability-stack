@@ -1,0 +1,372 @@
+---
+// Hero component for OpenSearch AgentOps - OpenTelemetry-focused redesign
+import { CyclingTagline } from './CyclingTagline';
+---
+
+<section id="hero" class="relative min-h-screen flex items-center justify-center overflow-hidden bg-slate-950">
+  <!-- Background orbs -->
+  <div class="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+  
+  <article class="container mx-auto px-6 py-20 relative z-10">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid lg:grid-cols-2 gap-12 items-center">
+        <!-- Left Column: Headline and CTAs -->
+        <div class="text-center lg:text-left">
+          <!-- Main Headline -->
+          <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
+            <span class="text-white">See Everything. From Services to AI Agents.</span>
+          </h1>
+
+          <!-- Subheadline -->
+          <p class="text-base md:text-lg text-slate-400 mb-10 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-light">
+            APM traces. Logs. Prometheus metrics. Service maps. Dashboards. Alerts. SLO/SLI. Anomaly detection. Forecasting. <span class="text-white font-medium">Plus agent tracing, local evals, and LLM observability.</span>
+          </p>
+          <p class="text-base md:text-lg font-semibold text-cyan-400 mb-10 max-w-2xl mx-auto lg:mx-0">
+            One open-source platform. Full-stack observability. Zero lock-in.
+          </p>
+
+          <!-- Three CTAs with Hierarchy -->
+          <div class="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start items-center">
+            <!-- Primary CTA -->
+            <a 
+              href="https://observability.playground.opensearch.org/" 
+              target="_blank"
+              rel="noopener noreferrer"
+              class="cta-primary px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-lg transition-all duration-200 shadow-lg shadow-purple-500/50 hover:shadow-purple-500/70 hover:scale-105 backdrop-blur-sm"
+              data-analytics="cta_hero_live_playground"
+            >
+              Live Playground
+            </a>
+            
+            <!-- Secondary CTA -->
+            <a 
+              href={`${import.meta.env.BASE_URL}/docs/`}
+              class="cta-secondary px-8 py-4 bg-slate-800/50 hover:bg-slate-700/50 text-white font-semibold rounded-lg transition-all duration-200 border-2 border-purple-500/50 hover:border-purple-400 backdrop-blur-sm"
+              data-analytics="cta_hero_view_docs"
+            >
+              View Docs
+            </a>
+          </div>
+        </div>
+
+        <!-- Right Column: Infinity Loop Visualization -->
+        <div class="flex flex-col items-center">
+          <div class="relative h-[400px] w-full">
+            
+            <!-- SVG Infinity Path -->
+            <svg class="absolute inset-0 w-full h-full" viewBox="0 0 800 400" preserveAspectRatio="xMidYMid meet">
+              <path 
+                d="M 200,200
+                   C 200,100 350,100 400,200
+                   C 450,300 600,300 600,200
+                   C 600,100 450,100 400,200
+                   C 350,300 200,300 200,200"
+                fill="none"
+                stroke="url(#loopGradient)"
+                stroke-width="3"
+                stroke-dasharray="10 5"
+                opacity="0.5"
+              />
+              <defs>
+                <linearGradient id="loopGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stop-color="#3b82f6" />
+                  <stop offset="33%" stop-color="#10b981" />
+                  <stop offset="66%" stop-color="#f59e0b" />
+                  <stop offset="100%" stop-color="#ef4444" />
+                </linearGradient>
+              </defs>
+              
+              <!-- Animated dot -->
+              <circle r="6" fill="#10b981">
+                <animateMotion 
+                  dur="8s"
+                  repeatCount="indefinite"
+                  path="M 200,200 C 200,100 350,100 400,200 C 450,300 600,300 600,200 C 600,100 450,100 400,200 C 350,300 200,300 200,200"
+                />
+              </circle>
+            </svg>
+            
+            <!-- Cards positioned on the infinity -->
+            
+            <!-- Left loop: Services, Metrics -->
+            <div class="absolute left-[22%] top-[15%] loop-card">
+              <div class="group relative">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 to-teal-500 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
+                <div class="relative bg-slate-900 border border-cyan-500/30 rounded-xl p-4 w-28 text-center">
+                  <div class="w-10 h-10 bg-cyan-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                  </div>
+                  <div class="font-medium text-white text-sm">Traces</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="absolute left-[22%] bottom-[15%] loop-card">
+              <div class="group relative">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-teal-500 to-emerald-500 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
+                <div class="relative bg-slate-900 border border-emerald-500/30 rounded-xl p-4 w-28 text-center">
+                  <div class="w-10 h-10 bg-emerald-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                    </svg>
+                  </div>
+                  <div class="font-medium text-white text-sm">Metrics</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Center crossing point -->
+            <div class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+              <div class="bg-slate-800 border border-cyan-500/50 rounded-full w-16 h-16 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <span class="text-cyan-400 text-2xl animate-spin-slow">↻</span>
+              </div>
+            </div>
+            
+            <!-- Right loop: Dashboards, Alerts -->
+            <div class="absolute right-[22%] top-[15%] loop-card">
+              <div class="group relative">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-emerald-500 to-amber-500 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
+                <div class="relative bg-slate-900 border border-amber-500/30 rounded-xl p-4 w-28 text-center">
+                  <div class="w-10 h-10 bg-amber-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/>
+                    </svg>
+                  </div>
+                  <div class="font-medium text-white text-sm">Dashboards</div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="absolute right-[22%] bottom-[15%] loop-card">
+              <div class="group relative">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-300"></div>
+                <div class="relative bg-slate-900 border border-orange-500/30 rounded-xl p-4 w-28 text-center">
+                  <div class="w-10 h-10 bg-orange-500 rounded-lg mx-auto mb-2 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                    </svg>
+                  </div>
+                  <div class="font-medium text-white text-sm">Alerts</div>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+          
+          <!-- Cycling Tagline directly below the graph -->
+          <div class="mt-6 w-full flex justify-center">
+            <div class="ml-[-300px]">
+              <CyclingTagline client:load />
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Quick Start Code Snippet - Full Width -->
+      <div class="mt-12">
+        <div class="bg-slate-900/80 backdrop-blur-sm border border-slate-700 rounded-lg p-4 relative group">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs text-slate-400 font-semibold uppercase tracking-wide">Quick Start</span>
+            <button 
+              class="copy-button px-3 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded transition-colors"
+              data-copy="curl -fsSL https://raw.githubusercontent.com/opensearch-project/agentops/main/install.sh | bash"
+              aria-label="Copy command"
+            >
+              <span class="copy-text">Copy</span>
+              <span class="copied-text hidden">Copied!</span>
+            </button>
+          </div>
+          <code class="text-sm text-cyan-400 font-mono block">
+            <span class="text-slate-500">$</span> curl -fsSL https://raw.githubusercontent.com/opensearch-project/agentops/main/install.sh | bash
+          </code>
+          <p class="text-xs text-slate-500 mt-2">Works everywhere. Installs everything. You're welcome. 🔥</p>
+        </div>
+      </div>
+    </div>
+  </article>
+</section>
+
+<style>
+  /* OpenTelemetry gradient */
+  .otel-gradient {
+    background: linear-gradient(135deg, #00f0ff 0%, #00d4ff 50%, #ffffff 100%);
+  }
+
+  /* Slow spin animation for loop icon */
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .animate-spin-slow {
+    animation: spin-slow 3s linear infinite;
+  }
+
+  /* Stagger card entrance animation */
+  .loop-card {
+    animation: fadeInUp 0.5s ease-out forwards;
+    opacity: 0;
+  }
+
+  .loop-card:nth-child(1) { animation-delay: 0.1s; }
+  .loop-card:nth-child(3) { animation-delay: 0.2s; }
+  .loop-card:nth-child(5) { animation-delay: 0.3s; }
+  .loop-card:nth-child(7) { animation-delay: 0.4s; }
+  .loop-card:nth-child(9) { animation-delay: 0.5s; }
+  .loop-card:nth-child(11) { animation-delay: 0.6s; }
+  .loop-card:nth-child(13) { animation-delay: 0.7s; }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-spin-slow {
+      animation: none;
+    }
+    
+    .loop-card {
+      animation: none;
+      opacity: 1;
+    }
+  }
+
+  /* Floating orb animations */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.2;
+    animation: float 20s ease-in-out infinite;
+  }
+
+  .orb-1 {
+    width: 500px;
+    height: 500px;
+    background: linear-gradient(135deg, #00d4ff, #0099ff);
+    top: -10%;
+    left: -10%;
+    animation-delay: 0s;
+    animation-duration: 25s;
+  }
+
+  .orb-2 {
+    width: 400px;
+    height: 400px;
+    background: linear-gradient(135deg, #0099ff, #06b6d4);
+    top: 40%;
+    right: -5%;
+    animation-delay: 5s;
+    animation-duration: 30s;
+  }
+
+  .orb-3 {
+    width: 450px;
+    height: 450px;
+    background: linear-gradient(135deg, #06b6d4, #00d4ff);
+    bottom: -15%;
+    left: 30%;
+    animation-delay: 10s;
+    animation-duration: 35s;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    25% {
+      transform: translate(30px, -30px) scale(1.1);
+    }
+    50% {
+      transform: translate(-20px, 20px) scale(0.9);
+    }
+    75% {
+      transform: translate(20px, 30px) scale(1.05);
+    }
+  }
+
+  /* CTA hierarchy styling with GPU-accelerated transitions */
+  .cta-primary,
+  .cta-secondary,
+  .cta-tertiary {
+    transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+    will-change: transform;
+  }
+
+  .cta-primary:hover {
+    transform: scale(1.05);
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .flow-container {
+      height: 500px;
+    }
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .orb {
+      animation: none;
+    }
+    
+    .cta-primary,
+    .cta-secondary,
+    .cta-tertiary {
+      transition: none;
+    }
+    
+    .cta-primary:hover {
+      transform: none;
+    }
+  }
+</style>
+
+<script>
+  // Copy to clipboard functionality
+  document.addEventListener('DOMContentLoaded', () => {
+    const copyButtons = document.querySelectorAll('.copy-button');
+    
+    copyButtons.forEach(button => {
+      button.addEventListener('click', async () => {
+        const textToCopy = button.getAttribute('data-copy');
+        const copyText = button.querySelector('.copy-text');
+        const copiedText = button.querySelector('.copied-text');
+        
+        if (textToCopy) {
+          try {
+            await navigator.clipboard.writeText(textToCopy);
+            
+            // Show "Copied!" feedback
+            if (copyText && copiedText) {
+              copyText.classList.add('hidden');
+              copiedText.classList.remove('hidden');
+              
+              // Reset after 2 seconds
+              setTimeout(() => {
+                copyText.classList.remove('hidden');
+                copiedText.classList.add('hidden');
+              }, 2000);
+            }
+          } catch (err) {
+            console.error('Failed to copy:', err);
+          }
+        }
+      });
+    });
+  });
+</script>

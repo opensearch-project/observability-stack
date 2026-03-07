@@ -1,0 +1,56 @@
+---
+// Pricing component for OpenSearch AgentOps marketing website
+// Displays pricing information and CTAs
+---
+
+<section id="pricing" class="py-20 bg-slate-900">
+  <div class="container mx-auto px-6">
+    <div class="max-w-4xl mx-auto text-center">
+      <!-- Pricing Section Headline -->
+      <h2 class="text-3xl md:text-4xl font-bold text-white mb-6">
+        Simple, Transparent Pricing
+      </h2>
+
+      <!-- Description Text -->
+      <p class="text-lg text-slate-400 mb-12 max-w-2xl mx-auto">
+        Start free with unlimited tracing and evaluation. Pay only for what you use with our flexible, 
+        usage-based pricing. No hidden fees, no vendor lock-in.
+      </p>
+
+      <!-- CTAs -->
+      <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+        <!-- Primary CTA -->
+        <a 
+          href="/signup" 
+          class="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors duration-200 shadow-lg shadow-indigo-500/50"
+          data-analytics="cta_pricing_start_trial"
+        >
+          Start Free Trial
+        </a>
+
+        <!-- Secondary CTA -->
+        <a 
+          href="/contact-sales" 
+          class="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-lg transition-colors duration-200 border border-slate-700"
+          data-analytics="cta_pricing_talk_sales"
+        >
+          Talk to Sales
+        </a>
+      </div>
+
+      <!-- Additional Info -->
+      <p class="text-sm text-slate-500 mt-8">
+        Self-hosted option available for complete control and zero usage costs
+      </p>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    a {
+      transition: none;
+    }
+  }
+</style>

@@ -1,0 +1,67 @@
+---
+// SocialProof component for OpenSearch AgentOps marketing website
+// Displays company logos to build credibility
+import { Image } from 'astro:assets';
+
+interface Company {
+  name: string;
+  logo: string;
+}
+
+const companies: Company[] = [
+  { name: 'Company 1', logo: '/logos/company1.svg' },
+  { name: 'Company 2', logo: '/logos/company2.svg' },
+  { name: 'Company 3', logo: '/logos/company3.svg' },
+  { name: 'Company 4', logo: '/logos/company4.svg' },
+  { name: 'Company 5', logo: '/logos/company5.svg' },
+  { name: 'Company 6', logo: '/logos/company6.svg' },
+];
+---
+
+<section id="social-proof" class="py-16 bg-slate-900">
+  <div class="container mx-auto px-6">
+    <div class="max-w-6xl mx-auto text-center">
+      <!-- Label -->
+      <p class="text-sm text-slate-400 mb-8 font-medium">
+        Trusted by AI teams at
+      </p>
+
+      <!-- Company Logos Grid -->
+      <div class="flex flex-wrap justify-center items-center gap-12 md:gap-16">
+        {companies.map((company) => (
+          <div class="company-logo-wrapper">
+            <img
+              src={company.logo}
+              alt={company.name}
+              class="company-logo h-8 md:h-10 w-auto object-contain"
+              loading="lazy"
+              decoding="async"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Grayscale filter on logos */
+  .company-logo {
+    filter: grayscale(100%);
+    opacity: 0.6;
+    transition: filter 0.3s ease, opacity 0.3s ease;
+  }
+
+  /* Hover effect to lighten logos */
+  .company-logo-wrapper:hover .company-logo {
+    filter: grayscale(0%);
+    opacity: 1;
+  }
+
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .company-logo {
+      transition: none;
+    }
+  }
+</style>

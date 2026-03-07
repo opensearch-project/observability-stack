@@ -1,0 +1,25 @@
+---
+// IntegrationPaths.astro - Choose Your Integration Style section with React island for tabs
+import IntegrationPathsTabs from './IntegrationPathsTabs';
+---
+
+<section id="integration" class="py-20 px-6 bg-slate-950">
+  <div class="max-w-7xl mx-auto">
+    <!-- Section Header -->
+    <div class="text-center mb-12">
+      <h2 class="text-4xl md:text-5xl font-bold text-white mb-4">
+        Choose Your Integration Style
+      </h2>
+      <p class="text-xl text-slate-300 max-w-3xl mx-auto">
+        Three paths to production observability. Pick the one that fits your workflow.
+      </p>
+    </div>
+
+    <!-- React Island for Interactive Tabs -->
+    <IntegrationPathsTabs client:load />
+  </div>
+</section>
+
+<style>
+  /* Additional section-specific styles if needed */
+</style>

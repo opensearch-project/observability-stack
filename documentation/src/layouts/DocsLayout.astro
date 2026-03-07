@@ -1,0 +1,105 @@
+---
+import Layout from './Layout.astro';
+
+interface Props {
+  title: string;
+  description?: string;
+  section?: string;
+}
+
+const { title, description, section } = Astro.props;
+const fullTitle = `${title} | Observability Stack Docs`;
+---
+
+<Layout title={fullTitle} description={description}>
+  <div class="min-h-screen bg-slate-950">
+    <!-- Docs Header -->
+    <header class="fixed top-0 left-0 right-0 z-40 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex items-center justify-between h-16">
+          <div class="flex items-center space-x-4">
+            <a href={import.meta.env.BASE_URL} class="flex items-center space-x-4 text-white hover:text-primary-400 transition-colors">
+              <img src={`${import.meta.env.BASE_URL}/opensearch-logo-darkmode.svg`} alt="OpenSearch" class="h-8 w-auto" />
+              <span class="font-semibold text-2xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" style="filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.5));">Observability Stack</span>
+            </a>
+            <span class="text-slate-500">/</span>
+            <span class="text-slate-300 font-medium">Docs</span>
+          </div>
+          <a href={import.meta.env.BASE_URL} class="text-slate-400 hover:text-white transition-colors">
+            ← Back to Home
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <div class="pt-16 flex">
+      <!-- Sidebar Navigation -->
+      <aside class="hidden lg:block fixed left-0 top-16 bottom-0 w-64 overflow-y-auto bg-slate-900/30 border-r border-slate-800/50 p-4 sidebar-scroll">
+        <nav class="space-y-4" id="docs-nav">
+          <slot name="sidebar" />
+        </nav>
+      </aside>
+
+      <!-- Main Content -->
+      <main class="flex-1 lg:ml-64 px-4 sm:px-6 lg:px-8 py-8 max-w-4xl">
+        <article class="prose prose-invert prose-slate max-w-none">
+          {section && <div class="text-sm text-slate-400 mb-2">{section}</div>}
+          <h1 class="text-4xl font-bold text-white mb-4">{title}</h1>
+          {description && <p class="text-xl text-slate-300 mb-8">{description}</p>}
+          <slot />
+        </article>
+      </main>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .prose {
+    color: #cbd5e1;
+  }
+  .prose h2 {
+    color: #f1f5f9;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+  }
+  .prose h3 {
+    color: #e2e8f0;
+  }
+  .prose a {
+    color: #06b6d4;
+    text-decoration: none;
+  }
+  .prose a:hover {
+    color: #22d3ee;
+  }
+  .prose code {
+    background: #1e293b;
+    padding: 0.2em 0.4em;
+    border-radius: 0.25rem;
+    color: #06b6d4;
+  }
+
+  /* Custom scrollbar styling */
+  .sidebar-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+
+  .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+  }
+
+  /* Firefox scrollbar */
+  .sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+  }
+</style>

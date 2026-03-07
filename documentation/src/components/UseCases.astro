@@ -1,0 +1,146 @@
+---
+// UseCases component for OpenSearch AgentOps marketing website
+// Displays five use case cards in a responsive grid
+
+interface UseCase {
+  id: string;
+  icon: string;
+  title: string;
+  description: string;
+  link: string;
+}
+
+// SVG icon paths
+const iconPaths = {
+  'database': 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4',
+  'message-circle': 'M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z',
+  'code': 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4',
+  'file-text': 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z',
+  'shield-check': 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z',
+};
+
+const useCases: UseCase[] = [
+  {
+    id: 'service-observability',
+    icon: 'database',
+    title: 'Service & APM Monitoring',
+    description: 'Distributed tracing, service maps, and latency analysis across microservices. Pinpoint bottlenecks and failures in real time.',
+    link: '#service-observability',
+  },
+  {
+    id: 'slo-sli',
+    icon: 'shield-check',
+    title: 'SLO/SLI & Reliability',
+    description: 'Define service-level objectives, track error budgets, and get burn-rate alerts. Meet your reliability targets with confidence.',
+    link: '#slo-sli',
+  },
+  {
+    id: 'dashboards-alerts',
+    icon: 'code',
+    title: 'Dashboards & Alerting',
+    description: 'Custom dashboards with Prometheus metrics, anomaly detection, and forecasting. Alerts that reach the right people at the right time.',
+    link: '#dashboards-alerts',
+  },
+  {
+    id: 'log-analytics',
+    icon: 'file-text',
+    title: 'Log Analytics',
+    description: 'Ingest, search, and correlate logs with traces. Pattern detection, structured queries, and log-based alerting at any scale.',
+    link: '#log-analytics',
+  },
+  {
+    id: 'ai-agent-observability',
+    icon: 'message-circle',
+    title: 'AI Agent & LLM Observability',
+    description: 'Trace agent workflows, run local evals with LLM-as-Judge, manage prompts, and track LLM costs. Full observability for your AI stack.',
+    link: '#ai-agent-observability',
+  },
+];
+---
+
+<section id="use-cases" class="py-20 bg-slate-900">
+  <div class="container mx-auto px-6">
+    <div class="max-w-6xl mx-auto">
+      <!-- Section Header -->
+      <div class="text-center mb-16">
+        <h2 class="text-3xl md:text-4xl font-bold text-white mb-4">
+          Built for Every Observability Need
+        </h2>
+        <p class="text-lg text-slate-400 max-w-3xl mx-auto">
+          From service health to AI agent performance, OpenSearch - Observability Stack covers the full spectrum
+        </p>
+      </div>
+
+      <!-- Use Case Cards Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {useCases.map((useCase) => (
+          <a
+            href={useCase.link}
+            class="use-case-card group block p-6 rounded-xl bg-slate-800/50 border border-slate-700 hover:border-indigo-500/50 hover:-translate-y-1 transition-all duration-300"
+            data-use-case-id={useCase.id}
+          >
+            <!-- Icon -->
+            <div class="w-12 h-12 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mb-4 group-hover:bg-indigo-500/20 transition-colors duration-300">
+              <svg 
+                class="w-6 h-6 text-indigo-500" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path 
+                  stroke-linecap="round" 
+                  stroke-linejoin="round" 
+                  stroke-width="2" 
+                  d={iconPaths[useCase.icon]}
+                />
+              </svg>
+            </div>
+
+            <!-- Title -->
+            <h3 class="text-xl font-bold text-white mb-3 group-hover:text-indigo-400 transition-colors duration-300">
+              {useCase.title}
+            </h3>
+
+            <!-- Description -->
+            <p class="text-slate-400 leading-relaxed mb-4">
+              {useCase.description}
+            </p>
+
+            <!-- Learn More Link -->
+            <div class="flex items-center gap-2 text-indigo-400 font-semibold group-hover:gap-3 transition-all duration-300">
+              <span>Learn more</span>
+              <svg 
+                class="w-4 h-4" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path 
+                  stroke-linecap="round" 
+                  stroke-linejoin="round" 
+                  stroke-width="2" 
+                  d="M9 5l7 7-7 7"
+                />
+              </svg>
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Respect reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    .use-case-card {
+      transition: none;
+    }
+    
+    .use-case-card:hover {
+      transform: none;
+    }
+  }
+</style>

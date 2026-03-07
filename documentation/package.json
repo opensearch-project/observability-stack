@@ -1,0 +1,41 @@
+{
+  "name": "regular-rotation",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "npm run build:main && npm run build:starlight && npm run merge:docs",
+    "build:main": "astro build",
+    "build:starlight": "cd starlight-docs && npm ci && npm run build",
+    "merge:docs": "mkdir -p dist/docs && cp -r starlight-docs/dist/* dist/docs/",
+    "preview": "astro preview",
+    "astro": "astro",
+    "test": "vitest --run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --run --coverage"
+  },
+  "dependencies": {
+    "@astrojs/react": "^4.4.2",
+    "@astrojs/sitemap": "^3.7.0",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3",
+    "astro": "^5.16.15",
+    "astro-icon": "^1.1.5",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "shiki": "^3.21.0",
+    "tailwindcss": "^4.1.18"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/ui": "^4.0.18",
+    "fast-check": "^4.5.3",
+    "happy-dom": "^20.3.9",
+    "vitest": "^4.0.18"
+  }
+}

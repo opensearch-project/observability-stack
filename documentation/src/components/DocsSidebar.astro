@@ -1,0 +1,383 @@
+---
+// Documentation sidebar navigation
+interface NavSection {
+  title: string;
+  icon: string;
+  items: NavItem[];
+}
+
+interface NavItem {
+  label: string;
+  href: string;
+  items?: NavItem[];
+}
+
+// Helper to create proper URLs with base path
+const withBase = (path: string) => `${import.meta.env.BASE_URL}/${path.startsWith('/') ? path.slice(1) : path}`;
+
+const currentPath = Astro.url.pathname;
+
+const sections: NavSection[] = [
+  {
+    title: 'Get Started',
+    icon: '🚀',
+    items: [
+      { label: 'Overview', href: '/docs/get-started' },
+      { 
+        label: 'Quickstart', 
+        href: '/docs/get-started/quickstart',
+        items: [
+          { label: 'Log Your First Traces', href: '/docs/get-started/quickstart/first-traces' },
+          { label: 'Run Your First Eval', href: '/docs/get-started/quickstart/first-eval' },
+          { label: 'Use Prompt Management', href: '/docs/get-started/quickstart/prompt-management' },
+        ]
+      },
+      { label: 'Core Concepts', href: '/docs/get-started/core-concepts' },
+      { label: 'Example Project', href: '/docs/get-started/example-project' },
+      { label: 'Ask AI', href: '/docs/get-started/ask-ai' },
+    ]
+  },
+  {
+    title: 'Instrument',
+    icon: '🔧',
+    items: [
+      { label: 'Overview', href: '/docs/instrument' },
+      {
+        label: 'OpenTelemetry Setup',
+        href: '/docs/instrument/opentelemetry',
+        items: [
+          { label: 'OTel Collector Configuration', href: '/docs/instrument/opentelemetry/collector' },
+          { label: 'Auto-Instrumentation', href: '/docs/instrument/opentelemetry/auto-instrumentation' },
+          { label: 'Manual Instrumentation', href: '/docs/instrument/opentelemetry/manual-instrumentation' },
+        ]
+      },
+      { label: 'Wrap AI Providers', href: '/docs/instrument/wrap-providers' },
+      { label: 'Integrate Frameworks', href: '/docs/instrument/integrate-frameworks' },
+      { label: 'Add Custom Tracing', href: '/docs/instrument/custom-tracing' },
+      {
+        label: 'Advanced Tracing Patterns',
+        href: '/docs/instrument/advanced-tracing',
+        items: [
+          { label: 'Distributed Tracing', href: '/docs/instrument/advanced-tracing/distributed' },
+          { label: 'Trace IDs & Propagation', href: '/docs/instrument/advanced-tracing/trace-ids' },
+          { label: 'Sampling Strategies', href: '/docs/instrument/advanced-tracing/sampling' },
+          { label: 'Event Queuing/Batching', href: '/docs/instrument/advanced-tracing/batching' },
+        ]
+      },
+      { label: 'Capture User Feedback', href: '/docs/instrument/user-feedback' },
+      { label: 'Log Attachments', href: '/docs/instrument/attachments' },
+    ]
+  },
+  {
+    title: 'Observe',
+    icon: '👁️',
+    items: [
+      { label: 'Overview', href: '/docs/observe' },
+      {
+        label: 'Tracing',
+        href: '/docs/observe/tracing',
+        items: [
+          { label: 'View & Manage Traces', href: '/docs/observe/tracing/manage' },
+          { label: 'Filter & Search Logs', href: '/docs/observe/tracing/search' },
+          { label: 'Sessions', href: '/docs/observe/tracing/sessions' },
+          { label: 'Trace URLs', href: '/docs/observe/tracing/urls' },
+          { label: 'Multi-Modality', href: '/docs/observe/tracing/multi-modality' },
+        ]
+      },
+      {
+        label: 'Agent Observability',
+        href: '/docs/observe/agent-observability',
+        items: [
+          { label: 'Agent Graph & Path', href: '/docs/observe/agent-observability/graph' },
+          { label: 'Tool Call Tracing', href: '/docs/observe/agent-observability/tool-calls' },
+          { label: 'Reasoning Steps', href: '/docs/observe/agent-observability/reasoning' },
+          { label: 'MCP Tracing', href: '/docs/observe/agent-observability/mcp' },
+        ]
+      },
+      {
+        label: 'Projects',
+        href: '/docs/observe/projects',
+        items: [
+          { label: 'Environments', href: '/docs/observe/projects/environments' },
+          { label: 'Tags & Metadata', href: '/docs/observe/projects/tags' },
+          { label: 'Releases & Versioning', href: '/docs/observe/projects/releases' },
+          { label: 'Custom Metrics', href: '/docs/observe/projects/metrics' },
+        ]
+      },
+    ]
+  },
+  {
+    title: 'Annotate',
+    icon: '🏷️',
+    items: [
+      { label: 'Overview', href: '/docs/annotate' },
+      { label: 'Labeling Queues', href: '/docs/annotate/queues' },
+      { label: 'Annotation Configs', href: '/docs/annotate/configs' },
+      { label: 'Add Human Feedback', href: '/docs/annotate/feedback' },
+      { label: 'Labels & Corrections', href: '/docs/annotate/labels' },
+      { label: 'Comments', href: '/docs/annotate/comments' },
+      { label: 'Export Annotated Data', href: '/docs/annotate/export' },
+    ]
+  },
+  {
+    title: 'Evaluate',
+    icon: '📊',
+    items: [
+      { label: 'Overview', href: '/docs/evaluate' },
+      {
+        label: 'Datasets',
+        href: '/docs/evaluate/datasets',
+        items: [
+          { label: 'Create a Dataset', href: '/docs/evaluate/datasets/create' },
+          { label: 'Update a Dataset', href: '/docs/evaluate/datasets/update' },
+          { label: 'Get a Dataset', href: '/docs/evaluate/datasets/get' },
+          { label: 'Auto-Add to Dataset', href: '/docs/evaluate/datasets/auto-add' },
+        ]
+      },
+      {
+        label: 'Experiments',
+        href: '/docs/evaluate/experiments',
+        items: [
+          { label: 'Run Experiments (SDK)', href: '/docs/evaluate/experiments/sdk' },
+          { label: 'Run Experiments (UI)', href: '/docs/evaluate/experiments/ui' },
+          { label: 'Compare Experiments', href: '/docs/evaluate/experiments/compare' },
+          { label: 'CI/CD Integration', href: '/docs/evaluate/experiments/cicd' },
+        ]
+      },
+    ]
+  },
+  {
+    title: 'Prompts',
+    icon: '📝',
+    items: [
+      { label: 'Overview', href: '/docs/prompts' },
+      { label: 'Prompt Hub', href: '/docs/prompts/hub' },
+      { label: 'Prompt Optimization', href: '/docs/prompts/optimization' },
+      { label: 'Troubleshooting & FAQ', href: '/docs/prompts/faq' },
+    ]
+  },
+  {
+    title: 'Deploy',
+    icon: '🚀',
+    items: [
+      { label: 'Overview', href: '/docs/deploy' },
+      { label: 'AI Proxy', href: '/docs/deploy/proxy' },
+      { label: 'Deploy Prompts', href: '/docs/deploy/prompts' },
+      { label: 'Monitor Deployments', href: '/docs/deploy/monitor' },
+      { label: 'Model Context Protocol (MCP)', href: '/docs/deploy/mcp' },
+    ]
+  },
+  {
+    title: 'Integrations',
+    icon: '🔌',
+    items: [
+      { label: 'Overview', href: '/docs/integrations' },
+      { label: 'Model Providers', href: '/docs/integrations/model-providers' },
+      { label: 'Cloud Providers', href: '/docs/integrations/cloud-providers' },
+      { label: 'Agent Frameworks', href: '/docs/integrations/agent-frameworks' },
+      { label: 'Custom Integrations', href: '/docs/integrations/custom' },
+    ]
+  },
+  {
+    title: 'SDKs',
+    icon: '📦',
+    items: [
+      { label: 'Overview', href: '/docs/sdks' },
+      { label: 'Python SDK', href: '/docs/sdks/python' },
+      { label: 'JavaScript/TypeScript SDK', href: '/docs/sdks/javascript' },
+      { label: 'Troubleshooting & FAQ', href: '/docs/sdks/faq' },
+    ]
+  },
+  {
+    title: 'Platform & Administration',
+    icon: '🔐',
+    items: [
+      { label: 'Overview', href: '/docs/platform' },
+      { label: 'Authentication & Access', href: '/docs/platform/auth' },
+      { label: 'Security', href: '/docs/platform/security' },
+      { label: 'API & Data Platform', href: '/docs/platform/api' },
+      { label: 'Self-Hosting', href: '/docs/platform/self-hosting' },
+    ]
+  },
+  {
+    title: 'Developer Docs',
+    icon: '👨‍💻',
+    items: [
+      { label: 'Contributing Guide', href: '/docs/developer/contributing' },
+      { label: 'Development Setup', href: '/docs/developer/setup' },
+      { label: 'Architecture Overview', href: '/docs/developer/architecture' },
+      { label: 'Code Style Guide', href: '/docs/developer/style-guide' },
+      { label: 'Testing Guidelines', href: '/docs/developer/testing' },
+      { label: 'Pull Request Process', href: '/docs/developer/pull-requests' },
+      { label: 'Release Process', href: '/docs/developer/releases' },
+      { label: 'Community & Support', href: '/docs/developer/community' },
+    ]
+  },
+];
+---
+
+{sections.map((section) => {
+  const sectionHasActivePage = section.items.some(item => 
+    currentPath === withBase(item.href) || 
+    (item.items && item.items.some(sub => currentPath === withBase(sub.href)))
+  );
+  
+  return (
+    <details class="nav-section group/section" open={sectionHasActivePage}>
+      <summary class="flex items-center justify-between gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider mb-2 px-2 py-1 rounded-md hover:bg-slate-800/30 hover:text-slate-400 cursor-pointer list-none transition-all">
+        <div class="flex items-center gap-2">
+          <span class="text-sm">{section.icon}</span>
+          <span>{section.title}</span>
+        </div>
+        <svg class="w-3 h-3 transition-transform duration-200 group-open/section:rotate-90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+        </svg>
+      </summary>
+      <ul class="space-y-0.5 overflow-hidden">
+        {section.items.map((item) => (
+          <li>
+            {item.items ? (
+              <details class="group" open={item.items.some(sub => currentPath === withBase(sub.href))}>
+                <summary class={`flex items-center justify-between px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer list-none ${
+                  currentPath === withBase(item.href)
+                    ? 'bg-primary-500/10 text-primary-400 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800/30 hover:text-white'
+                }`}>
+                  <span class="flex-1">{item.label}</span>
+                  <svg class="w-3.5 h-3.5 text-slate-500 transition-transform duration-200 group-open:rotate-90 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                  </svg>
+                </summary>
+                <ul class="ml-3 mt-0.5 space-y-0.5 border-l border-slate-800 pl-2 overflow-hidden">
+                  {item.items.map((subItem) => (
+                    <li class="animate-slideIn">
+                      <a
+                        href={withBase(subItem.href)}
+                        class={`block px-2 py-1 rounded text-xs transition-all ${
+                          currentPath === withBase(subItem.href)
+                            ? 'bg-primary-500/10 text-primary-400 font-medium'
+                            : 'text-slate-400 hover:bg-slate-800/30 hover:text-slate-200'
+                        }`}
+                      >
+                        {subItem.label}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : (
+              <a
+                href={withBase(item.href)}
+                class={`block px-2 py-1.5 rounded-md text-sm transition-all ${
+                  currentPath === withBase(item.href)
+                    ? 'bg-primary-500/10 text-primary-400 font-medium'
+                    : 'text-slate-300 hover:bg-slate-800/30 hover:text-white'
+                }`}
+              >
+                {item.label}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+})}
+
+
+<style>
+  details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* Prevent any flash during page load */
+  details[open] > ul {
+    animation: slideDown 0.15s ease-out;
+  }
+
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      max-height: 0;
+    }
+    to {
+      opacity: 1;
+      max-height: 500px;
+    }
+  }
+
+  .nav-section {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+  }
+
+  .nav-section:last-child {
+    border-bottom: none;
+  }
+
+  details summary {
+    user-select: none;
+  }
+
+  details summary:hover svg {
+    color: #94a3b8;
+  }
+
+  /* Smooth section collapse */
+  details.nav-section[open] > ul {
+    animation: slideDown 0.2s ease-out;
+  }
+</style>
+
+
+<script>
+  // Persist accordion state across page navigations with View Transitions
+  const STORAGE_KEY = 'docs-sidebar-state';
+  
+  function saveState() {
+    const allDetails = document.querySelectorAll('details');
+    const openIndices: number[] = [];
+    allDetails.forEach((details, index) => {
+      if (details.open) {
+        openIndices.push(index);
+      }
+    });
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(openIndices));
+  }
+  
+  function restoreState() {
+    const savedState = sessionStorage.getItem(STORAGE_KEY);
+    if (savedState) {
+      try {
+        const openSections = JSON.parse(savedState);
+        const allDetails = document.querySelectorAll('details');
+        openSections.forEach((index: number) => {
+          const details = allDetails[index];
+          if (details && !details.open) {
+            details.setAttribute('open', '');
+          }
+        });
+      } catch (e) {
+        console.error('Failed to restore sidebar state:', e);
+      }
+    }
+  }
+  
+  function attachListeners() {
+    document.querySelectorAll('details').forEach(details => {
+      details.addEventListener('toggle', saveState);
+    });
+  }
+  
+  function init() {
+    restoreState();
+    attachListeners();
+  }
+  
+  // Initial load
+  init();
+  
+  // Re-run on View Transitions navigation
+  document.addEventListener('astro:page-load', init);
+</script>
