@@ -254,8 +254,8 @@ const exporter = new OTLPTraceExporter({
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [OTel Collector configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/)
-- [Sampling](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/)
+- [Applications overview](/docs/send-data/applications/)
+- [OTel Collector configuration](/docs/send-data/opentelemetry/collector/)
+- [Sampling](/docs/send-data/opentelemetry/sampling/)
 - [OpenTelemetry JavaScript documentation](https://opentelemetry.io/docs/languages/js/) -- Official OTel JS SDK reference
 - [Browser instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=js&component=instrumentation) -- Available browser instrumentation packages

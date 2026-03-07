@@ -18,8 +18,8 @@ AI agent traces use the same OpenTelemetry infrastructure as service traces. You
 
 ## Getting started
 
-- [Agent Tracing](/opensearch-agentops-website/docs/ai-observability/agent-tracing/) — the Agent Traces UI in OpenSearch Dashboards
-- [Agent Graph & Path](/opensearch-agentops-website/docs/ai-observability/agent-tracing/graph/) — DAG visualization, trace tree, and timeline views
-- [MCP Server](/opensearch-agentops-website/docs/mcp/) — query OpenSearch from AI agents via MCP
-- [Python SDK](/opensearch-agentops-website/docs/sdks/python/) — instrument Python AI applications
-- [JavaScript SDK](/opensearch-agentops-website/docs/sdks/javascript/) — instrument JavaScript AI applications
+- [Agent Tracing](/docs/ai-observability/agent-tracing/) — the Agent Traces UI in OpenSearch Dashboards
+- [Agent Graph & Path](/docs/ai-observability/agent-tracing/graph/) — DAG visualization, trace tree, and timeline views
+- [MCP Server](/docs/mcp/) — query OpenSearch from AI agents via MCP
+- [Python SDK](/docs/sdks/python/) — instrument Python AI applications
+- [JavaScript SDK](/docs/sdks/javascript/) — instrument JavaScript AI applications

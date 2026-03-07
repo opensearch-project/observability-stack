@@ -33,11 +33,11 @@ To create a logs dataset, follow these steps:
 
 3. In **Step 1: Select data**, select your data source. You can use wildcard patterns (for example, `logs-*`) to match multiple indexes.
 
-   ![Selecting a data source](/opensearch-agentops-website/docs/images/datasets/datasets-select-data-source.png)
+   ![Selecting a data source](/docs/images/datasets/datasets-select-data-source.png)
 
 4. In **Step 2: Configure data**, configure the dataset settings.
 
-   ![Configuring logs dataset settings](/opensearch-agentops-website/docs/images/datasets/datasets-configure-logs.png)
+   ![Configuring logs dataset settings](/docs/images/datasets/datasets-configure-logs.png)
 
    You can configure the following settings:
 
@@ -64,7 +64,7 @@ To create a traces dataset, follow these steps:
 
 4. In **Step 2: Configure data**, configure the dataset settings.
 
-   ![Configuring traces dataset settings](/opensearch-agentops-website/docs/images/datasets/datasets-configure-traces.png)
+   ![Configuring traces dataset settings](/docs/images/datasets/datasets-configure-traces.png)
 
    You can configure the following settings:
 
@@ -82,7 +82,7 @@ After creating datasets, you can view and manage them from the **Datasets** page
 
 2. The list view displays all datasets with their names, types, and data sources.
 
-   ![Datasets list view](/opensearch-agentops-website/docs/images/datasets/datasets-list.png)
+   ![Datasets list view](/docs/images/datasets/datasets-list.png)
 
 3. Select a dataset to view its details, including configuration settings and any correlations.
 

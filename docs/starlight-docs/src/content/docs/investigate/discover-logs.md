@@ -26,7 +26,7 @@ To access the **Logs** page:
 
 The **Logs** page is shown in the following image.
 
-![Discover logs interface](/opensearch-agentops-website/docs/images/discover-logs/discover-logs-interface.png)
+![Discover logs interface](/docs/images/discover-logs/discover-logs-interface.png)
 
 It consists of the following components:
 
@@ -87,13 +87,13 @@ The `stats` command aggregates data based on specified fields. For example, to c
 
 When you run this query, the interface automatically switches to the **Visualization** tab and displays a chart.
 
-![Visualization from logs](/opensearch-agentops-website/docs/images/discover-logs/discover-logs-visualization.png)
+![Visualization from logs](/docs/images/discover-logs/discover-logs-visualization.png)
 
 ### Visualization types
 
 To change the visualization type, go to **Settings** > **Visualization type** and select one of the available options.
 
-![Visualization type options](/opensearch-agentops-website/docs/images/discover-logs/discover-logs-viz-types.png)
+![Visualization type options](/docs/images/discover-logs/discover-logs-viz-types.png)
 
 The following visualization types are available.
 
@@ -112,7 +112,7 @@ The following visualization types are available.
 
 To customize your visualization, update the options in the **Settings** panel.
 
-![Bar chart with switched axes](/opensearch-agentops-website/docs/images/discover-logs/discover-logs-switch-axes.png)
+![Bar chart with switched axes](/docs/images/discover-logs/discover-logs-switch-axes.png)
 
 You can update the following options:
 

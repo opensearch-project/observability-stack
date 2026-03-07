@@ -7,8 +7,8 @@ Sampling determines which traces are recorded and exported. In production enviro
 
 ## Prerequisites
 
-- Familiarity with the [OTel Collector configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/)
-- Understanding of [OpenTelemetry traces](/opensearch-agentops-website/docs/send-data/opentelemetry/)
+- Familiarity with the [OTel Collector configuration](/docs/send-data/opentelemetry/collector/)
+- Understanding of [OpenTelemetry traces](/docs/send-data/opentelemetry/)
 
 ## Head-Based vs Tail-Based Sampling
 
@@ -371,8 +371,8 @@ Sampling applies only to traces. Metrics are pre-aggregated and do not benefit f
 
 - [OpenTelemetry Sampling Concepts](https://opentelemetry.io/docs/concepts/sampling/) -- Upstream OTel sampling documentation
 - [OTel Collector Transforming Telemetry](https://opentelemetry.io/docs/collector/transforming-telemetry/) -- Collector processing reference
-- [Collector Configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- Full pipeline config walkthrough
-- [Auto-Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/) -- Set sampler via environment variables
-- [Manual Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/) -- Configure samplers in code
-- [Data Prepper Pipeline](/opensearch-agentops-website/docs/send-data/data-pipeline/data-prepper/) -- Data Prepper configuration
-- [Send Data Overview](/opensearch-agentops-website/docs/send-data/) -- Ingestion architecture
+- [Collector Configuration](/docs/send-data/opentelemetry/collector/) -- Full pipeline config walkthrough
+- [Auto-Instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/) -- Set sampler via environment variables
+- [Manual Instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/) -- Configure samplers in code
+- [Data Prepper Pipeline](/docs/send-data/data-pipeline/data-prepper/) -- Data Prepper configuration
+- [Send Data Overview](/docs/send-data/) -- Ingestion architecture

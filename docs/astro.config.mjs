@@ -8,8 +8,8 @@ import react from '@astrojs/react';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://opensearch-project.github.io',
-  base: '/observability-stack',
+  site: 'https://observability.opensearch.org',
+  base: '/',
   integrations: [sitemap(), react()],
   vite: {
     plugins: [tailwindcss()],

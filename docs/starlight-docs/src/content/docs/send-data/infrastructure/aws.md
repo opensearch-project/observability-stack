@@ -216,7 +216,7 @@ spec:
           exporters: [otlphttp/data-prepper]
 ```
 
-See the [Kubernetes guide](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/) for additional Kubernetes-specific configuration.
+See the [Kubernetes guide](/docs/send-data/infrastructure/kubernetes/) for additional Kubernetes-specific configuration.
 
 ## Lambda instrumentation
 
@@ -342,8 +342,8 @@ The ADOT Collector requires the following IAM policy for AWS service integration
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Kubernetes](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/)
-- [Prometheus](/opensearch-agentops-website/docs/send-data/infrastructure/prometheus/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Kubernetes](/docs/send-data/infrastructure/kubernetes/)
+- [Prometheus](/docs/send-data/infrastructure/prometheus/)
 - [AWS Distro for OpenTelemetry](https://aws-otel.github.io/docs/introduction) -- Official ADOT documentation
 - [OTel Lambda auto-instrumentation](https://opentelemetry.io/docs/faas/lambda-auto-instrument/) -- Serverless instrumentation guide

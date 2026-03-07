@@ -109,15 +109,15 @@ Using standard attribute names means the APM dashboards, service maps, and agent
 
 ## In This Section
 
-- [Collector Configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- Full walkthrough of the OTel Collector pipeline config
-- [Auto-Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/) -- Zero-code instrumentation for popular languages
-- [Manual Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/) -- Custom spans, metrics, and logs with the OTel SDK
-- [Sampling Strategies](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/) -- Control data volume with head-based and tail-based sampling
+- [Collector Configuration](/docs/send-data/opentelemetry/collector/) -- Full walkthrough of the OTel Collector pipeline config
+- [Auto-Instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/) -- Zero-code instrumentation for popular languages
+- [Manual Instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/) -- Custom spans, metrics, and logs with the OTel SDK
+- [Sampling Strategies](/docs/send-data/opentelemetry/sampling/) -- Control data volume with head-based and tail-based sampling
 
 ## Related Links
 
-- [Send Data Overview](/opensearch-agentops-website/docs/send-data/) -- Full ingestion architecture
-- [Agent Traces](/opensearch-agentops-website/docs/ai-observability/agent-tracing/) -- AI agent trace visualization
-- [APM Services](/opensearch-agentops-website/docs/apm/services/) -- Service health monitoring
+- [Send Data Overview](/docs/send-data/) -- Full ingestion architecture
+- [Agent Traces](/docs/ai-observability/agent-tracing/) -- AI agent trace visualization
+- [APM Services](/docs/apm/services/) -- Service health monitoring
 - [What is OpenTelemetry?](https://opentelemetry.io/docs/what-is-opentelemetry/) -- Official overview of the OpenTelemetry project
 - [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/) -- Standard attribute naming reference

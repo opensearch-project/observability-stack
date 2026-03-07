@@ -125,7 +125,7 @@ describe('CTASection Component - Unit Tests', () => {
               Get Started
             </a>
             <a
-              href="/opensearch-agentops-website/docs/"
+              href="/docs/"
               class="px-8 py-4 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition-colors duration-200 border border-white/30 backdrop-blur-sm"
               data-analytics="cta_final_view_docs"
             >
@@ -146,7 +146,7 @@ describe('CTASection Component - Unit Tests', () => {
     });
 
     it('should render secondary CTA button', () => {
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
       expect(secondaryCTA).toBeTruthy();
       expect(secondaryCTA?.textContent?.trim()).toBe('View Docs');
@@ -159,9 +159,9 @@ describe('CTASection Component - Unit Tests', () => {
     });
 
     it('should have correct href on secondary CTA', () => {
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
-      expect(secondaryCTA?.getAttribute('href')).toBe('/opensearch-agentops-website/docs/');
+      expect(secondaryCTA?.getAttribute('href')).toBe('/docs/');
     });
 
     it('should have analytics tracking on primary CTA', () => {
@@ -171,7 +171,7 @@ describe('CTASection Component - Unit Tests', () => {
     });
 
     it('should have analytics tracking on secondary CTA', () => {
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
       expect(secondaryCTA?.getAttribute('data-analytics')).toBe('cta_final_view_docs');
     });
@@ -186,7 +186,7 @@ describe('CTASection Component - Unit Tests', () => {
     });
 
     it('should have secondary styling on secondary CTA', () => {
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
       expect(secondaryCTA?.classList.contains('bg-white/10')).toBe(true);
       expect(secondaryCTA?.classList.contains('hover:bg-white/20')).toBe(true);
@@ -217,7 +217,7 @@ describe('CTASection Component - Unit Tests', () => {
 
     it('should have correct padding on CTAs', () => {
       const primaryCTA = container.querySelector('a[href="https://github.com/opensearch-project/observability-stack"]');
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
       expect(primaryCTA?.classList.contains('px-8')).toBe(true);
       expect(primaryCTA?.classList.contains('py-4')).toBe(true);
@@ -227,7 +227,7 @@ describe('CTASection Component - Unit Tests', () => {
 
     it('should have rounded corners on CTAs', () => {
       const primaryCTA = container.querySelector('a[href="https://github.com/opensearch-project/observability-stack"]');
-      const secondaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const secondaryCTA = container.querySelector('a[href="/docs/"]');
 
       expect(primaryCTA?.classList.contains('rounded-lg')).toBe(true);
       expect(secondaryCTA?.classList.contains('rounded-lg')).toBe(true);

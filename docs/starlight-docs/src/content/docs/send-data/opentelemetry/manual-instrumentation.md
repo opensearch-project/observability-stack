@@ -5,7 +5,7 @@ description: "Add custom spans, metrics, and logs with the OpenTelemetry SDK"
 
 Manual instrumentation gives you full control over what telemetry your application produces. Use it to add custom spans for business logic, record application-specific metrics, and emit structured logs with trace correlation.
 
-Manual instrumentation complements [auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/). Auto-instrumentation covers framework-level operations (HTTP handlers, database calls), while manual instrumentation covers your domain logic.
+Manual instrumentation complements [auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/). Auto-instrumentation covers framework-level operations (HTTP handlers, database calls), while manual instrumentation covers your domain logic.
 
 ## When to Use Manual Instrumentation
 
@@ -298,9 +298,9 @@ For long-running services, register these in a shutdown hook (e.g., `atexit`, si
 
 ## Related Links
 
-- [Auto-Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/) -- Zero-code instrumentation setup
-- [Collector Configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- Pipeline processing and export
-- [Agent Traces](/opensearch-agentops-website/docs/ai-observability/agent-tracing/) -- Visualize AI agent traces
-- [Sampling Strategies](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/) -- Control data volume
+- [Auto-Instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/) -- Zero-code instrumentation setup
+- [Collector Configuration](/docs/send-data/opentelemetry/collector/) -- Pipeline processing and export
+- [Agent Traces](/docs/ai-observability/agent-tracing/) -- Visualize AI agent traces
+- [Sampling Strategies](/docs/send-data/opentelemetry/sampling/) -- Control data volume
 - [OpenTelemetry manual instrumentation](https://opentelemetry.io/docs/concepts/instrumentation/manual/) -- Official manual instrumentation concepts
 - [OpenTelemetry API reference](https://opentelemetry.io/docs/specs/otel/) -- OTel specification and API reference

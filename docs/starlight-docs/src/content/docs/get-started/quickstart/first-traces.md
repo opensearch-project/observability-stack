@@ -50,5 +50,5 @@ with tracer.start_as_current_span("handle-request") as span:
 
 ## Next steps
 
-- [Create Your First Dashboard](/opensearch-agentops-website/docs/get-started/quickstart/first-dashboard/)
-- [Send Data](/opensearch-agentops-website/docs/send-data/) — more instrumentation options
+- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/)
+- [Send Data](/docs/send-data/) — more instrumentation options

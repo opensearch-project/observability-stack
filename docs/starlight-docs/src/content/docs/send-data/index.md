@@ -44,19 +44,19 @@ Both endpoints accept traces, metrics, and logs. CORS is enabled on the HTTP end
 
 ## Sections
 
-### [OpenTelemetry](/opensearch-agentops-website/docs/send-data/opentelemetry/)
+### [OpenTelemetry](/docs/send-data/opentelemetry/)
 
 Core instrumentation framework. Learn about the OTel Collector configuration, auto-instrumentation for zero-code setup, manual instrumentation for custom telemetry, and sampling strategies for controlling data volume.
 
-### [Applications](/opensearch-agentops-website/docs/send-data/applications/)
+### [Applications](/docs/send-data/applications/)
 
 Language-specific guides for instrumenting your services. Covers Python, Java, Node.js, Go, .NET, and browser applications, plus dedicated guidance for AI/LLM agent observability.
 
-### [Data Pipeline](/opensearch-agentops-website/docs/send-data/pipeline/)
+### [Data Pipeline](/docs/send-data/pipeline/)
 
 Configure the backend processing layer. Covers Data Prepper pipelines for trace and log processing, Prometheus for metrics storage, and index management in OpenSearch.
 
-### [Infrastructure](/opensearch-agentops-website/docs/send-data/infrastructure/)
+### [Infrastructure](/docs/send-data/infrastructure/)
 
 Collect telemetry from your infrastructure. Covers host metrics, container monitoring, Kubernetes observability, and cloud provider integrations.
 
@@ -69,10 +69,10 @@ export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
 export OTEL_SERVICE_NAME="my-service"
 ```
 
-Then follow the language-specific guide in the [Applications](/opensearch-agentops-website/docs/send-data/applications/) section, or jump straight to [Auto-Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/) for zero-code setup.
+Then follow the language-specific guide in the [Applications](/docs/send-data/applications/) section, or jump straight to [Auto-Instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/) for zero-code setup.
 
 ## Related Links
 
-- [Get Started](/opensearch-agentops-website/docs/get-started/) -- Platform overview and sandbox setup
-- [Investigate](/opensearch-agentops-website/docs/investigate/) -- Query and explore ingested data
-- [APM](/opensearch-agentops-website/docs/apm/) -- Application performance monitoring views
+- [Get Started](/docs/get-started/) -- Platform overview and sandbox setup
+- [Investigate](/docs/investigate/) -- Query and explore ingested data
+- [APM](/docs/apm/) -- Application performance monitoring views

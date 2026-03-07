@@ -250,8 +250,8 @@ export async function register() {
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [Auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
+- [Applications overview](/docs/send-data/applications/)
+- [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
 - [OpenTelemetry JavaScript documentation](https://opentelemetry.io/docs/languages/js/) -- Official OTel JS/Node.js SDK reference
 - [Node.js instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=js&component=instrumentation) -- Available auto-instrumentation packages

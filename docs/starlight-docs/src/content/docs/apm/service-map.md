@@ -12,7 +12,7 @@ The Application Map is an interactive topology view of your distributed system, 
 
 The breadcrumb at the top reads **Application > Services**, reflecting the current navigation level.
 
-![Application Map showing service topology with nodes and edges](/opensearch-agentops-website/docs/images/apm/application-map.png)
+![Application Map showing service topology with nodes and edges](/docs/images/apm/application-map.png)
 
 ## Map controls
 
@@ -34,7 +34,7 @@ A filters panel on the left side lets you narrow what the map displays:
 
 Applied filters appear as chips above the map (e.g., "Fault Rate (5xx): > 5% x"). Click the **x** on a chip to remove it, or click **Clear all** to reset all filters.
 
-![Application Map filtered by Fault Rate (5xx) > 5%, showing filter chips above the map](/opensearch-agentops-website/docs/images/apm/filter-by-error-rate.png)
+![Application Map filtered by Fault Rate (5xx) > 5%, showing filter chips above the map](/docs/images/apm/filter-by-error-rate.png)
 
 ## Service nodes
 
@@ -53,7 +53,7 @@ Click any service node to open a detail panel on the right side of the map. The 
 
 **Header**
 - Service name and environment label
-- A **View details** link that navigates to the full [service detail view](/opensearch-agentops-website/docs/apm/services/#service-detail-view)
+- A **View details** link that navigates to the full [service detail view](/docs/apm/services/#service-detail-view)
 
 **Health**
 - A donut chart breaking down total traffic into:
@@ -61,7 +61,7 @@ Click any service node to open a detail panel on the right side of the map. The 
   - **Total Errors (4xx)**
   - **Total Faults (5xx)**
 
-![Service node detail panel showing health donut and metrics charts for the frontend service](/opensearch-agentops-website/docs/images/apm/service-metrics.png)
+![Service node detail panel showing health donut and metrics charts for the frontend service](/docs/images/apm/service-metrics.png)
 
 **Metrics**
 Four time-series charts for the selected time range:
@@ -92,7 +92,7 @@ When a group-by attribute is selected, the map switches from a topology graph to
 
 Clicking **View insights** on a group card drills into that group, showing only the services matching that attribute value.
 
-![Group by telemetry.sdk.language showing cards for python, go, cpp, nodejs, rust, dotnet, java, ruby, and php](/opensearch-agentops-website/docs/images/apm/groupby-attributes.png)
+![Group by telemetry.sdk.language showing cards for python, go, cpp, nodejs, rust, dotnet, java, ruby, and php](/docs/images/apm/groupby-attributes.png)
 
 ## Data Prepper pipeline configuration
 

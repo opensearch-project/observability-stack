@@ -7,7 +7,7 @@ The OpenSearch Observability Stack is built on open standards with OpenTelemetry
 
 ## Architecture
 
-![Architecture diagram showing microservices and infrastructure sending OTLP to the OTel Collector, which exports to Data Prepper. Data Prepper writes to OpenSearch and Prometheus, both queried by OpenSearch Dashboards.](/opensearch-agentops-website/docs/images/apm/architecture.png)
+![Architecture diagram showing microservices and infrastructure sending OTLP to the OTel Collector, which exports to Data Prepper. Data Prepper writes to OpenSearch and Prometheus, both queried by OpenSearch Dashboards.](/docs/images/apm/architecture.png)
 
 ## Data flow
 

@@ -319,7 +319,7 @@ processors:
         - 'attributes["url.path"] == "/ready"'
 ```
 
-**Add tail sampling** at the Collector level (see [Sampling Strategies](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/)):
+**Add tail sampling** at the Collector level (see [Sampling Strategies](/docs/send-data/opentelemetry/sampling/)):
 ```yaml
 processors:
   tail_sampling:
@@ -335,8 +335,8 @@ processors:
 
 ## Related Links
 
-- [OpenTelemetry Overview](/opensearch-agentops-website/docs/send-data/opentelemetry/) -- Signals, protocols, and architecture
-- [Sampling Strategies](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/) -- Head and tail sampling configuration
-- [Data Pipeline](/opensearch-agentops-website/docs/send-data/pipeline/) -- Data Prepper and Prometheus configuration
+- [OpenTelemetry Overview](/docs/send-data/opentelemetry/) -- Signals, protocols, and architecture
+- [Sampling Strategies](/docs/send-data/opentelemetry/sampling/) -- Head and tail sampling configuration
+- [Data Pipeline](/docs/send-data/pipeline/) -- Data Prepper and Prometheus configuration
 - [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/) -- Official Collector configuration reference
 - [Collector contrib components](https://github.com/open-telemetry/opentelemetry-collector-contrib) -- Community receivers, processors, and exporters

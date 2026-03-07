@@ -1,6 +1,6 @@
 /**
  * Property-based tests for Navigation component
- * Feature: opensearch-agentops-website
+ * Feature: observability-stack
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

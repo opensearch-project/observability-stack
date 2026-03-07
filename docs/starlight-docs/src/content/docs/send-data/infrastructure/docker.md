@@ -251,8 +251,8 @@ curl -s http://localhost:9090/api/v1/query?query=container_memory_usage_total | 
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Prometheus](/opensearch-agentops-website/docs/send-data/infrastructure/prometheus/)
-- [Kubernetes](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Prometheus](/docs/send-data/infrastructure/prometheus/)
+- [Kubernetes](/docs/send-data/infrastructure/kubernetes/)
 - [OTel Collector Docker deployment](https://opentelemetry.io/docs/collector/deployment/docker/) -- Official Docker deployment guide
 - [Docker Stats receiver reference](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/dockerstatsreceiver) -- Docker Stats receiver documentation

@@ -258,8 +258,8 @@ r.Use(otelgin.Middleware("my-service"))
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
-- [Sampling](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/)
+- [Applications overview](/docs/send-data/applications/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
+- [Sampling](/docs/send-data/opentelemetry/sampling/)
 - [OpenTelemetry Go documentation](https://opentelemetry.io/docs/languages/go/) -- Official OTel Go SDK reference
 - [Go instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=go&component=instrumentation) -- Available instrumentation packages

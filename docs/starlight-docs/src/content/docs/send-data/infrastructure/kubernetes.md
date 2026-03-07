@@ -320,8 +320,8 @@ curl -s 'http://localhost:9090/api/v1/query?query=k8s_pod_cpu_utilization' | jq 
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Docker](/opensearch-agentops-website/docs/send-data/infrastructure/docker/)
-- [Prometheus](/opensearch-agentops-website/docs/send-data/infrastructure/prometheus/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Docker](/docs/send-data/infrastructure/docker/)
+- [Prometheus](/docs/send-data/infrastructure/prometheus/)
 - [OpenTelemetry Kubernetes documentation](https://opentelemetry.io/docs/kubernetes/) -- Official OTel Kubernetes guide
 - [OTel Collector Helm charts](https://opentelemetry.io/docs/kubernetes/helm/) -- Helm deployment reference

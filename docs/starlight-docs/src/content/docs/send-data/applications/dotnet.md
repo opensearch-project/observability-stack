@@ -232,8 +232,8 @@ builder.Services.AddOpenTelemetry()
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [Auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
+- [Applications overview](/docs/send-data/applications/)
+- [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
 - [OpenTelemetry .NET documentation](https://opentelemetry.io/docs/languages/dotnet/) -- Official OTel .NET SDK reference
 - [.NET instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=dotnet&component=instrumentation) -- Available auto-instrumentation packages

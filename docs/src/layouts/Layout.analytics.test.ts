@@ -1,6 +1,6 @@
 /**
  * Property-based tests for analytics tracking
- * Feature: opensearch-agentops-website
+ * Feature: observability-stack
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

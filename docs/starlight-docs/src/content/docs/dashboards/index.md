@@ -75,6 +75,6 @@ Currently, dashboards support global filters for narrowing data across all panel
 
 ## Getting started
 
-- [Build a Dashboard](/opensearch-agentops-website/docs/dashboards/build/) — create dashboards, add panels, choose visualization types, and arrange layouts
-- [Sharing Dashboards](/opensearch-agentops-website/docs/dashboards/sharing/) — share, export, and best practices
-- [Troubleshooting](/opensearch-agentops-website/docs/dashboards/troubleshooting/) — diagnose panel issues, inspect queries, and fix common problems
+- [Build a Dashboard](/docs/dashboards/build/) — create dashboards, add panels, choose visualization types, and arrange layouts
+- [Sharing Dashboards](/docs/dashboards/sharing/) — share, export, and best practices
+- [Troubleshooting](/docs/dashboards/troubleshooting/) — diagnose panel issues, inspect queries, and fix common problems

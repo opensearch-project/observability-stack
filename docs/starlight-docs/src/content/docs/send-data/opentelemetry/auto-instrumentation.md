@@ -26,7 +26,7 @@ All OTel auto-instrumentation agents share a common set of environment variables
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` | Transport protocol (`grpc` or `http/protobuf`) |
 | `OTEL_SERVICE_NAME` | `payment-service` | Logical service name shown in dashboards |
 | `OTEL_RESOURCE_ATTRIBUTES` | `service.version=1.2.0,deployment.environment=prod` | Comma-separated key=value resource attributes |
-| `OTEL_TRACES_SAMPLER` | `parentbased_traceidratio` | Sampler type (see [Sampling](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/)) |
+| `OTEL_TRACES_SAMPLER` | `parentbased_traceidratio` | Sampler type (see [Sampling](/docs/send-data/opentelemetry/sampling/)) |
 | `OTEL_TRACES_SAMPLER_ARG` | `0.1` | Sampler argument (e.g., 10% sample rate) |
 | `OTEL_LOGS_EXPORTER` | `otlp` | Log exporter (`otlp` or `none`) |
 | `OTEL_METRICS_EXPORTER` | `otlp` | Metrics exporter (`otlp` or `none`) |
@@ -199,7 +199,7 @@ sudo instrumentation -pid $APP_PID
 
 The eBPF agent instruments `net/http`, `google.golang.org/grpc`, and `database/sql`. Since it operates at the kernel level, it requires elevated privileges.
 
-For most Go applications, [manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/) is preferred because it provides finer control and does not require root access.
+For most Go applications, [manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/) is preferred because it provides finer control and does not require root access.
 
 ## Verifying Instrumentation
 
@@ -222,7 +222,7 @@ After starting your instrumented application, verify that telemetry is flowing:
    }
    ```
 
-4. **Open OpenSearch Dashboards** and navigate to the [Services](/opensearch-agentops-website/docs/apm/services/) view to see your application.
+4. **Open OpenSearch Dashboards** and navigate to the [Services](/docs/apm/services/) view to see your application.
 
 ## Troubleshooting
 
@@ -236,9 +236,9 @@ After starting your instrumented application, verify that telemetry is flowing:
 
 ## Related Links
 
-- [Manual Instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/) -- Add custom spans and metrics
-- [Collector Configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- OTel Collector pipeline setup
-- [Sampling Strategies](/opensearch-agentops-website/docs/send-data/opentelemetry/sampling/) -- Control telemetry volume
-- [Applications](/opensearch-agentops-website/docs/send-data/applications/) -- Language-specific application guides
+- [Manual Instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/) -- Add custom spans and metrics
+- [Collector Configuration](/docs/send-data/opentelemetry/collector/) -- OTel Collector pipeline setup
+- [Sampling Strategies](/docs/send-data/opentelemetry/sampling/) -- Control telemetry volume
+- [Applications](/docs/send-data/applications/) -- Language-specific application guides
 - [OpenTelemetry zero-code instrumentation](https://opentelemetry.io/docs/zero-code/) -- Official zero-code instrumentation guide
 - [OTel instrumentation registry](https://opentelemetry.io/ecosystem/registry/?component=instrumentation) -- Browse available instrumentation packages

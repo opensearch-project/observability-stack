@@ -94,7 +94,7 @@ At the top of the results area, a metrics bar displays aggregate statistics for 
 
 The **Traces** tab displays root-level agent traces in a paginated table, as shown in the following image. Root traces are spans with no parent (`parentSpanId` is empty) that have a `gen_ai.operation.name` attribute.
 
-![Traces tab showing root-level agent traces](/opensearch-agentops-website/docs/images/agent-traces/traces-table.png)
+![Traces tab showing root-level agent traces](/docs/images/agent-traces/traces-table.png)
 
 The table includes the following columns:
 
@@ -132,7 +132,7 @@ Each category is displayed with a unique color and icon in the UI.
 
 The **Spans** tab shows all `gen_ai` spans (not only root traces) in a paginated table, as shown in the following image. This view is useful for examining individual operations across multiple traces. The table structure is similar to the Traces tab.
 
-![Spans tab showing all gen_ai spans](/opensearch-agentops-website/docs/images/agent-traces/spans-table.png)
+![Spans tab showing all gen_ai spans](/docs/images/agent-traces/spans-table.png)
 
 ## Trace details flyout
 

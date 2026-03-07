@@ -5,8 +5,8 @@ import mermaid from 'astro-mermaid';
 
 // https://astro.build/config
 export default defineConfig({
-	site: 'https://opensearch-project.github.io',
-	base: '/observability-stack/docs',
+	site: 'https://observability.opensearch.org',
+	base: '/docs',
 	integrations: [
 		mermaid({
 			autoTheme: true,

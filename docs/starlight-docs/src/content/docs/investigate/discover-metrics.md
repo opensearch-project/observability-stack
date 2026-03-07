@@ -7,7 +7,7 @@ sidebar:
 
 The **Metrics** page in OpenSearch Dashboards provides a dedicated interface for discovering, querying, and visualizing time-series metric data. This page, shown in the following image, is optimized for working with Prometheus metrics using PromQL.
 
-![Metrics page interface](/opensearch-agentops-website/docs/images/dashboards/prometheus.png)
+![Metrics page interface](/docs/images/dashboards/prometheus.png)
 
 The **Metrics** page is available in Observability workspaces. To access the **Metrics** page, navigate to an **Observability** workspace. Then, in the left navigation, expand **Discover** and select **Metrics**.
 

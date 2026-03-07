@@ -33,7 +33,7 @@ Forecasting is useful for capacity planning and proactive operations:
 
 ## Pairing with alerting
 
-Combine forecasting with [Alerting](/opensearch-agentops-website/docs/alerting/) to get notified when forecasts predict a threshold breach. For example, alert when forecasted disk usage is predicted to exceed 80% within the next 24 hours.
+Combine forecasting with [Alerting](/docs/alerting/) to get notified when forecasts predict a threshold breach. For example, alert when forecasted disk usage is predicted to exceed 80% within the next 24 hours.
 
 ## Learn more
 

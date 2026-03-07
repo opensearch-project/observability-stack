@@ -3,7 +3,7 @@ title: "Agent Graph & Path"
 description: "Visualize agent execution as a directed graph with interactive flow diagrams, tree views, and timeline charts"
 ---
 
-The Agent Traces plugin provides three synchronized views for visualizing the execution path of an AI agent trace: an **Agent Graph**, a **Trace tree**, and a **Timeline**. These views appear in the trace details flyout when you select a trace row on the [Agent Traces](/opensearch-agentops-website/docs/ai-observability/agent-tracing/) page.
+The Agent Traces plugin provides three synchronized views for visualizing the execution path of an AI agent trace: an **Agent Graph**, a **Trace tree**, and a **Timeline**. These views appear in the trace details flyout when you select a trace row on the [Agent Traces](/docs/ai-observability/agent-tracing/) page.
 
 All three views share the same selection state. Selecting a span in one view highlights it in the other views.
 
@@ -11,7 +11,7 @@ All three views share the same selection state. Selecting a span in one view hig
 
 The **Agent Graph** tab renders the trace as a directed acyclic graph (DAG) using the Dagre layout algorithm, as shown in the following image. Parent spans flow downward to child spans, and siblings at the same depth are arranged horizontally.
 
-![Agent graph showing DAG visualization](/opensearch-agentops-website/docs/images/agent-traces/agent-graph.png)
+![Agent graph showing DAG visualization](/docs/images/agent-traces/agent-graph.png)
 
 ### Node display
 
@@ -47,7 +47,7 @@ You can also pan by clicking and dragging the background, and zoom with the mous
 
 The **Trace tree** tab displays all spans in a hierarchical tree structure, as shown in the following image. Each row shows the span's category badge, name, token count, and latency. You can expand and collapse nodes to navigate the hierarchy.
 
-![Trace tree view showing hierarchical span structure](/opensearch-agentops-website/docs/images/agent-traces/trace-tree.png)
+![Trace tree view showing hierarchical span structure](/docs/images/agent-traces/trace-tree.png)
 
 Selecting a row highlights the corresponding node in the agent graph and timeline.
 
@@ -55,7 +55,7 @@ Selecting a row highlights the corresponding node in the agent graph and timelin
 
 The **Timeline** tab presents a Gantt-style chart showing all spans arranged chronologically, as shown in the following image. Each span is rendered as a horizontal bar:
 
-![Timeline view showing Gantt-style span chart](/opensearch-agentops-website/docs/images/agent-traces/timeline.png)
+![Timeline view showing Gantt-style span chart](/docs/images/agent-traces/timeline.png)
 
 - **Bar width**: Proportional to the span's duration relative to the trace.
 - **Bar color**: Matches the span category color.

@@ -14,7 +14,7 @@ To access the **Traces** page:
 1. Navigate to an **Observability** workspace in OpenSearch Dashboards.
 2. In the left navigation, expand **Discover** and select **Traces**.
 
-![Discover Traces page in navigation](/opensearch-agentops-website/docs/images/discover-traces/trace-page.png)
+![Discover Traces page in navigation](/docs/images/discover-traces/trace-page.png)
 
 ## Configuring trace datasets
 
@@ -29,7 +29,7 @@ If your data source follows the OpenTelemetry naming conventions, the **Traces**
 
 When these indexes are detected, select the **Create Trace Datasets** button to automatically generate the datasets and establish the correlation relationship between traces and logs.
 
-![Auto-create trace datasets](/opensearch-agentops-website/docs/images/discover-traces/trace-auto-create.png)
+![Auto-create trace datasets](/docs/images/discover-traces/trace-auto-create.png)
 
 ### Manual dataset creation
 
@@ -47,7 +47,7 @@ The **Traces** page provides comprehensive tools for analyzing span data and und
 
 To view detailed information about a specific span, select the timestamp in the span table. This opens the **Trace Details** flyout.
 
-![Trace details flyout](/opensearch-agentops-website/docs/images/discover-traces/trace-details-flyout.png)
+![Trace details flyout](/docs/images/discover-traces/trace-details-flyout.png)
 
 The **Trace Details** flyout displays the following information:
 
@@ -64,7 +64,7 @@ To access the full trace detail page from the **Trace Details** flyout, use one 
 
 The full page view provides an expanded interface for deeper trace analysis, featuring a timeline visualization that shows the hierarchical span relationships and durations, along with detailed span information in a side panel.
 
-![Discover Traces page with RED metrics and faceted fields](/opensearch-agentops-website/docs/images/discover-traces/trace-detail-page.png)
+![Discover Traces page with RED metrics and faceted fields](/docs/images/discover-traces/trace-detail-page.png)
 
 ## Correlating traces with logs
 
@@ -77,12 +77,12 @@ To view the related logs, follow these steps:
 1. In the **Trace Details** flyout, locate the **Related logs** section.
 2. Select the **View in Discover Logs** button to navigate to the correlated log entries for the selected trace.
 
-![Related logs button in trace details](/opensearch-agentops-website/docs/images/discover-traces/related-logs.png)
+![Related logs button in trace details](/docs/images/discover-traces/related-logs.png)
 
 ### Log redirection with context
 
 When you select **View in Discover Logs**, OpenSearch Dashboards automatically redirects you to the **Logs** page with the trace context applied.
 
-![Discover Logs page with trace context](/opensearch-agentops-website/docs/images/discover-traces/logs-redirection.png)
+![Discover Logs page with trace context](/docs/images/discover-traces/logs-redirection.png)
 
 The logs are filtered to show only entries related to the selected trace, making it easier to troubleshoot issues and understand the full context of trace events. Preserving context streamlines the debugging process by providing a unified view of your telemetry data, helping you identify root causes and understand the complete picture of application behavior.

@@ -89,18 +89,18 @@ Choose your language to get started:
 
 | Language | Auto-instrumentation | Page | Upstream Docs |
 |----------|---------------------|------|---------------|
-| Python | Yes | [Python](/opensearch-agentops-website/docs/send-data/applications/python/) | [OTel Python](https://opentelemetry.io/docs/languages/python/) |
-| Node.js | Yes | [Node.js](/opensearch-agentops-website/docs/send-data/applications/nodejs/) | [OTel JS](https://opentelemetry.io/docs/languages/js/) |
-| Java | Yes | [Java](/opensearch-agentops-website/docs/send-data/applications/java/) | [OTel Java](https://opentelemetry.io/docs/languages/java/) |
-| Go | No (use middleware) | [Go](/opensearch-agentops-website/docs/send-data/applications/go/) | [OTel Go](https://opentelemetry.io/docs/languages/go/) |
-| .NET | Yes | [.NET](/opensearch-agentops-website/docs/send-data/applications/dotnet/) | [OTel .NET](https://opentelemetry.io/docs/languages/dotnet/) |
-| Ruby | Yes | [Ruby](/opensearch-agentops-website/docs/send-data/applications/ruby/) | [OTel Ruby](https://opentelemetry.io/docs/languages/ruby/) |
-| Browser / Frontend | Partial | [Browser](/opensearch-agentops-website/docs/send-data/applications/browser/) | [OTel JS](https://opentelemetry.io/docs/languages/js/) |
+| Python | Yes | [Python](/docs/send-data/applications/python/) | [OTel Python](https://opentelemetry.io/docs/languages/python/) |
+| Node.js | Yes | [Node.js](/docs/send-data/applications/nodejs/) | [OTel JS](https://opentelemetry.io/docs/languages/js/) |
+| Java | Yes | [Java](/docs/send-data/applications/java/) | [OTel Java](https://opentelemetry.io/docs/languages/java/) |
+| Go | No (use middleware) | [Go](/docs/send-data/applications/go/) | [OTel Go](https://opentelemetry.io/docs/languages/go/) |
+| .NET | Yes | [.NET](/docs/send-data/applications/dotnet/) | [OTel .NET](https://opentelemetry.io/docs/languages/dotnet/) |
+| Ruby | Yes | [Ruby](/docs/send-data/applications/ruby/) | [OTel Ruby](https://opentelemetry.io/docs/languages/ruby/) |
+| Browser / Frontend | Partial | [Browser](/docs/send-data/applications/browser/) | [OTel JS](https://opentelemetry.io/docs/languages/js/) |
 
 ## Related links
 
-- [OpenTelemetry overview](/opensearch-agentops-website/docs/send-data/opentelemetry/)
-- [Auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
-- [OTel Collector configuration](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/)
+- [OpenTelemetry overview](/docs/send-data/opentelemetry/)
+- [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
+- [OTel Collector configuration](/docs/send-data/opentelemetry/collector/)
 - [OpenTelemetry Language APIs & SDKs](https://opentelemetry.io/docs/languages/) -- All supported languages and instrumentation guides

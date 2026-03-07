@@ -238,7 +238,7 @@ curl -s http://localhost:9600/_node/stats/pipelines | jq '.pipelines.main.events
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Fluentd & Fluent Bit](/opensearch-agentops-website/docs/send-data/infrastructure/fluentd/)
-- [Docker](/opensearch-agentops-website/docs/send-data/infrastructure/docker/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Fluentd & Fluent Bit](/docs/send-data/infrastructure/fluentd/)
+- [Docker](/docs/send-data/infrastructure/docker/)
 - [OpenSearch Logstash documentation](https://opensearch.org/docs/latest/tools/logstash/index/) -- Official OpenSearch Logstash plugin reference

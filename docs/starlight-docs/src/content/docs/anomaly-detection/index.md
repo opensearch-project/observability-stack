@@ -38,7 +38,7 @@ Anomaly detection works on any time-series data indexed in OpenSearch. Common ob
 
 ## Pairing with alerting
 
-Combine anomaly detection with [Alerting](/opensearch-agentops-website/docs/alerting/) to get notified when anomalies are detected. Create a monitor that queries the anomaly results index and triggers when the anomaly grade exceeds a threshold.
+Combine anomaly detection with [Alerting](/docs/alerting/) to get notified when anomalies are detected. Create a monitor that queries the anomaly results index and triggers when the anomaly grade exceeds a threshold.
 
 ## Learn more
 

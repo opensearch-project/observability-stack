@@ -254,8 +254,8 @@ quarkus.otel.enabled=true
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [Auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
+- [Applications overview](/docs/send-data/applications/)
+- [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
 - [OpenTelemetry Java documentation](https://opentelemetry.io/docs/languages/java/) -- Official OTel Java SDK reference
 - [Java instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=java&component=instrumentation) -- Available auto-instrumentation packages

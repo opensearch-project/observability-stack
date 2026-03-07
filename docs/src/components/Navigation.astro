@@ -9,7 +9,7 @@ interface NavItem {
 const navigationItems: NavItem[] = [
   { label: 'Features', href: '#features', isExternal: false },
   { label: 'Why OTEL', href: '#why-otel', isExternal: false },
-  { label: 'Docs', href: `${import.meta.env.BASE_URL}/docs/`, isExternal: false },
+  { label: 'Docs', href: '/docs/', isExternal: false },
 ];
 ---
 
@@ -19,7 +19,7 @@ const navigationItems: NavItem[] = [
       <!-- Logo -->
       <div class="flex-shrink-0">
         <a href={import.meta.env.BASE_URL} class="flex items-center space-x-4 text-white hover:text-primary-400 transition-colors">
-          <img src={`${import.meta.env.BASE_URL}/opensearch-logo-darkmode.svg`} alt="OpenSearch" class="h-8 w-auto" />
+          <img src="/opensearch-logo-darkmode.svg" alt="OpenSearch" class="h-8 w-auto" />
           <span class="font-semibold text-2xl bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent" style="filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.5));">Observability Stack</span>
         </a>
       </div>
