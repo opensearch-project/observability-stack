@@ -18,11 +18,11 @@ In OpenSearch Dashboards, navigate to **Observability** > **Application Monitori
 
 ### Application Map
 
-A live topology view of your distributed system. Filter by fault rate, error rate, or environment. Group services by any attribute configured in Data Prepper (such as `telemetry.sdk.language`). Click any service node to see health breakdowns and metric charts in a side panel. See [Application Map](/opensearch-agentops-website/docs/apm/service-map/) for details.
+A live topology view of your distributed system. Filter by fault rate, error rate, or environment. Group services by any attribute configured in Data Prepper (such as `telemetry.sdk.language`). Click any service node to see health breakdowns and metric charts in a side panel. See [Application Map](/docs/apm/service-map/) for details.
 
 ### Services catalog
 
-A filterable table of all instrumented services showing latency (P99), throughput, failure ratio, and environment. Panels above the table highlight the top services and dependency paths by fault rate. See [Services](/opensearch-agentops-website/docs/apm/services/) for details.
+A filterable table of all instrumented services showing latency (P99), throughput, failure ratio, and environment. Panels above the table highlight the top services and dependency paths by fault rate. See [Services](/docs/apm/services/) for details.
 
 ### Service detail
 
@@ -38,7 +38,7 @@ From any service or operation, open correlation flyouts to jump directly to rela
 
 ## How it works
 
-![Architecture diagram showing microservices and infrastructure sending OTLP to the OTel Collector, which exports to Data Prepper. Data Prepper writes to OpenSearch and Prometheus, both queried by OpenSearch Dashboards.](/opensearch-agentops-website/docs/images/apm/architecture.png)
+![Architecture diagram showing microservices and infrastructure sending OTLP to the OTel Collector, which exports to Data Prepper. Data Prepper writes to OpenSearch and Prometheus, both queried by OpenSearch Dashboards.](/docs/images/apm/architecture.png)
 
 1. Your applications and infrastructure emit telemetry via OpenTelemetry SDKs, auto-instrumentation, or the OTel API to the OTel Collector.
 2. The Collector forwards trace data to Data Prepper over OTLP.
@@ -48,7 +48,7 @@ From any service or operation, open correlation flyouts to jump directly to rela
 
 ## Prerequisites
 
-- Data Prepper running with the trace analytics pipelines enabled (see [Application Map](/opensearch-agentops-website/docs/apm/service-map/) for the full pipeline configuration)
+- Data Prepper running with the trace analytics pipelines enabled (see [Application Map](/docs/apm/service-map/) for the full pipeline configuration)
 - Trace data flowing via OTLP to the OTel Collector
 - Prometheus configured to receive remote write from Data Prepper
 - OpenSearch Dashboards with the Observability plugin

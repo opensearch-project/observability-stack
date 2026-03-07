@@ -12,7 +12,7 @@ The Services page provides a catalog of all instrumented services along with the
 
 ## Services home page
 
-![Services home page showing top fault rate panels, filters sidebar, and Service Catalog table](/opensearch-agentops-website/docs/images/apm/services-home.png)
+![Services home page showing top fault rate panels, filters sidebar, and Service Catalog table](/docs/images/apm/services-home.png)
 
 ### Top services by fault rate
 
@@ -53,7 +53,7 @@ Click a service name to open its detail view. The detail view has three tabs: **
 
 The Overview tab gives you a high-level picture of the service's health and behavior.
 
-![Service detail Overview tab showing KPI cards, latency by dependencies, and correlated data links](/opensearch-agentops-website/docs/images/apm/services-overview.png)
+![Service detail Overview tab showing KPI cards, latency by dependencies, and correlated data links](/docs/images/apm/services-overview.png)
 
 **Top dependencies by fault rate**
 A panel showing which downstream dependencies have the highest fault rates for this service.
@@ -88,7 +88,7 @@ A chart showing availability per operation. Toggle between Bottom 3, Bottom 5, a
 
 The Operations tab lists every operation for the service.
 
-![Service detail Operations tab showing operations table with expandable rows and inline charts](/opensearch-agentops-website/docs/images/apm/service-operations.png)
+![Service detail Operations tab showing operations table with expandable rows and inline charts](/docs/images/apm/service-operations.png)
 
 **Operations table**
 
@@ -123,13 +123,13 @@ Click a correlation icon on any operation row to open a flyout panel. The flyout
 - **Correlated spans** — a table of spans with columns for Time, Status (OK/ERROR badge), HTTP Status, Kind, Operation, and Span ID. The Span ID is a clickable link that navigates to the span in Explore Traces.
 - **Correlated logs** — a table of log entries correlated to the selected operation.
 
-![Correlation flyout showing correlated spans for the frontend service GET operation](/opensearch-agentops-website/docs/images/apm/service-span-correlations.png)
+![Correlation flyout showing correlated spans for the frontend service GET operation](/docs/images/apm/service-span-correlations.png)
 
 ### Dependencies tab
 
 The Dependencies tab shows all downstream services that this service calls.
 
-![Service detail Dependencies tab showing dependency table with expandable rows and inline charts](/opensearch-agentops-website/docs/images/apm/service-dependencies.png)
+![Service detail Dependencies tab showing dependency table with expandable rows and inline charts](/docs/images/apm/service-dependencies.png)
 
 **Dependencies table**
 
@@ -154,4 +154,4 @@ Click a row to expand it and see inline charts for request volume, errors, and l
 
 ## How service data is generated
 
-Service data comes from the same Data Prepper pipeline that generates the [Application Map](/opensearch-agentops-website/docs/apm/service-map/). The `otel_apm_service_map` processor extracts service relationships from trace spans and indexes topology data into OpenSearch. RED metrics are exported to Prometheus via remote write, where they power the time-series charts and KPI cards in the Services views.
+Service data comes from the same Data Prepper pipeline that generates the [Application Map](/docs/apm/service-map/). The `otel_apm_service_map` processor extracts service relationships from trace spans and indexes topology data into OpenSearch. RED metrics are exported to Prometheus via remote write, where they power the time-series charts and KPI cards in the Services views.

@@ -107,7 +107,7 @@ Infrastructure traces are less common but useful for:
 
 Before setting up infrastructure monitoring, ensure you have:
 
-- A running OpenSearch Observability Stack (see [Sandbox](/opensearch-agentops-website/docs/get-started/sandbox/))
+- A running OpenSearch Observability Stack (see [Sandbox](/docs/get-started/sandbox/))
 - Network access from your infrastructure to the OTel Collector endpoints (ports 4317/4318)
 - Appropriate permissions to deploy agents on your target infrastructure
 
@@ -115,9 +115,9 @@ Before setting up infrastructure monitoring, ensure you have:
 
 Choose the guide that matches your infrastructure:
 
-- [Docker](/opensearch-agentops-website/docs/send-data/infrastructure/docker/) -- Monitor Docker containers and Compose deployments
-- [Kubernetes](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/) -- Monitor Kubernetes clusters, pods, and workloads
-- [AWS](/opensearch-agentops-website/docs/send-data/infrastructure/aws/) -- Integrate with AWS services using ADOT
-- [Prometheus](/opensearch-agentops-website/docs/send-data/infrastructure/prometheus/) -- Scrape and store Prometheus metrics
-- [Logstash](/opensearch-agentops-website/docs/send-data/infrastructure/logstash/) -- Route logs through Logstash pipelines
-- [Fluentd & Fluent Bit](/opensearch-agentops-website/docs/send-data/infrastructure/fluentd/) -- Forward logs with lightweight agents
+- [Docker](/docs/send-data/infrastructure/docker/) -- Monitor Docker containers and Compose deployments
+- [Kubernetes](/docs/send-data/infrastructure/kubernetes/) -- Monitor Kubernetes clusters, pods, and workloads
+- [AWS](/docs/send-data/infrastructure/aws/) -- Integrate with AWS services using ADOT
+- [Prometheus](/docs/send-data/infrastructure/prometheus/) -- Scrape and store Prometheus metrics
+- [Logstash](/docs/send-data/infrastructure/logstash/) -- Route logs through Logstash pipelines
+- [Fluentd & Fluent Bit](/docs/send-data/infrastructure/fluentd/) -- Forward logs with lightweight agents

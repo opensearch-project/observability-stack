@@ -33,6 +33,6 @@ The installer TUI guides you through component selection and configuration. Once
 
 ## Next steps
 
-- [Platform Overview](/opensearch-agentops-website/docs/get-started/overview/) — architecture and data flow
-- [Core Concepts](/opensearch-agentops-website/docs/get-started/core-concepts/) — key terms and ideas
-- [Quickstart](/opensearch-agentops-website/docs/get-started/quickstart/) — send your first traces
+- [Platform Overview](/docs/get-started/overview/) — architecture and data flow
+- [Core Concepts](/docs/get-started/core-concepts/) — key terms and ideas
+- [Quickstart](/docs/get-started/quickstart/) — send your first traces

@@ -148,6 +148,6 @@ print(f"Indexed {success} documents, {len(errors)} errors")
 
 ## Related links
 
-- [Pipeline Overview](/opensearch-agentops-website/docs/send-data/data-pipeline/) -- When to use pipelines vs. direct ingest.
-- [Data Prepper](/opensearch-agentops-website/docs/send-data/data-pipeline/data-prepper/) -- Pipeline-based ingestion with automatic transformation.
+- [Pipeline Overview](/docs/send-data/data-pipeline/) -- When to use pipelines vs. direct ingest.
+- [Data Prepper](/docs/send-data/data-pipeline/data-prepper/) -- Pipeline-based ingestion with automatic transformation.
 - [OpenSearch Bulk API reference](https://opensearch.org/docs/latest/api-reference/document-apis/bulk/) -- Full API specification.

@@ -73,7 +73,7 @@ Export dashboard JSON and commit it to your repository. This gives you:
 
 ## Next steps
 
-- [Build a Dashboard](/opensearch-agentops-website/docs/dashboards/build/) — create dashboards, add panels, and arrange layouts
-- [Discover Logs](/opensearch-agentops-website/docs/investigate/discover-logs/) — build log queries for dashboard panels
-- [Discover Traces](/opensearch-agentops-website/docs/investigate/discover-traces/) — build trace queries for dashboard panels
-- [Discover Metrics](/opensearch-agentops-website/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels
+- [Build a Dashboard](/docs/dashboards/build/) — create dashboards, add panels, and arrange layouts
+- [Discover Logs](/docs/investigate/discover-logs/) — build log queries for dashboard panels
+- [Discover Traces](/docs/investigate/discover-traces/) — build trace queries for dashboard panels
+- [Discover Metrics](/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels

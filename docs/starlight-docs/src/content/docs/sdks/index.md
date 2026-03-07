@@ -36,11 +36,11 @@ The SDK configures a `BatchSpanProcessor` that exports in the background — you
 
 ## Available SDKs
 
-- [Python SDK](/opensearch-agentops-website/docs/sdks/python/) — `opensearch-genai-sdk-py` on PyPI
-- [JavaScript / TypeScript SDK](/opensearch-agentops-website/docs/sdks/javascript/) — `opensearch-genai-sdk` on npm
+- [Python SDK](/docs/sdks/python/) — `opensearch-genai-sdk-py` on PyPI
+- [JavaScript / TypeScript SDK](/docs/sdks/javascript/) — `opensearch-genai-sdk` on npm
 
 ## Related links
 
-- [Agent Traces](/opensearch-agentops-website/docs/apm/agent-traces/) — viewing traces in OpenSearch Dashboards
-- [Send Data](/opensearch-agentops-website/docs/send-data/) — OTLP pipeline setup and collector configuration
+- [Agent Traces](/docs/apm/agent-traces/) — viewing traces in OpenSearch Dashboards
+- [Send Data](/docs/send-data/) — OTLP pipeline setup and collector configuration
 - [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — the OTel spec the SDKs follow

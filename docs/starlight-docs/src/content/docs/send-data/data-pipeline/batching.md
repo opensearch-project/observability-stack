@@ -145,6 +145,6 @@ Watch these indicators to detect batching or performance issues:
 
 ## Related links
 
-- [Data Prepper](/opensearch-agentops-website/docs/send-data/data-pipeline/data-prepper/) -- Full pipeline configuration reference.
-- [OTel Collector](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- Collector deployment and configuration.
-- [Pipeline Overview](/opensearch-agentops-website/docs/send-data/data-pipeline/) -- Architecture and data flow diagram.
+- [Data Prepper](/docs/send-data/data-pipeline/data-prepper/) -- Full pipeline configuration reference.
+- [OTel Collector](/docs/send-data/opentelemetry/collector/) -- Collector deployment and configuration.
+- [Pipeline Overview](/docs/send-data/data-pipeline/) -- Architecture and data flow diagram.

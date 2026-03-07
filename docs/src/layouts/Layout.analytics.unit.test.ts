@@ -1,6 +1,6 @@
 /**
  * Unit tests for analytics tracking
- * Feature: opensearch-agentops-website
+ * Feature: observability-stack
  * Requirements: 18.1, 18.3
  */
 

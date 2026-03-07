@@ -36,19 +36,19 @@ To create a correlation between a trace dataset and logs datasets, follow these 
 
 3. In the dataset details page, select the **Correlated datasets** tab.
 
-   ![Trace dataset Correlated datasets tab](/opensearch-agentops-website/docs/images/datasets/correlations-trace-dataset-tab.png)
+   ![Trace dataset Correlated datasets tab](/docs/images/datasets/correlations-trace-dataset-tab.png)
 
 4. Select **Configure correlation**.
 
 5. In the **Configure correlation** dialog, select up to five logs datasets to correlate with this trace dataset.
 
-   ![Configure correlation dialog](/opensearch-agentops-website/docs/images/datasets/correlations-configure-dialog.png)
+   ![Configure correlation dialog](/docs/images/datasets/correlations-configure-dialog.png)
 
 6. Select **Save** to create the correlation.
 
 7. The correlated logs datasets now appear in the **Correlated datasets** table.
 
-   ![Created correlation in table](/opensearch-agentops-website/docs/images/datasets/correlations-created-table.png)
+   ![Created correlation in table](/docs/images/datasets/correlations-created-table.png)
 
 ## Viewing correlations in logs datasets
 
@@ -60,7 +60,7 @@ You can view the trace datasets that are correlated with a logs dataset from the
 
 3. Select the **Correlated traces** tab to view trace datasets linked with this logs dataset.
 
-   ![Logs dataset Correlated traces tab](/opensearch-agentops-website/docs/images/datasets/correlations-logs-dataset-tab.png)
+   ![Logs dataset Correlated traces tab](/docs/images/datasets/correlations-logs-dataset-tab.png)
 
 :::note
 This view is read-only. To modify correlations, you must edit them from the trace dataset.
@@ -80,7 +80,7 @@ After creating correlations, you can access related logs when analyzing traces.
 
 4. In **Span details**, select the **Logs** tab to open **Related logs**. The related logs are retrieved by matching the trace ID from the span to log entries in your correlated logs datasets.
 
-   ![Span details with related logs](/opensearch-agentops-website/docs/images/datasets/correlations-span-details-logs.png)
+   ![Span details with related logs](/docs/images/datasets/correlations-span-details-logs.png)
 
 5. Select a log entry to view its full details or navigate to the **Logs** page for further exploration.
 

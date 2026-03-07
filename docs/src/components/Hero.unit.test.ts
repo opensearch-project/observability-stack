@@ -206,7 +206,7 @@ describe('Hero Component - Unit Tests', () => {
         <section id="hero">
           <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
             <a
-              href="/opensearch-agentops-website/docs/"
+              href="/docs/"
               class="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-lg"
               data-analytics="cta_hero_view_docs"
             >
@@ -229,20 +229,20 @@ describe('Hero Component - Unit Tests', () => {
     });
 
     it('should render "View Docs" primary CTA', () => {
-      const cta = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const cta = container.querySelector('a[href="/docs/"]');
 
       expect(cta).toBeTruthy();
       expect(cta?.textContent?.trim()).toBe('View Docs');
     });
 
     it('should have correct href for primary CTA', () => {
-      const cta = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const cta = container.querySelector('a[href="/docs/"]');
 
-      expect(cta?.getAttribute('href')).toBe('/opensearch-agentops-website/docs/');
+      expect(cta?.getAttribute('href')).toBe('/docs/');
     });
 
     it('should have primary styling on "View Docs" button', () => {
-      const cta = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const cta = container.querySelector('a[href="/docs/"]');
 
       expect(cta?.classList.contains('text-white')).toBe(true);
       expect(cta?.classList.contains('font-bold')).toBe(true);
@@ -276,7 +276,7 @@ describe('Hero Component - Unit Tests', () => {
     });
 
     it('should have analytics tracking attributes on both CTAs', () => {
-      const primaryCTA = container.querySelector('a[href="/opensearch-agentops-website/docs/"]');
+      const primaryCTA = container.querySelector('a[href="/docs/"]');
       const secondaryCTA = container.querySelector('a[href="https://github.com/opensearch-project/observability-stack"]');
 
       expect(primaryCTA?.getAttribute('data-analytics')).toBe('cta_hero_view_docs');

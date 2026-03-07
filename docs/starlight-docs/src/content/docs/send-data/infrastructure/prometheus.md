@@ -238,8 +238,8 @@ curl -s 'http://localhost:9090/api/v1/query?query=up{job="otel-collector"}' | jq
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Docker](/opensearch-agentops-website/docs/send-data/infrastructure/docker/)
-- [Kubernetes](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Docker](/docs/send-data/infrastructure/docker/)
+- [Kubernetes](/docs/send-data/infrastructure/kubernetes/)
 - [OTel Prometheus compatibility](https://opentelemetry.io/docs/specs/otel/compatibility/prometheus_and_openmetrics/) -- Prometheus and OpenMetrics compatibility spec
 - [Prometheus configuration reference](https://prometheus.io/docs/prometheus/latest/configuration/configuration/) -- Official Prometheus configuration docs

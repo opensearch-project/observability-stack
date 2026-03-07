@@ -7,7 +7,7 @@ Data Prepper is the pipeline engine that receives OTLP telemetry, routes events 
 
 ## Prerequisites
 
-- OpenSearch Observability Stack running (see [Quickstart](/opensearch-agentops-website/docs/get-started/quickstart/))
+- OpenSearch Observability Stack running (see [Quickstart](/docs/get-started/quickstart/))
 - OTel Collector configured to export to Data Prepper on port 21890
 
 ## Pipeline configuration
@@ -237,6 +237,6 @@ export OPENSEARCH_PASSWORD="your-secure-password"
 
 ## Related links
 
-- [Pipeline Overview](/opensearch-agentops-website/docs/send-data/data-pipeline/) -- Architecture and data flow diagram.
-- [Batching & Performance](/opensearch-agentops-website/docs/send-data/data-pipeline/batching/) -- Tune workers, batch sizes, and memory limits.
+- [Pipeline Overview](/docs/send-data/data-pipeline/) -- Architecture and data flow diagram.
+- [Batching & Performance](/docs/send-data/data-pipeline/batching/) -- Tune workers, batch sizes, and memory limits.
 - [Data Prepper processor reference](https://opensearch.org/docs/latest/data-prepper/pipelines/configuration/processors/processors/) -- Full list of available processors.

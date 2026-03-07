@@ -7,7 +7,7 @@ This quickstart walks you through sending trace data to the Observability Stack 
 
 ## Prerequisites
 
-Make sure the stack is running. If you haven't installed it yet, see [Get Started](/opensearch-agentops-website/docs/get-started/).
+Make sure the stack is running. If you haven't installed it yet, see [Get Started](/docs/get-started/).
 
 ## Step 1: Send traces
 
@@ -33,7 +33,7 @@ def run():
 run()
 ```
 
-For other languages, see [Send Data](/opensearch-agentops-website/docs/send-data/).
+For other languages, see [Send Data](/docs/send-data/).
 
 ## Step 2: View traces
 
@@ -50,6 +50,6 @@ From the Dashboards home, explore:
 
 ## Next steps
 
-- [Ingest Your First Traces](/opensearch-agentops-website/docs/get-started/quickstart/first-traces/) — detailed trace instrumentation guide
-- [Create Your First Dashboard](/opensearch-agentops-website/docs/get-started/quickstart/first-dashboard/) — build custom visualizations
-- [Agent Tracing](/opensearch-agentops-website/docs/ai-observability/agent-tracing/) — trace AI agent workflows
+- [Ingest Your First Traces](/docs/get-started/quickstart/first-traces/) — detailed trace instrumentation guide
+- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/) — build custom visualizations
+- [Agent Tracing](/docs/ai-observability/agent-tracing/) — trace AI agent workflows

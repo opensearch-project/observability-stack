@@ -237,8 +237,8 @@ end
 
 ## Related links
 
-- [Applications overview](/opensearch-agentops-website/docs/send-data/applications/)
-- [Auto-instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/auto-instrumentation/)
-- [Manual instrumentation](/opensearch-agentops-website/docs/send-data/opentelemetry/manual-instrumentation/)
+- [Applications overview](/docs/send-data/applications/)
+- [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+- [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
 - [OpenTelemetry Ruby documentation](https://opentelemetry.io/docs/languages/ruby/) -- Official OTel Ruby SDK reference
 - [Ruby instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=ruby&component=instrumentation) -- Available auto-instrumentation packages

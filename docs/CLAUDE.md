@@ -26,10 +26,10 @@ npm run test:coverage    # Run tests with v8 coverage
 
 The project produces two separate Astro builds merged into one output:
 
-1. **Main marketing site** (`src/`) — Astro + React + Tailwind. Single-page landing at `/opensearch-agentops-website/`. Configured in root `astro.config.mjs`.
-2. **Documentation site** (`starlight-docs/`) — Astro Starlight. Served at `/opensearch-agentops-website/docs/`. Has its own `package.json` and `astro.config.mjs`. The `build` script runs both and copies Starlight output into `dist/docs/`.
+1. **Main marketing site** (`src/`) — Astro + React + Tailwind. Single-page landing at `/`. Configured in root `astro.config.mjs`.
+2. **Documentation site** (`starlight-docs/`) — Astro Starlight. Served at `/docs/`. Has its own `package.json` and `astro.config.mjs`. The `build` script runs both and copies Starlight output into `dist/docs/`.
 
-Both sites use `base: '/opensearch-agentops-website'` (or `/opensearch-agentops-website/docs`) for GitHub Pages deployment. All internal links must respect this base path.
+Both sites use `base: '/'` (or `/docs`) for custom domain deployment at `observability.opensearch.org`. All internal links must respect this base path.
 
 ### Component Patterns
 

@@ -8,7 +8,7 @@ This guide walks you through creating a custom dashboard in OpenSearch Dashboard
 ## Prerequisites
 
 - The Observability Stack is running
-- You have trace or metric data flowing (see [Ingest Your First Traces](/opensearch-agentops-website/docs/get-started/quickstart/first-traces/))
+- You have trace or metric data flowing (see [Ingest Your First Traces](/docs/get-started/quickstart/first-traces/))
 
 ## Step 1: Open Dashboards
 
@@ -38,5 +38,5 @@ Select **Save**, give your dashboard a name, and optionally add it to an Observa
 
 ## Next steps
 
-- [Dashboards](/opensearch-agentops-website/docs/dashboards/) — advanced dashboard features
-- [Discover Metrics](/opensearch-agentops-website/docs/investigate/discover-metrics/) — PromQL-based metric exploration
+- [Dashboards](/docs/dashboards/) — advanced dashboard features
+- [Discover Metrics](/docs/investigate/discover-metrics/) — PromQL-based metric exploration

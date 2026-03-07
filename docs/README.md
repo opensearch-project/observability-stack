@@ -3,9 +3,9 @@
 [![CI](https://github.com/opensearch-project/observability-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/ci.yml)
 [![Deploy](https://github.com/opensearch-project/observability-stack/actions/workflows/deploy.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/deploy.yml)
 [![codecov](https://codecov.io/gh/opensearch-project/observability-stack/branch/main/graph/badge.svg)](https://codecov.io/gh/opensearch-project/observability-stack)
-[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-success?logo=github)](https://opensearch-project.github.io/opensearch-agentops-website/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-success?logo=github)](https://observability.opensearch.org)
 
-**🌐 Live Site**: [https://opensearch-project.github.io/opensearch-agentops-website/](https://opensearch-project.github.io/opensearch-agentops-website/)
+**Live Site**: [https://observability.opensearch.org](https://observability.opensearch.org)
 
 Marketing website and documentation for OpenSearch - Observability Stack - an OpenTelemetry-native observability platform for AI agents and LLM applications.
 
@@ -186,7 +186,7 @@ cd starlight-docs
 npm run dev
 ```
 
-The docs will be available at `http://localhost:4321/opensearch-agentops-website/docs/`
+The docs will be available at `http://localhost:4321/docs/`
 
 ## Contributing
 

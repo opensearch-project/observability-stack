@@ -170,6 +170,6 @@ This approach ensures every panel has a clear purpose — it answers a question 
 
 ## Next steps
 
-- [Sharing Dashboards](/opensearch-agentops-website/docs/dashboards/sharing/) — share, export, and best practices
-- [Discover Logs](/opensearch-agentops-website/docs/investigate/discover-logs/) — build log queries to power dashboard panels
-- [Discover Metrics](/opensearch-agentops-website/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels
+- [Sharing Dashboards](/docs/dashboards/sharing/) — share, export, and best practices
+- [Discover Logs](/docs/investigate/discover-logs/) — build log queries to power dashboard panels
+- [Discover Metrics](/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels

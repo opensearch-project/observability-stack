@@ -196,7 +196,7 @@ Documentation for ${title} will be added here.
 
 ## Related Links
 
-- [View Full Documentation](/opensearch-agentops-website/docs/)
+- [View Full Documentation](/docs/)
 - [GitHub Repository](https://github.com/opensearch-project/observability-stack)
 `;
 }

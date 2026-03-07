@@ -376,9 +376,9 @@ curl -s http://localhost:2020/api/v1/metrics | jq .
 
 ## Related links
 
-- [Infrastructure Monitoring Overview](/opensearch-agentops-website/docs/send-data/infrastructure/)
-- [Logstash](/opensearch-agentops-website/docs/send-data/infrastructure/logstash/)
-- [Docker](/opensearch-agentops-website/docs/send-data/infrastructure/docker/)
-- [Kubernetes](/opensearch-agentops-website/docs/send-data/infrastructure/kubernetes/)
+- [Infrastructure Monitoring Overview](/docs/send-data/infrastructure/)
+- [Logstash](/docs/send-data/infrastructure/logstash/)
+- [Docker](/docs/send-data/infrastructure/docker/)
+- [Kubernetes](/docs/send-data/infrastructure/kubernetes/)
 - [Fluent Bit documentation](https://docs.fluentbit.io/manual) -- Official Fluent Bit manual
 - [Fluentd documentation](https://docs.fluentd.org) -- Official Fluentd reference

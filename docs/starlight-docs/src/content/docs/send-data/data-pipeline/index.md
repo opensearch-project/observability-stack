@@ -44,12 +44,12 @@ Customize the default pipeline configuration when you need to:
 ## Pipeline subsections
 
 <ul>
-  <li><a href="/opensearch-agentops-website/docs/send-data/data-pipeline/data-prepper/">Data Prepper</a> -- Full pipeline configuration walkthrough including routing, processors, and sinks.</li>
-  <li><a href="/opensearch-agentops-website/docs/send-data/data-pipeline/ingest-api/">Ingest API</a> -- Direct ingestion via the OpenSearch Bulk API for pre-processed data.</li>
-  <li><a href="/opensearch-agentops-website/docs/send-data/data-pipeline/batching/">Batching &amp; Performance</a> -- Tune batch sizes, memory limits, and worker counts for production throughput.</li>
+  <li><a href="/docs/send-data/data-pipeline/data-prepper/">Data Prepper</a> -- Full pipeline configuration walkthrough including routing, processors, and sinks.</li>
+  <li><a href="/docs/send-data/data-pipeline/ingest-api/">Ingest API</a> -- Direct ingestion via the OpenSearch Bulk API for pre-processed data.</li>
+  <li><a href="/docs/send-data/data-pipeline/batching/">Batching &amp; Performance</a> -- Tune batch sizes, memory limits, and worker counts for production throughput.</li>
 </ul>
 
 ## Related links
 
-- [OpenTelemetry Collector](/opensearch-agentops-website/docs/send-data/opentelemetry/collector/) -- Configure the collector that feeds data into the pipeline.
+- [OpenTelemetry Collector](/docs/send-data/opentelemetry/collector/) -- Configure the collector that feeds data into the pipeline.
 - [Data Prepper documentation](https://opensearch.org/docs/latest/data-prepper/) -- Official Data Prepper reference.
