@@ -16,12 +16,16 @@ export default defineConfig({
 			logo: {
 				src: './src/assets/opensearch-logo-darkmode.svg',
 			},
+			editLink: {
+				baseUrl: 'https://github.com/opensearch-project/observability-stack/edit/main/docs/starlight-docs/',
+			},
 			customCss: [
 				'./src/styles/custom.css',
 			],
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/opensearch-project/observability-stack' }],
 			components: {
 				Header: './src/components/CustomHeader.astro',
+				PageSidebar: './src/components/PageSidebar.astro',
 			},
 			sidebar: [
 				{

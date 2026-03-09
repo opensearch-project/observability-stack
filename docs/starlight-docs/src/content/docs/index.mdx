@@ -7,16 +7,24 @@ import { LinkCard, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/com
 import IconCard from '../../components/IconCard.astro';
 import IconCardGrid from '../../components/IconCardGrid.astro';
 
-OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observability platform** ([GitHub](https://github.com/opensearch-project/observability-stack)) for monitoring services, infrastructure, and AI agents. Install locally via Docker Compose — traces, logs, metrics, service maps, and agent tracing out of the box.
+OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observability platform** ([GitHub](https://github.com/opensearch-project/observability-stack)) for monitoring services, infrastructure, and AI agents. Install locally via Docker Compose — traces, logs, Prometheus metrics, service maps, and agent tracing out of the box.
 
 ## What You Can Do
 
 <IconCardGrid>
-  <IconCard title="Traces, Logs & Metrics" icon="/docs/icons/app_monitoring.svg" items={["Collect via OTLP", "Correlate across signals", "Search with PPL and PromQL"]} href="/docs/investigate/discover-logs/" />
+  <IconCard title="Traces, Logs & Metrics" icon="/docs/icons/app_visualize.svg" items={["Collect via OTLP", "Log-trace correlation", "Search with PPL and PromQL"]} href="/docs/investigate/discover-logs/" />
   <IconCard title="Application Monitoring" icon="/docs/icons/app_apm.svg" items={["Auto-generated service maps", "RED metrics from traces", "Latency and error tracking"]} href="/docs/apm/" />
-  <IconCard title="AI Agent Observability" icon="/docs/icons/app_ml.svg" items={["Trace LLM calls and tool use", "Agent execution graphs", "Token usage and cost tracking"]} href="/docs/ai-observability/" />
+  <IconCard title="AI Agent Observability" icon="/docs/icons/app_ml.svg" items={["Trace LLM calls, token usage, and tool use", "Agent execution graphs", "Python and JavaScript SDKs"]} href="/docs/ai-observability/" />
   <IconCard title="Dashboards & Alerting" icon="/docs/icons/app_dashboard.svg" items={["Custom dashboards", "Anomaly detection", "Slack, email, webhook alerts"]} href="/docs/dashboards/" />
 </IconCardGrid>
+
+## Why Observability Stack?
+
+- **Open source**: Fully open source, no vendor lock-in, self-host everything
+- **OpenTelemetry-native**: All data ingestion uses OTel protocols and [semantic conventions](https://opentelemetry.io/docs/specs/semconv/)
+- **GenAI-first**: Purpose-built views for AI agent tracing using standard `gen_ai.*` attributes
+- **Local-first**: Runs entirely on your machine via Docker Compose — no cloud account required
+- **Production path**: Same components (OpenSearch, Prometheus, OTel Collector) scale to production
 
 ## Quickstarts
 
@@ -28,16 +36,7 @@ OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observa
 The stack optionally ships with example services — a multi-agent travel planner, weather agent, and events agent that generate agent traces automatically. You can also enable the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/architecture/), a full microservices e-commerce app for realistic telemetry. Install, open Dashboards, and start exploring — no instrumentation needed.
 </Aside>
 
-## Why Observability Stack?
-
-- **Open source**: Fully open source, no vendor lock-in, self-host everything
-- **OpenTelemetry-native**: All data ingestion uses OTel protocols and semantic conventions
-- **GenAI-first**: Purpose-built views for AI agent tracing using standard `gen_ai.*` attributes
-- **Local-first**: Runs entirely on your machine via Docker Compose — no cloud account required
-- **Production path**: Same components (OpenSearch, Prometheus, OTel Collector) scale to production
-
 ## Community
 
-- [GitHub](https://github.com/opensearch-project/observability-stack) — issues, PRs, discussions
-- [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — the standard we follow
+- [GitHub](https://github.com/opensearch-project/observability-stack) — issues, PRs, and discussions
 - [Contributing guide](/docs/contributing/) — how to contribute
