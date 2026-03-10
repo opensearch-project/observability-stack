@@ -1,42 +1,42 @@
 ---
-title: OpenSearch - Observability Stack
-description: Full-stack observability for services and AI — traces, logs, metrics, dashboards, service maps, and agent tracing.
+title: OpenSearch Observability Stack
+description: Open-source, OpenTelemetry-native observability for services and AI agents.
 ---
 
-## Welcome to OpenSearch - Observability Stack
+import { LinkCard, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import IconCard from '../../components/IconCard.astro';
+import IconCardGrid from '../../components/IconCardGrid.astro';
 
-OpenSearch Observability Stack is an open-source, OpenTelemetry-native platform for full-stack observability. Monitor your services, infrastructure, and AI agents from a single pane of glass.
+OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observability platform** ([GitHub](https://github.com/opensearch-project/observability-stack)) for monitoring services, infrastructure, and AI agents. Install locally via Docker Compose — traces, logs, Prometheus metrics, service maps, and agent tracing out of the box.
 
 ## What You Can Do
 
-### Send Data
-Instrument your applications and infrastructure with OpenTelemetry. Collect traces, logs, and metrics from any language, framework, or platform.
+<IconCardGrid>
+  <IconCard title="Traces, Logs & Metrics" icon="/docs/icons/app_visualize.svg" items={["Collect via OTLP", "Log-trace correlation", "Search with PPL and PromQL"]} href="/docs/investigate/discover-logs/" />
+  <IconCard title="Application Monitoring" icon="/docs/icons/app_apm.svg" items={["Auto-generated service maps", "RED metrics from traces", "Latency and error tracking"]} href="/docs/apm/" />
+  <IconCard title="AI Agent Observability" icon="/docs/icons/app_ml.svg" items={["Trace LLM calls, token usage, and tool use", "Agent execution graphs", "Python and JavaScript SDKs"]} href="/docs/ai-observability/" />
+  <IconCard title="Dashboards & Alerting" icon="/docs/icons/app_dashboard.svg" items={["Custom dashboards", "Anomaly detection", "Slack, email, webhook alerts"]} href="/docs/dashboards/" />
+</IconCardGrid>
 
-### Investigate
-Query, explore, and correlate your observability data. Drill into traces, search logs, and analyze metrics to find root causes fast.
+## Why Observability Stack?
 
-### Application Monitoring
-Visualize service dependencies, track latency and error rates, and monitor application performance across your distributed systems.
+- **Open source**: Fully open source, no vendor lock-in, self-host everything
+- **OpenTelemetry-native**: All data ingestion uses OTel protocols and [semantic conventions](https://opentelemetry.io/docs/specs/semconv/)
+- **GenAI-first**: Purpose-built views for AI agent tracing using standard `gen_ai.*` attributes
+- **Local-first**: Runs entirely on your machine via Docker Compose — no cloud account required
+- **Production path**: Same components (OpenSearch, Prometheus, OTel Collector) scale to production
 
-### Dashboards & Visualize
-Build custom dashboards with real-time panels, charts, and heatmaps. Query metrics with PromQL and trace data with PPL.
+## Quickstarts
 
-### Logs
-Ingest, search, and correlate logs with traces. Full-text search with structured field queries using PPL.
+<LinkCard title="Install & Explore" href="/docs/get-started/" description="Install the stack and explore traces already flowing from the built-in example services." />
+<LinkCard title="Send Your First Traces" href="/docs/get-started/quickstart/" description="Instrument an app with the Python SDK and see traces in dashboards." />
+<LinkCard title="Trace an AI Agent" href="/docs/ai-observability/agent-tracing/" description="Instrument an AI agent with GenAI semantic conventions and visualize the execution graph." />
 
-### Metrics
-Prometheus-compatible metrics ingestion with PromQL support. Custom dashboards and RED metrics computed from traces.
+<Aside type="tip">
+The stack optionally ships with example services — a multi-agent travel planner, weather agent, and events agent that generate agent traces automatically. You can also enable the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/architecture/), a full microservices e-commerce app for realistic telemetry. Install, open Dashboards, and start exploring — no instrumentation needed.
+</Aside>
 
-### Traces
-Distributed tracing with span-level detail. Trace context propagation, service maps, and trace analytics.
+## Community
 
-### AI Observability
-Trace AI agent workflows with OpenTelemetry GenAI semantic conventions. Visualize agent execution graphs, monitor token usage, and debug agent behavior with Python and JavaScript SDKs.
-
-## Quick Links
-
-- [Get Started](/docs/get-started/)
-- [Send Data](/docs/send-data/)
-- [Application Monitoring](/docs/apm/)
-- [AI Observability](/docs/ai-observability/)
-- [GitHub Repository](https://github.com/opensearch-project/observability-stack)
+- [GitHub](https://github.com/opensearch-project/observability-stack) — issues, PRs, and discussions
+- [Contributing guide](/docs/contributing/) — how to contribute

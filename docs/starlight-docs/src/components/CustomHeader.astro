@@ -3,12 +3,14 @@
 import type { Props } from '@astrojs/starlight/props';
 import Search from '@astrojs/starlight/components/Search.astro';
 import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : import.meta.env.BASE_URL + '/';
 ---
 
 <div class="header sl-flex">
 	<div class="title-wrapper sl-flex">
 		<a href="/" class="site-title sl-flex">
-			<img src="/opensearch-logo-darkmode.svg" alt="OpenSearch" class="logo" />
+			<img src={`${base}opensearch-logo-darkmode.svg`} alt="OpenSearch" class="logo dark-only" />
+			<img src={`${base}opensearch-logo-lightmode.svg`} alt="OpenSearch" class="logo light-only" />
 			<span class="brand-text">Observability Stack</span>
 		</a>
 	</div>
@@ -48,6 +50,13 @@ import ThemeSelect from '@astrojs/starlight/components/ThemeSelect.astro';
 	.logo {
 		height: 2rem;
 		width: auto;
+	}
+
+	:global([data-theme='dark']) .light-only {
+		display: none;
+	}
+	:global([data-theme='light']) .dark-only {
+		display: none;
 	}
 
 	.brand-text {

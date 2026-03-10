@@ -1,0 +1,16 @@
+:root {
+  --sl-content-width: 60rem;
+}
+
+.sl-markdown-content .icon-card-grid {
+  margin: 0;
+}
+
+.sl-markdown-content .icon-card-list {
+  margin: 0 !important;
+  padding: 0 0 0 1.2rem !important;
+}
+
+.sl-markdown-content .icon-card-list li {
+  margin: 0 !important;
+}

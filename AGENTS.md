@@ -826,6 +826,10 @@ helm uninstall observability-stack-test
 - Provide both quick start and detailed explanations
 - Include troubleshooting sections
 
+### Icons
+
+Use OpenSearch UI (OUI) icons for documentation components. Browse the full set at https://oui.opensearch.org/1.23/#/display/icons. SVG sources are at https://github.com/opensearch-project/oui/tree/main/src/components/icon/assets. Prefer 32x32 icons over 16x16 for consistent sizing.
+
 ### Examples
 
 - Include complete, runnable code
