@@ -3,15 +3,13 @@ title: Ingest Your First Traces
 description: Instrument your application to send traces to the Observability Stack
 ---
 
-This guide shows how to instrument a Python application with OpenTelemetry and send traces to the Observability Stack.
-
-## Install dependencies
+## 1. Install dependencies
 
 ```bash
 pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 ```
 
-## Configure the exporter
+## 2. Send traces
 
 ```python
 from opentelemetry import trace
@@ -19,19 +17,13 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
-# Point to the OTel Collector
 exporter = OTLPSpanExporter(endpoint="http://localhost:4317", insecure=True)
-
 provider = TracerProvider()
 provider.add_span_processor(BatchSpanProcessor(exporter))
 trace.set_tracer_provider(provider)
 
 tracer = trace.get_tracer("my-app")
-```
 
-## Create spans
-
-```python
 with tracer.start_as_current_span("handle-request") as span:
     span.set_attribute("http.method", "GET")
     span.set_attribute("http.url", "/api/users")
@@ -41,14 +33,17 @@ with tracer.start_as_current_span("handle-request") as span:
         # your database query here
 ```
 
-## Verify in Dashboards
+For other languages, see [Send Data](/docs/send-data/).
 
-1. Open `http://localhost:5601`.
-2. Go to **Observability** > **Traces**.
-3. Search for your trace by name or filter by time range.
-4. Click a trace to see the span tree, timing, and attributes.
+## 3. View traces in OpenSearch Dashboards
+
+1. Open [OpenSearch Dashboards](http://localhost:5601)
+2. Navigate to **Observability** → **Traces**
+3. Search for your trace by name or filter by time range
+4. Click a trace to see the span tree, timing, and attributes
 
 ## Next steps
 
-- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/)
+- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/) — build custom visualizations
+- [Agent Tracing](/docs/ai-observability/agent-tracing/) — trace AI agent workflows with GenAI semantic conventions
 - [Send Data](/docs/send-data/) — more instrumentation options

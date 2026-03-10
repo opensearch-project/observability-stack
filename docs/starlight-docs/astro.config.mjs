@@ -7,6 +7,9 @@ import mermaid from 'astro-mermaid';
 export default defineConfig({
 	site: 'https://observability.opensearch.org',
 	base: '/docs',
+	redirects: {
+		'/get-started': '/get-started/installation/',
+	},
 	integrations: [
 		mermaid({
 			autoTheme: true,
@@ -35,7 +38,18 @@ export default defineConfig({
 				{
 					label: 'Get Started',
 					collapsed: true,
-					autogenerate: { directory: 'get-started' },
+					items: [
+						{ label: 'Installation', link: '/get-started/installation/' },
+						{ label: 'Platform Overview', link: '/get-started/overview/' },
+						{ label: 'Core Concepts', link: '/get-started/core-concepts/' },
+						{
+							label: 'Quickstart',
+							items: [
+								{ label: 'Ingest Your First Traces', link: '/get-started/quickstart/first-traces/' },
+								{ label: 'Create Your First Dashboard', link: '/get-started/quickstart/first-dashboard/' },
+							],
+						},
+					],
 				},
 				{
 					label: 'Send Data',

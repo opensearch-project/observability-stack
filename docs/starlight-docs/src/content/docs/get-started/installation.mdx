@@ -1,0 +1,106 @@
+---
+title: Installation
+description: Install and run the OpenSearch Observability Stack
+---
+
+The OpenSearch Observability Stack is an open-source, OpenTelemetry-native observability platform. It runs locally via Docker Compose and provides traces, logs, metrics, dashboards, service maps, and AI agent tracing out of the box.
+
+<video src="https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/observability-stack-installation.mp4" controls></video>
+
+## Prerequisites
+
+- **Docker** and **Docker Compose** (v2.20+)
+- At least 8 GB of available RAM
+- macOS, Linux, or WSL2 on Windows
+
+## Installation
+
+Installation takes 8–15 minutes depending on your internet connection.
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+<Tabs>
+  <TabItem label="Interactive Installer">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/opensearch-project/observability-stack/main/install.sh | bash
+    ```
+    The installer TUI guides you through component selection and configuration. Installation takes 8–15 minutes. Once complete, the stack starts automatically.  
+    Access OpenSearch Dashboards at http://localhost:5601
+  </TabItem>
+  <TabItem label="Docker Compose">
+    ```bash
+    git clone https://github.com/opensearch-project/observability-stack.git
+    cd observability-stack
+    docker compose up -d
+    ```
+    Access OpenSearch Dashboards at [http://localhost:5601](http://localhost:5601)
+  </TabItem>
+</Tabs>
+
+Credentials are stored in the `.env` file at the installation root:
+
+```bash
+cd observability-stack
+grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
+```
+
+## What gets installed
+
+| Component | Purpose |
+|-----------|---------|
+| OpenTelemetry Collector | Receives traces, logs, and metrics via OTLP |
+| Data Prepper | Processes traces, generates service maps and RED metrics |
+| OpenSearch | Stores and indexes all observability data |
+| Prometheus | Scrapes and stores time-series metrics |
+| OpenSearch Dashboards | Visualizes data, agent traces, and service maps |
+| [Example services](#example-services) | Multi-agent travel planner, weather, and events agents that generate agent traces with GenAI semantic conventions |
+
+### Example services
+
+The stack ships with example AI agent services that generate agent traces automatically — a multi-agent travel planner, weather agent, and events agent. These are enabled by default.
+
+To disable them, comment out this line in `.env`:
+
+```env
+# INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
+```
+
+#### OpenTelemetry Demo
+
+You can also run the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/), a full microservices e-commerce app that generates realistic telemetry. Uncomment in `.env`:
+
+```env
+INCLUDE_COMPOSE_OTEL_DEMO=docker-compose.otel-demo.yml
+```
+
+This adds ~2 GB memory usage. See [Resource Requirements](https://github.com/opensearch-project/observability-stack#resource-requirements) for details.
+
+After any `.env` change: `docker compose down && docker compose up -d`
+
+## Updating
+
+Component images are updated on new OpenSearch releases. To pull the latest:
+
+```bash
+cd observability-stack
+git pull
+docker compose down
+docker compose up -d --pull always
+```
+
+## Uninstall
+
+The stack runs via Docker Compose from the cloned `observability-stack` repository. To stop all services and remove data:
+
+```bash
+cd observability-stack
+docker compose down -v --remove-orphans
+```
+
+To fully remove, delete the repository directory.
+
+## Next steps
+
+- [Platform Overview](/docs/get-started/overview/) — architecture and data flow
+- [Core Concepts](/docs/get-started/core-concepts/) — key terms and ideas
+- [Quickstart](/docs/get-started/quickstart/) — send your first traces

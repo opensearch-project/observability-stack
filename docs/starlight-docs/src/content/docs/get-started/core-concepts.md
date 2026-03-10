@@ -40,4 +40,4 @@ PromQL is Prometheus's query language for time-series metrics. The Observability
 OpenSearch stores observability data in indices following naming conventions:
 - `otel-v1-apm-span-*` — trace spans
 - `otel-v2-apm-service-map` — service map data
-- `ss4o_logs-*` — log data
+- `logs-otel-v1*` — log data
