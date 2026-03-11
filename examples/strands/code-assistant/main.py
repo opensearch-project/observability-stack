@@ -33,6 +33,12 @@ from utils.prompts import CODE_ASSISTANT_PROMPT
 # This provides better visibility into tool calls during development
 os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "enabled"
 
+# Opt-in to latest GenAI semantic conventions (v1.37+) for richer trace data:
+# - gen_ai.input.messages / gen_ai.output.messages on events (structured I/O)
+# - gen_ai.provider.name instead of gen_ai.system
+# Also include tool definitions in traces for eval-ready spans.
+os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental,gen_ai_tool_definitions"
+
 # ============================================================================
 # OPENTELEMETRY SETUP - OTLP EXPORTER CONFIGURATION
 # ============================================================================
