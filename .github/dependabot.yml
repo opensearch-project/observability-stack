@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # All npm dependencies across docs/
+  - package-ecosystem: "npm"
+    directories:
+      - "/docs"
+      - "/docs/starlight-docs"
+    schedule:
+      interval: "weekly"
+    groups:
+      docs-npm:
+        patterns: ["*"]
+        group-by: dependency-name
+
+  # All Python dependencies across examples/
+  - package-ecosystem: "pip"
+    directories:
+      - "/examples/langchain/bedrock-financial-assistant"
+      - "/examples/strands/code-assistant"
+      - "/examples/plain-agents/weather-agent"
+    schedule:
+      interval: "weekly"
+    groups:
+      examples-python:
+        update-types: ["minor", "patch"]
+        group-by: dependency-name
