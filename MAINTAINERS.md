@@ -10,3 +10,4 @@ This document contains a list of maintainers in this repo. See [opensearch-proje
 | Megha Goyal | [goyamegh](https://github.com/goyamegh) | Amazon |
 | Vamsi Manohar | [vamsimanohar](https://github.com/vamsimanohar) | Amazon |
 | Anirudha (Ani) Jadhav | [anirudha](https://github.com/anirudha) | Amazon |
+| Shenoy Pratik Gurudatt | [ps48](https://github.com/ps48) | Amazon |
