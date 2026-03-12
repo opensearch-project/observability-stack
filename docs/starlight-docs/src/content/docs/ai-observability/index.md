@@ -18,6 +18,7 @@ AI agent traces use the same OpenTelemetry infrastructure as service traces. You
 
 ## Getting started
 
+- **[Agent Health](/docs/agent-health/)** — evaluate and observe AI agents with Golden Path trajectory comparison, LLM judge scoring, and batch experiments
 - [Agent Tracing](/docs/ai-observability/agent-tracing/) — the Agent Traces UI in OpenSearch Dashboards
 - [Agent Graph & Path](/docs/ai-observability/agent-tracing/graph/) — DAG visualization, trace tree, and timeline views
 - [MCP Server](/docs/mcp/) — query OpenSearch from AI agents via MCP

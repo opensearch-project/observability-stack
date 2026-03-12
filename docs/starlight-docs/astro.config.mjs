@@ -77,6 +77,11 @@ export default defineConfig({
 					autogenerate: { directory: 'ai-observability' },
 				},
 				{
+					label: 'Agent Health',
+					collapsed: true,
+					autogenerate: { directory: 'agent-health' },
+				},
+				{
 					label: 'MCP Server',
 					collapsed: true,
 					autogenerate: { directory: 'mcp' },
