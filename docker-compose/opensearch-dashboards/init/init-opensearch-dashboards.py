@@ -5,7 +5,9 @@ import time
 import requests
 import yaml
 
-BASE_URL = "http://opensearch-dashboards:5601"
+_dashboards_host = os.getenv("OPENSEARCH_DASHBOARDS_HOST", "opensearch-dashboards")
+_dashboards_port = os.getenv("OPENSEARCH_DASHBOARDS_PORT", "5601")
+BASE_URL = f"http://{_dashboards_host}:{_dashboards_port}"
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
 PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
