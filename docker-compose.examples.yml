@@ -132,3 +132,28 @@ services:
         limits:
           memory: 128M
     logging: *logging
+
+  # Eval Canary: periodically scores un-evaluated agent traces
+  example-eval-canary:
+    build:
+      context: ./docker-compose/eval-canary
+      dockerfile: Dockerfile
+    container_name: eval-canary
+    environment:
+      - OPENSEARCH_HOST=https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
+      - EVAL_CANARY_INTERVAL=${CANARY_INTERVAL}
+      - EVAL_CANARY_LOOKBACK_MINUTES=15
+    depends_on:
+      - opensearch
+      - otel-collector
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${CANARY_MEMORY_LIMIT}
+    logging: *logging
