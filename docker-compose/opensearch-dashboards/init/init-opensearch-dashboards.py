@@ -5,11 +5,16 @@ import time
 import requests
 import yaml
 
-BASE_URL = "http://opensearch-dashboards:5601"
+_dashboards_host = os.getenv("OPENSEARCH_DASHBOARDS_HOST", "opensearch-dashboards")
+_dashboards_port = os.getenv("OPENSEARCH_DASHBOARDS_PORT", "5601")
+_dashboards_protocol = os.getenv("OPENSEARCH_DASHBOARDS_PROTOCOL", "http")
+BASE_URL = f"{_dashboards_protocol}://{_dashboards_host}:{_dashboards_port}"
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
 PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
+_opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
+OPENSEARCH_ENDPOINT = f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -18,7 +23,7 @@ def wait_for_dashboards():
     while True:
         try:
             response = requests.get(
-                f"{BASE_URL}/api/status", auth=(USERNAME, PASSWORD), timeout=5
+                f"{BASE_URL}/api/status", auth=(USERNAME, PASSWORD), timeout=5, verify=False
             )
             if response.status_code == 200:
                 break
@@ -376,7 +381,7 @@ def create_opensearch_datasource(workspace_id):
 
     print("🔧 Creating OpenSearch datasource...")
 
-    opensearch_endpoint = "https://opensearch:9200"
+    opensearch_endpoint = OPENSEARCH_ENDPOINT
 
     payload = {
         "attributes": {

@@ -1,0 +1,98 @@
+# Local OpenSearch - include this file when running OpenSearch locally instead of cloud
+# Included by default via INCLUDE_COMPOSE_LOCAL_OPENSEARCH in .env
+# To use a cloud OpenSearch instance, comment out INCLUDE_COMPOSE_LOCAL_OPENSEARCH in .env
+
+volumes:
+  opensearch-data:
+    driver: local
+
+services:
+  # OpenSearch - Stores and indexes logs and traces for search and analysis
+  opensearch:
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch:${OPENSEARCH_VERSION}
+    container_name: opensearch
+    pull_policy: always
+    environment:
+      # Single-node cluster for development
+      - cluster.name=observability-stack-cluster
+      - node.name=observability-stack-node
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      # Set heap size (adjust based on available memory)
+      - OPENSEARCH_JAVA_OPTS=${OPENSEARCH_JAVA_OPTS}
+      # Initial admin password (required for OpenSearch 2.12+)
+      - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}"
+      - plugins.query.datasources.encryption.masterkey=BTqK4Ytdz67La1kShIKV3Pu9
+    volumes:
+      # Persist data across container restarts
+      - opensearch-data:/usr/share/opensearch/data
+    ports:
+      # REST API endpoint
+      - "${OPENSEARCH_PORT}:9200"
+      # Performance analyzer
+      - "9600:9600"
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${OPENSEARCH_MEMORY_LIMIT}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    healthcheck:
+      test: curl -s -k -u '${OPENSEARCH_USER}':'${OPENSEARCH_PASSWORD}' https://localhost:9200/_cluster/health | grep -E '"status":"(green|yellow)"'
+      start_period: 120s
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  # OpenSearch Dashboards - Web UI for visualizing logs and traces
+  opensearch-dashboards:
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
+    container_name: opensearch-dashboards
+    pull_policy: always
+    environment:
+      - OPENSEARCH_HOSTS=["https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}"]
+      - OPENSEARCH_DASHBOARD_PORT=${OPENSEARCH_DASHBOARDS_PORT}
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+    ports:
+      # Web UI endpoint
+      - "${OPENSEARCH_DASHBOARDS_PORT}:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DASHBOARDS_MEMORY_LIMIT}
+    healthcheck:
+      test: curl -f -u '${OPENSEARCH_USER}':'${OPENSEARCH_PASSWORD}' http://localhost:5601/api/status || exit 1
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+
+  # Add depends_on opensearch to services that need it for local startup ordering
+  otel-collector:
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
+  data-prepper:
+    depends_on:
+      opensearch:
+        condition: service_healthy
+
