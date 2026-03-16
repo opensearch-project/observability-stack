@@ -1,0 +1,5 @@
+opensearch-py>=2.0
+opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/kylehounslow/genai-observability-sdk-py.git@10c114d62df9e1a35c7e1bc9387bf8395e3fb145
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
