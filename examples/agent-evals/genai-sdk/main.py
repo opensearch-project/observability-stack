@@ -14,6 +14,7 @@ Prerequisites:
 Usage:
   python main.py <session_id>           # LLM-as-judge (Bedrock Claude)
   python main.py --mock <session_id>    # Mock evaluator (no AWS needed)
+  python main.py --mock --trace-id <id> # Target a specific trace (skip retrieval)
 """
 
 import argparse
@@ -172,11 +173,15 @@ def _find_root_agent_span(rec: SessionRecord) -> SpanRecord | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run agent evals on stored traces")
-    parser.add_argument("session_id", help="Conversation ID or trace ID")
+    parser.add_argument("session_id", nargs="?", help="Conversation ID or trace ID")
     parser.add_argument("--mock", action="store_true", help="Use mock evaluator (no AWS needed)")
+    parser.add_argument("--trace-id", help="Target a specific trace ID (skip retrieval)")
     args = parser.parse_args()
 
-    session_id = args.session_id
+    if not args.session_id and not args.trace_id:
+        parser.error("provide session_id or --trace-id")
+
+    session_id = args.session_id or args.trace_id
 
     # --- Step 0: Setup OTel export for score write-back ---
     run_id = str(uuid.uuid4())
@@ -187,13 +192,19 @@ def main() -> None:
     trace.set_tracer_provider(provider)
 
     # --- Step 1: Retrieve traces ---
-    print(f"\n🔍 Retrieving session: {session_id}")
     retriever = OpenSearchTraceRetriever(
         host=OPENSEARCH_HOST,
         auth=(OPENSEARCH_USER, OPENSEARCH_PASS),
         verify_certs=False,
     )
-    session_rec = retriever.get_traces(session_id)
+
+    if args.trace_id:
+        # Direct trace targeting — query spans for this trace
+        print(f"\n🔍 Looking up trace: {args.trace_id}")
+        session_rec = retriever.get_traces(args.trace_id)
+    else:
+        print(f"\n🔍 Retrieving session: {session_id}")
+        session_rec = retriever.get_traces(session_id)
 
     if not session_rec.traces:
         print("❌ No traces found.")

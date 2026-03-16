@@ -6,7 +6,7 @@ End-to-end evaluation loop: retrieve agent traces from OpenSearch, run LLM-as-ju
 
 - [observability-stack](../../) running (`docker compose up`)
 - Agent traces indexed in OpenSearch (run any example agent first)
-- AWS credentials configured for Bedrock access (used by the evaluator)
+- AWS credentials configured for Bedrock access (only for LLM-as-judge mode, not needed with `--mock`)
 
 ## Setup
 
@@ -17,12 +17,44 @@ pip install -r requirements.txt
 ## Usage
 
 ```bash
-# By conversation ID (gen_ai.conversation.id)
+# LLM-as-judge using Bedrock Claude (requires AWS credentials)
 python main.py <conversation_id>
 
-# By trace ID
-python main.py <trace_id>
+# Target a specific trace ID
+python main.py --trace-id <trace_id>
+
+# Mock evaluator (no AWS credentials needed, for testing the pipeline)
+python main.py --mock <conversation_id>
+python main.py --mock --trace-id <trace_id>
 ```
+
+### Quick start (no AWS needed)
+
+```bash
+# 1. Run the observability-stack with example agents
+cd ../.. && docker compose up -d
+
+# 2. Wait for canary to generate traces, then grab a trace ID from Dashboards
+
+# 3. Run mock eval against that trace
+python main.py --mock --trace-id <trace_id>
+
+# 4. Check OpenSearch Dashboards — the score span appears in the same trace
+```
+
+### LLM-as-judge (Bedrock)
+
+Requires AWS credentials with Bedrock access (`aws configure` or env vars).
+
+```bash
+# Evaluate by conversation ID
+python main.py conv_abc123
+
+# Evaluate by trace ID
+python main.py --trace-id d4479d70ec2aa787775b58cc65e77b88
+```
+
+Uses `HelpfulnessEvaluator` from [strands-agents/evals](https://github.com/strands-agents/evals) with Claude on Bedrock.
 
 ## How it works
 
