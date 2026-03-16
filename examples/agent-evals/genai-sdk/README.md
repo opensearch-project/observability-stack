@@ -11,7 +11,7 @@ End-to-end evaluation loop: retrieve agent traces from OpenSearch, run LLM-as-ju
 ## Setup
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## Usage

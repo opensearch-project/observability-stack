@@ -1,0 +1,11 @@
+[project]
+name = "agent-evals-genai-sdk"
+version = "0.1.0"
+description = "Run evaluations against stored agent traces in OpenSearch"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "opensearch-genai-observability-sdk-py[opensearch]",
+    "strands-agents",
+    "strands-agents-evals",
+]

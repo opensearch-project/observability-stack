@@ -1,3 +1,0 @@
-opensearch-genai-observability-sdk-py[opensearch]
-strands-agents
-strands-agents-evals

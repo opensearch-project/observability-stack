@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 """Agent eval canary — periodically scores un-evaluated agent traces.
 
 Polls OpenSearch for recent agent traces, skips any that already have
@@ -14,7 +15,7 @@ from opensearch_genai_observability_sdk_py.score import score
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 
@@ -43,7 +44,7 @@ def setup_otel() -> TracerProvider:
     resource = Resource.create({"service.name": "agent-eval-canary"})
     provider = TracerProvider(resource=resource)
     provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True))
+        SimpleSpanProcessor(OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True))
     )
     trace.set_tracer_provider(provider)
     return provider
@@ -100,29 +101,40 @@ def run() -> None:
     # Wait for OpenSearch to be ready
     for attempt in range(30):
         try:
-            retriever.list_traces(since_minutes=1, max_results=1)
+            retriever.list_root_spans(max_results=1)
             log.info("OpenSearch is ready")
             break
         except Exception as e:
             log.info("Waiting for OpenSearch... (%d/30): %s", attempt + 1, e)
             time.sleep(10)
 
+    # Track recently scored traces to avoid duplicates from batch flush delay
+    recently_scored: dict[str, float] = {}  # trace_id -> timestamp
+
     while True:
         try:
-            roots = retriever.list_traces(
+            # Expire entries older than lookback window
+            cutoff = time.time() - (LOOKBACK_MINUTES * 60)
+            recently_scored = {k: v for k, v in recently_scored.items() if v > cutoff}
+
+            roots = retriever.list_root_spans(
                 services=TARGET_SERVICES,
-                since_minutes=LOOKBACK_MINUTES,
+                since=datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES),
             )
             if roots:
                 trace_ids = [r.trace_id for r in roots]
                 evaluated = retriever.find_evaluated_trace_ids(trace_ids)
-                unevaluated = [r for r in roots if r.trace_id not in evaluated]
+                unevaluated = [
+                    r for r in roots
+                    if r.trace_id not in evaluated and r.trace_id not in recently_scored
+                ]
 
                 if unevaluated:
                     log.info("Found %d unevaluated traces", len(unevaluated))
                     for root in unevaluated:
                         try:
                             deterministic_eval(retriever, root.trace_id, root.span_id)
+                            recently_scored[root.trace_id] = time.time()
                         except Exception:
                             log.exception("Failed to eval trace %s", root.trace_id[:12])
                     provider.force_flush()
