@@ -234,12 +234,12 @@ docker-compose logs <service-name>
 
 **Check OpenSearch health:**
 ```bash
-curl -k -u admin:My_password_123!@# https://localhost:9200/_cluster/health?pretty
+curl https://localhost:9200/_cluster/health?pretty
 ```
 
 **Check if data is being ingested:**
 ```bash
-curl -k -u admin:My_password_123!@# https://localhost:9200/_cat/indices?v
+curl https://localhost:9200/_cat/indices?v
 ```
 
 **Reset everything:**

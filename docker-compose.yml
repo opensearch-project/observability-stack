@@ -153,4 +153,5 @@ services:
     networks:
       - observability-stack-network
     restart: "no"
+    logging: *logging
 
