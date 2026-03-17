@@ -2,6 +2,7 @@
 title: "Agent Health"
 description: "Evaluation and observability framework for AI agents with Golden Path trajectory comparison"
 sidebar:
+  label: "Overview"
   order: 1
 ---
 
