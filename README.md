@@ -2,6 +2,8 @@
 
 # 🔭 OpenSearch Observability Stack
 
+[![E2E Tests](https://github.com/opensearch-project/observability-stack/actions/workflows/e2e.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/e2e.yml)
+
 Observability Stack is an open-source stack designed for modern distributed systems. Built on OpenTelemetry, OpenSearch, and Prometheus, Observability Stack provides a complete, pre-configured infrastructure for monitoring microservices, web applications, and AI agents—with first-class support for agent observability through [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/).
 
 ![OpenSearch Observability Stack Architecture - docker-compose](./docs/observability-stack-arch-compose.excalidraw.png)
