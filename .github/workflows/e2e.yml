@@ -1,0 +1,23 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run E2E tests
+        run: ./test/e2e.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=50
