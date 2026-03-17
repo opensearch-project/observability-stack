@@ -19,7 +19,8 @@ trap cleanup EXIT
 echo "==> Starting observability stack..."
 docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" up -d --wait --wait-timeout "$WAIT_TIMEOUT"
 
-source "$PROJECT_DIR/.env"
+# Parse .env safely (don't source — some values aren't shell-safe)
+eval "$(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_PORT|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$PROJECT_DIR/.env")"
 
 OPENSEARCH_URL="https://localhost:${OPENSEARCH_PORT}"
 CURL_OPTS=(-s -k -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}")
