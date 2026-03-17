@@ -40,7 +40,7 @@ describe('Performance - Property 6: Below-fold images are lazy-loaded', () => {
                 fc.webUrl({ validSchemes: ['https'] })
               ),
               alt: fc.string({ minLength: 3, maxLength: 100 })
-                .map(s => s.replace(/[<>"'&]/g, '')), // Sanitize
+                .map(s => s.replace(/[<>"'&]/g, '') || 'image description'), // Sanitize with fallback
               isBelowFold: fc.boolean(),
               width: fc.option(fc.integer({ min: 50, max: 1000 })),
               height: fc.option(fc.integer({ min: 50, max: 1000 }))
