@@ -1,6 +1,8 @@
 name: E2E Tests
 
 on:
+  push:
+    branches: [feat/e2e-tests]
   pull_request:
     branches: [main]
     paths-ignore:
