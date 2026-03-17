@@ -86,5 +86,24 @@ if [[ "$trace_status" != "200" ]]; then
 fi
 echo "  Test trace sent: OK"
 
+echo "==> Verifying trace landed in OpenSearch..."
+TRACE_ID="5b8efff798038103d269b633813fc60c"
+MAX_RETRIES=60
+for i in $(seq 1 "$MAX_RETRIES"); do
+  hits=$(curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/otel-v1-apm-span-*/_search" \
+    -H "Content-Type: application/json" \
+    -d "{\"query\":{\"term\":{\"traceId\":\"$TRACE_ID\"}}}" \
+    | sed -n 's/.*"total":{"value":\([0-9]*\).*/\1/p')
+  if [[ "$hits" -gt 0 ]]; then
+    echo "  Trace found in OpenSearch after ${i}s"
+    break
+  fi
+  if [[ "$i" -eq "$MAX_RETRIES" ]]; then
+    echo "FAIL: Trace not found in OpenSearch after ${MAX_RETRIES}s"
+    exit 1
+  fi
+  sleep 1
+done
+
 echo ""
 echo "==> All E2E checks passed!"
