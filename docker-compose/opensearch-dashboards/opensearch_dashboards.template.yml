@@ -9,12 +9,12 @@ server.name: 'observability-stack-dashboards'
 
 # OpenSearch connection configuration
 # URL of the OpenSearch cluster to connect to
-opensearch.hosts: ["https://opensearch:9200"]
+opensearch.hosts: ["OPENSEARCH_HOSTS"]
 
-# Authentication credentials for OpenSearch
-# These will be overridden by environment variables from docker-compose
-opensearch.username: "${OPENSEARCH_USER}"
-opensearch.password: "${OPENSEARCH_PASSWORD}"
+# Credentials for connecting to OpenSearch
+# Injected at container startup via environment variables
+opensearch.username: "OPENSEARCH_USER"
+opensearch.password: "OPENSEARCH_PASSWORD"
 
 # SSL/TLS configuration
 # Disable certificate verification for development with self-signed certs

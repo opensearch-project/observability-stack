@@ -1,0 +1,47 @@
+# Local OpenSearch Dashboards - include this file when running OpenSearch Dashboards locally
+# Included by default via INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS in .env
+# To use a cloud OpenSearch Dashboards instance, comment out INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS in .env
+
+x-default-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "5m"
+    max-file: "2"
+    tag: "{{.Name}}"
+
+services:
+  # OpenSearch Dashboards - Web UI for visualizing logs and traces
+  opensearch-dashboards:
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
+    container_name: opensearch-dashboards
+    pull_policy: always
+    command: >
+      /bin/bash -c "
+      cp /tmp/opensearch_dashboards.template.yml /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_HOSTS|${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}|g' /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_USER|${OPENSEARCH_USER}|g' /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_PASSWORD|${OPENSEARCH_PASSWORD}|g' /tmp/opensearch_dashboards.yml &&
+      cp /tmp/opensearch_dashboards.yml /usr/share/opensearch-dashboards/config/opensearch_dashboards.yml &&
+      cd /usr/share/opensearch-dashboards &&
+      exec ./opensearch-dashboards-docker-entrypoint.sh opensearch-dashboards"
+    environment:
+      - OPENSEARCH_DASHBOARD_PORT=${OPENSEARCH_DASHBOARDS_PORT}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml:/tmp/opensearch_dashboards.template.yml
+    ports:
+      # Web UI endpoint
+      - "${OPENSEARCH_DASHBOARDS_PORT}:5601"
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${DASHBOARDS_MEMORY_LIMIT}
+    healthcheck:
+      test: curl -f -u '${OPENSEARCH_USER}':'${OPENSEARCH_PASSWORD}' http://localhost:5601/api/status || exit 1
+      start_period: 60s
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    logging: *logging

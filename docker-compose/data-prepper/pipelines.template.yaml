@@ -44,7 +44,7 @@ otel-logs-pipeline:
   # Write processed logs to OpenSearch
   sink:
     - opensearch:
-        hosts: ["https://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
         username: OPENSEARCH_USER
         password: OPENSEARCH_PASSWORD
         # Disable SSL verification for development
@@ -77,7 +77,7 @@ traces-raw-pipeline:
     - otel_traces:
   sink:
     - opensearch:
-        hosts: ["https://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
         username: OPENSEARCH_USER
         password: OPENSEARCH_PASSWORD
         insecure: true
@@ -101,7 +101,7 @@ service-map-pipeline:
     - service_processed_metrics: 'getEventType() == "METRIC"'
   sink:
     - opensearch:
-        hosts: ["https://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
         username: OPENSEARCH_USER
         password: OPENSEARCH_PASSWORD
         index_type: otel-v2-apm-service-map

@@ -17,7 +17,7 @@ docker-compose/
 ├── prometheus/                     # Prometheus configuration
 │   └── prometheus.yml
 ├── opensearch-dashboards/          # OpenSearch Dashboards configuration
-│   └── opensearch_dashboards.yml
+│   └── opensearch_dashboards.template.yml
 └── canary/                         # Canary service (optional example)
     ├── Dockerfile
     └── canary.py
@@ -29,7 +29,7 @@ The main `docker-compose.yml` file is located in the repository root and referen
 
 **Note**: The `.env` file in the repository root contains all configurable parameters including component versions, ports, credentials, and resource limits. You can customize these values before starting the stack.
 
-By default, the stack includes example services (weather-agent and canary) via `INCLUDE_COMPOSE_FILES=docker-compose.examples.yml` in `.env`. To run only the core stack, comment out this line.
+By default, the stack includes example services (weather-agent and canary) via `INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml` in `.env`. To run only the core stack, comment out this line.
 
 **macOS users**: If you're using Finch instead of Docker, replace `docker compose` with `finch compose` in all commands below.
 
@@ -44,7 +44,7 @@ By default, the stack includes example services (weather-agent and canary) via `
    
    Edit `.env` and comment out the `INCLUDE_COMPOSE_FILES` line:
    ```env
-   # INCLUDE_COMPOSE_FILES=docker-compose.examples.yml
+   # INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
    ```
    
    Then start the stack:
@@ -101,11 +101,16 @@ This rebuilds any modified containers and restarts them with the new changes.
 
 - **otel-collector**: Receives OTLP telemetry data (ports 4317, 4318, 8888)
 - **data-prepper**: Processes logs and traces before OpenSearch ingestion (ports 21890, 21892)
-- **opensearch**: Stores logs and traces with security enabled (port 9200, 9600)
-  - Default credentials: admin/My_password_123!@# (configured in .env file)
 - **prometheus**: Stores metrics with OTLP receiver enabled (port 9090)
-- **opensearch-dashboards**: Visualization UI (port 5601)
 - **opensearch-dashboards-init**: One-time initialization service that creates workspace, index patterns, and saved queries
+
+### Optional Services (local mode)
+
+Included by default via `.env`. Comment out the corresponding `INCLUDE_COMPOSE_*` variable to use a cloud-hosted instance instead.
+
+- **opensearch**: Stores logs and traces with security enabled (port 9200, 9600). Controlled by `INCLUDE_COMPOSE_LOCAL_OPENSEARCH`.
+  - Default credentials: admin/My_password_123!@# (configured in .env file)
+- **opensearch-dashboards**: Visualization UI (port 5601). Controlled by `INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS`.
 
 ### Example Services
 
@@ -132,14 +137,16 @@ These services demonstrate how to instrument agent applications and generate tes
 All configuration files are organized by service in subdirectories:
 
 - **.env**: Environment variables for versions, ports, credentials, and resource limits (in repository root)
-  - `INCLUDE_COMPOSE_FILES`: Controls which additional compose files to include (default: `docker-compose.examples.yml`)
+  - `INCLUDE_COMPOSE_EXAMPLES`: Controls whether example services are included (default: `docker-compose.examples.yml`)
+  - `INCLUDE_COMPOSE_LOCAL_OPENSEARCH`: Controls whether local OpenSearch is included (default: `docker-compose.local-opensearch.yml`)
+  - `INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS`: Controls whether local OpenSearch Dashboards is included (default: `docker-compose.local-opensearch-dashboards.yml`)
 - **docker-compose.yml**: Main service definitions for core observability stack (in repository root)
 - **docker-compose.examples.yml**: Example services (weather-agent, canary) included via .env (in repository root)
 - **otel-collector/config.yaml**: OpenTelemetry Collector receivers, processors, and exporters
 - **data-prepper/pipelines.template.yaml**: Data transformation pipeline template for logs and traces (credentials injected at container startup)
 - **data-prepper/data-prepper-config.yaml**: Data Prepper server settings
 - **prometheus/prometheus.yml**: Prometheus scrape targets and storage configuration
-- **opensearch-dashboards/opensearch_dashboards.yml**: Dashboard UI settings
+- **opensearch-dashboards/opensearch_dashboards.template.yml**: Dashboard UI settings template (OpenSearch host is injected at container startup)
 
 OpenSearch uses default configuration with settings provided via environment variables in docker-compose.yml.
 
@@ -148,13 +155,13 @@ OpenSearch uses default configuration with settings provided via environment var
 The example services (weather-agent and canary) are defined in `docker-compose.examples.yml` and included via the `.env` file:
 
 ```env
-INCLUDE_COMPOSE_FILES=docker-compose.examples.yml
+INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
 ```
 
 **To disable example services:**
 1. Edit `.env` and comment out the line:
    ```env
-   # INCLUDE_COMPOSE_FILES=docker-compose.examples.yml
+   # INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
    ```
 2. Restart the stack:
    ```bash
@@ -227,12 +234,12 @@ docker-compose logs <service-name>
 
 **Check OpenSearch health:**
 ```bash
-curl http://localhost:9200/_cluster/health?pretty
+curl -k -u admin:My_password_123!@# https://localhost:9200/_cluster/health?pretty
 ```
 
 **Check if data is being ingested:**
 ```bash
-curl http://localhost:9200/_cat/indices?v
+curl -k -u admin:My_password_123!@# https://localhost:9200/_cat/indices?v
 ```
 
 **Reset everything:**
@@ -240,6 +247,51 @@ curl http://localhost:9200/_cat/indices?v
 docker-compose down -v
 docker compose up -d
 ```
+
+## Using a Cloud OpenSearch Cluster
+
+By default the stack runs a local OpenSearch node and OpenSearch Dashboards container. You can replace either or both with a cloud-hosted cluster.
+
+### Switch to cloud OpenSearch (keep local Dashboards)
+
+1. Comment out the local OpenSearch include in `.env`:
+   ```env
+   # INCLUDE_COMPOSE_LOCAL_OPENSEARCH=docker-compose.local-opensearch.yml
+   ```
+
+2. Point to your cloud cluster in `.env`:
+   ```env
+   OPENSEARCH_HOST=your-cluster.example.com
+   OPENSEARCH_PORT=9200
+   OPENSEARCH_PROTOCOL=https
+   OPENSEARCH_USER=admin
+   OPENSEARCH_PASSWORD=your-password
+   ```
+
+3. Restart the stack:
+   ```bash
+   docker compose down
+   docker compose up -d
+   ```
+
+The local `opensearch-dashboards` container will connect to the cloud cluster. Its `opensearch.hosts` is injected at startup from the environment variables above via template substitution.
+
+### Switch to cloud OpenSearch Dashboards
+
+If your cloud provider also hosts a Dashboards instance, comment out the local Dashboards include as well:
+
+```env
+# INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS=docker-compose.local-opensearch-dashboards.yml
+```
+
+Then access your cloud Dashboards URL directly — no local container needed.
+
+### Caveats
+
+- **TLS**: Ensure `OPENSEARCH_PROTOCOL=https` matches your cluster's actual scheme. Some clusters behind a load balancer may use `http`.
+- **Authentication**: Cloud clusters may require different auth mechanisms (API keys, IAM). Update `OPENSEARCH_USER` and `OPENSEARCH_PASSWORD` accordingly.
+- **Network reachability**: The `otel-collector` and `data-prepper` containers must be able to reach `OPENSEARCH_HOST:OPENSEARCH_PORT` from inside Docker. If your cluster is VPC-restricted, ensure the host machine has the necessary network access.
+- **Certificate verification**: Data Prepper connects to OpenSearch with certificate verification disabled (`insecure: true`). The init script connects to OpenSearch Dashboards with `verify=False`, which applies when `OPENSEARCH_DASHBOARDS_PROTOCOL=https`. For production cloud clusters with valid certificates, consider enabling verification in both places.
 
 ## Security Warning
 
