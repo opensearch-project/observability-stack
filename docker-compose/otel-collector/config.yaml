@@ -62,6 +62,19 @@ processors:
           - delete_key(attributes, "app.ads.contextKeys")
           - set(attributes["rpc_system"], attributes["rpc.system"]) where attributes["rpc.system"] != nil
           - delete_key(attributes, "rpc.system")
+      - context: spanevent
+        statements:
+          # De-dot gRPC message.* event attributes to prevent mapping conflict with
+          # GenAI event attributes where "message" is a plain string value.
+          # Without this, flagd's message.type/message.id/message.uncompressed_size
+          # create an object mapping for events.attributes.message, which conflicts
+          # with GenAI spans that use events.attributes.message as a string.
+          - set(attributes["message_type"], attributes["message.type"]) where attributes["message.type"] != nil
+          - delete_key(attributes, "message.type")
+          - set(attributes["message_id"], attributes["message.id"]) where attributes["message.id"] != nil
+          - delete_key(attributes, "message.id")
+          - set(attributes["message_uncompressed_size"], attributes["message.uncompressed_size"]) where attributes["message.uncompressed_size"] != nil
+          - delete_key(attributes, "message.uncompressed_size")
     log_statements:
       - context: log
         statements:

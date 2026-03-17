@@ -2,10 +2,20 @@
 title: "Agent Health"
 description: "Evaluation and observability framework for AI agents with Golden Path trajectory comparison"
 sidebar:
+  label: "Overview"
   order: 1
 ---
 
-Agent Health is an evaluation and observability framework for AI agents. It helps you measure agent performance through "Golden Path" trajectory comparison — where an LLM judge evaluates agent actions against expected outcomes.
+Agent Health is an evaluation and observability framework for AI agents. It helps you measure agent performance through "Golden Path" trajectory comparison — where an LLM judge evaluates agent actions against expected outcomes. Check out the [GitHub repository](https://github.com/opensearch-project/agent-health) for source code and contributions.
+
+## Quick start
+
+```bash
+# Start Agent Health with demo data (no configuration needed)
+npx @opensearch-project/agent-health@latest
+```
+
+Opens http://localhost:4001 with pre-loaded sample data for exploration.
 
 ## Who uses Agent Health
 
@@ -38,15 +48,6 @@ Agent Health uses a client-server architecture where all clients (UI, CLI) acces
 | `mock` | In-memory | Demo and testing |
 
 For creating custom connectors, see [Connectors](/docs/agent-health/configuration/connectors/).
-
-## Quick start
-
-```bash
-# Start Agent Health with demo data (no configuration needed)
-npx @opensearch-project/agent-health@latest
-```
-
-Opens http://localhost:4001 with pre-loaded sample data for exploration.
 
 ## Next steps
 
