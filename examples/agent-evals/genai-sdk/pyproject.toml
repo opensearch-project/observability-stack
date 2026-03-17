@@ -5,7 +5,7 @@ description = "Run evaluations against stored agent traces in OpenSearch"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "opensearch-genai-observability-sdk-py[opensearch]",
+    "opensearch-genai-observability-sdk-py[opensearch]>=0.2.7",
     "strands-agents",
     "strands-agents-evals",
 ]

@@ -20,7 +20,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "opensearch-genai-observability-sdk-py", extras = ["opensearch"], git = "https://github.com/kylehounslow/genai-observability-sdk-py.git?rev=fd9560630ed376c31f1e15d5e60675d9514f02af" },
+    { name = "opensearch-genai-observability-sdk-py", extras = ["opensearch"], specifier = ">=0.2.7" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-sdk" },
@@ -267,14 +267,18 @@ wheels = [
 
 [[package]]
 name = "opensearch-genai-observability-sdk-py"
-version = "0.2.6"
-source = { git = "https://github.com/kylehounslow/genai-observability-sdk-py.git?rev=fd9560630ed376c31f1e15d5e60675d9514f02af#fd9560630ed376c31f1e15d5e60675d9514f02af" }
+version = "0.2.7"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "botocore" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/82/81/2865a2bf9931a6be0606db6ba9f657958dbd102a0c23944dae9a5c0f8356/opensearch_genai_observability_sdk_py-0.2.7.tar.gz", hash = "sha256:1dcf4d82029fd528a7e61b17776e208eea7f4c1a7be19b9bed7d60b025491476", size = 41179, upload-time = "2026-03-17T18:36:53.946Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/35/1dc05b2de55c69bc4b5239f65c4c40517b1620951361871cddb35ae4c567/opensearch_genai_observability_sdk_py-0.2.7-py3-none-any.whl", hash = "sha256:14c377042616edb97dc9e125ec29947a4f8c13e0df8613cceff21d8f435142c2", size = 31950, upload-time = "2026-03-17T18:36:52.414Z" },
 ]
 
 [package.optional-dependencies]
