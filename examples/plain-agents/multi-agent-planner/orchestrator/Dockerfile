@@ -7,8 +7,7 @@ RUN pip install --no-cache-dir \
     fastapi \
     uvicorn \
     httpx \
-    opentelemetry-api \
-    opentelemetry-sdk \
+    opensearch-genai-observability-sdk-py>=0.2.7 \
     opentelemetry-exporter-otlp-proto-grpc \
     opentelemetry-instrumentation-httpx \
     opentelemetry-instrumentation-asgi
