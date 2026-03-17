@@ -291,7 +291,13 @@ Then access your cloud Dashboards URL directly — no local container needed.
 - **TLS**: Ensure `OPENSEARCH_PROTOCOL=https` matches your cluster's actual scheme. Some clusters behind a load balancer may use `http`.
 - **Authentication**: Cloud clusters may require different auth mechanisms (API keys, IAM). Update `OPENSEARCH_USER` and `OPENSEARCH_PASSWORD` accordingly.
 - **Network reachability**: The `otel-collector` and `data-prepper` containers must be able to reach `OPENSEARCH_HOST:OPENSEARCH_PORT` from inside Docker. If your cluster is VPC-restricted, ensure the host machine has the necessary network access.
-- **Certificate verification**: Data Prepper connects to OpenSearch with certificate verification disabled (`insecure: true`). The init script connects to OpenSearch Dashboards with `verify=False`, which applies when `OPENSEARCH_DASHBOARDS_PROTOCOL=https`. For production cloud clusters with valid certificates, consider enabling verification in both places.
+- **Certificate verification**: This project disables TLS certificate verification everywhere HTTPS is used — this applies to all components:
+  - **Data Prepper** → OpenSearch: `insecure: true` in `pipelines.template.yaml`
+  - **OpenSearch Dashboards** → OpenSearch: `opensearch.ssl.verificationMode: none` in `opensearch_dashboards.template.yml`
+  - **Init script** → OpenSearch Dashboards: `verify=False` in `init-opensearch-dashboards.py`
+  - **install.sh health checks**: `curl -k` for both OpenSearch and OpenSearch Dashboards
+
+  For production environments with valid certificates, enable verification in each of these places.
 
 ## Security Warning
 

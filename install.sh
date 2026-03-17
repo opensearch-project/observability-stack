@@ -13,6 +13,12 @@ REPO_URL="https://github.com/opensearch-project/observability-stack.git"
 TEMP_DIR=$(mktemp -d)
 SIMULATE_MODE=false
 SKIP_PULL=false
+OPENSEARCH_PROTOCOL=""
+OPENSEARCH_HOST=""
+OPENSEARCH_PORT=""
+OPENSEARCH_DASHBOARDS_PROTOCOL=""
+OPENSEARCH_DASHBOARDS_HOST=""
+OPENSEARCH_DASHBOARDS_PORT=""
 CURRENT_STEP=""  # Track current installation step
 
 # Cleanup on exit
@@ -627,21 +633,56 @@ start_services() {
     print_success "Services started"
 }
 
-# Wait for services
+# Read a single variable from a .env file, returns empty string if not found
+read_env_var() {
+    local key=$1
+    local file=$2
+    grep -E "^${key}=" "$file" 2>/dev/null | cut -d= -f2 | tr -d "'\"" || true
+}
+
+# Load connection config from .env into script-level variables
+load_env_config() {
+    if [ ! -f "$INSTALL_DIR/.env" ]; then
+        return
+    fi
+    local env_file="$INSTALL_DIR/.env"
+    OPENSEARCH_PROTOCOL=$(read_env_var "OPENSEARCH_PROTOCOL" "$env_file")
+    OPENSEARCH_HOST=$(read_env_var "OPENSEARCH_HOST" "$env_file")
+    OPENSEARCH_PORT=$(read_env_var "OPENSEARCH_PORT" "$env_file")
+    OPENSEARCH_USER=$(read_env_var "OPENSEARCH_USER" "$env_file")
+    OPENSEARCH_PASSWORD=$(read_env_var "OPENSEARCH_PASSWORD" "$env_file")
+    OPENSEARCH_DASHBOARDS_PROTOCOL=$(read_env_var "OPENSEARCH_DASHBOARDS_PROTOCOL" "$env_file")
+    OPENSEARCH_DASHBOARDS_HOST=$(read_env_var "OPENSEARCH_DASHBOARDS_HOST" "$env_file")
+    OPENSEARCH_DASHBOARDS_PORT=$(read_env_var "OPENSEARCH_DASHBOARDS_PORT" "$env_file")
+    # Apply defaults
+    OPENSEARCH_PROTOCOL="${OPENSEARCH_PROTOCOL:-https}"
+    OPENSEARCH_PORT="${OPENSEARCH_PORT:-9200}"
+    # If host is the internal Docker service name, use localhost for external access
+    if [ "${OPENSEARCH_HOST:-opensearch}" = "opensearch" ]; then
+        OPENSEARCH_HOST="localhost"
+    fi
+    OPENSEARCH_DASHBOARDS_PROTOCOL="${OPENSEARCH_DASHBOARDS_PROTOCOL:-http}"
+    OPENSEARCH_DASHBOARDS_PORT="${OPENSEARCH_DASHBOARDS_PORT:-5601}"
+    # If host is the internal Docker service name, use localhost for external access
+    if [ "${OPENSEARCH_DASHBOARDS_HOST:-opensearch-dashboards}" = "opensearch-dashboards" ]; then
+        OPENSEARCH_DASHBOARDS_HOST="localhost"
+    fi
+}
+
 wait_for_services() {
     print_step "Waiting for services to be ready..."
     echo ""
-    
+
     cd "$INSTALL_DIR"
-    
+
     local max_wait=180
     local elapsed=0
     local check_interval=5
-    
+
     # Check OpenSearch
     echo -ne "${DIM}Waiting for OpenSearch...${RESET}"
     while [ $elapsed -lt $max_wait ]; do
-        if curl -s -k -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "https://localhost:9200/_cluster/health" >/dev/null 2>&1; then
+        if curl -s -k -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}/_cluster/health" >/dev/null 2>&1; then
             echo -e " ${GREEN}${CHECK}${RESET}"
             break
         fi
@@ -649,17 +690,17 @@ wait_for_services() {
         elapsed=$((elapsed + check_interval))
         echo -ne "."
     done
-    
+
     if [ $elapsed -ge $max_wait ]; then
         echo -e " ${YELLOW}timeout${RESET}"
         print_warning "OpenSearch may still be starting. Check logs with: $CONTAINER_RUNTIME compose logs opensearch"
     fi
-    
+
     # Check OpenSearch Dashboards
     echo -ne "${DIM}Waiting for OpenSearch Dashboards...${RESET}"
     elapsed=0
     while [ $elapsed -lt $max_wait ]; do
-        if curl -s -f -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "http://localhost:5601/api/status" >/dev/null 2>&1; then
+        if curl -s -k -f -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}/api/status" >/dev/null 2>&1; then
             echo -e " ${GREEN}${CHECK}${RESET}"
             break
         fi
@@ -683,7 +724,7 @@ print_summary() {
     echo -e "  ${GREEN}${BOLD}${STAR} Observability Stack Install Complete! ${STAR}${RESET}"
     echo ""
 
-    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}http://localhost:5601${RESET}"
+    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}${RESET}"
     echo -e "           ${DIM}Username: ${RESET}${BOLD}$OPENSEARCH_USER${RESET}  ${DIM}Password: ${RESET}${BOLD}$OPENSEARCH_PASSWORD${RESET}"
     echo ""
 
@@ -697,7 +738,7 @@ print_summary() {
 
     echo -e "${DIM}Other Services:${RESET}"
     echo -e "  ${DIM}${ARROW} Prometheus:            http://localhost:9090${RESET}"
-    echo -e "  ${DIM}${ARROW} OpenSearch API:        https://localhost:9200${RESET}"
+    echo -e "  ${DIM}${ARROW} OpenSearch API:        ${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}${RESET}"
 
     if [[ "$INCLUDE_EXAMPLES" =~ ^[Yy]$ ]]; then
         echo -e "  ${DIM}${ARROW} Weather Agent:         http://localhost:8000${RESET}"
@@ -726,7 +767,7 @@ print_summary() {
 
     echo ""
     echo -e "${PURPLE}${BOLD}Next Steps:${RESET}"
-    echo -e "  1. Visit ${PURPLE}http://localhost:5601${RESET} to explore your data"
+    echo -e "  1. Visit ${PURPLE}${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}${RESET} to explore your data"
     echo -e "  2. Learn more at ${PURPLE}https://opensearch.org/platform/observability/${RESET}"
 
     echo ""
@@ -892,6 +933,7 @@ run_manual_installer() {
     configure_installation
     clone_repository
     configure_environment
+    load_env_config
     pull_images
     start_services
     wait_for_services
