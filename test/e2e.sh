@@ -90,9 +90,9 @@ echo "==> Verifying trace landed in OpenSearch..."
 TRACE_ID="5b8efff798038103d269b633813fc60c"
 MAX_RETRIES=60
 for i in $(seq 1 "$MAX_RETRIES"); do
-  hits=$(curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/otel-v1-apm-span-*/_search" \
+  hits=$(curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/*span*,*trace*/_search" \
     -H "Content-Type: application/json" \
-    -d "{\"query\":{\"term\":{\"traceId\":\"$TRACE_ID\"}}}" \
+    -d "{\"query\":{\"bool\":{\"should\":[{\"term\":{\"traceId\":\"$TRACE_ID\"}},{\"term\":{\"traceID\":\"$TRACE_ID\"}}]}}}" \
     | sed -n 's/.*"total":{"value":\([0-9]*\).*/\1/p')
   if [[ "$hits" -gt 0 ]]; then
     echo "  Trace found in OpenSearch after ${i}s"
@@ -100,6 +100,8 @@ for i in $(seq 1 "$MAX_RETRIES"); do
   fi
   if [[ "$i" -eq "$MAX_RETRIES" ]]; then
     echo "FAIL: Trace not found in OpenSearch after ${MAX_RETRIES}s"
+    echo "  Available indices:"
+    curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/_cat/indices?v" 2>/dev/null || true
     exit 1
   fi
   sleep 1
