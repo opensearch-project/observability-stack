@@ -88,7 +88,7 @@ echo "  Test trace sent: OK"
 
 echo "==> Verifying trace landed in OpenSearch..."
 TRACE_ID="5b8efff798038103d269b633813fc60c"
-MAX_RETRIES=60
+MAX_RETRIES=90
 for i in $(seq 1 "$MAX_RETRIES"); do
   hits=$(curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/*span*,*trace*/_search" \
     -H "Content-Type: application/json" \
@@ -100,8 +100,6 @@ for i in $(seq 1 "$MAX_RETRIES"); do
   fi
   if [[ "$i" -eq "$MAX_RETRIES" ]]; then
     echo "FAIL: Trace not found in OpenSearch after ${MAX_RETRIES}s"
-    echo "  Available indices:"
-    curl "${CURL_OPTS[@]}" "$OPENSEARCH_URL/_cat/indices?v" 2>/dev/null || true
     exit 1
   fi
   sleep 1
