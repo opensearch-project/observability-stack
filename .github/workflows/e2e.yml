@@ -1,8 +1,6 @@
 name: E2E Tests
 
 on:
-  push:
-    branches: [feat/e2e-install]
   pull_request:
     branches: [main]
     paths-ignore:
