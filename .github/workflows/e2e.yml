@@ -1,6 +1,8 @@
 name: E2E Tests
 
 on:
+  push:
+    branches: [feat/e2e-install]
   pull_request:
     branches: [main]
     paths-ignore:
@@ -9,15 +11,28 @@ on:
   workflow_dispatch:
 
 jobs:
-  e2e:
+  e2e-compose:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run E2E tests
+      - name: Run E2E tests (docker compose)
         run: ./test/e2e.sh
 
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs --tail=50
+
+  e2e-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run E2E tests (install.sh)
+        run: ./test/e2e-install.sh
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -f /tmp/observability-stack-e2e/docker-compose.yml logs --tail=50 2>/dev/null || true
