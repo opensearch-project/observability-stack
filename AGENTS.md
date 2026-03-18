@@ -832,7 +832,7 @@ The docs site is built with [Starlight](https://starlight.astro.build/) (Astro).
 
 **Required workflow for all docs changes:**
 
-1. **Build** — validates internal links via `starlight-links-validator` plugin. The build will fail if any internal links are broken.
+1. **Build** — validates internal links via `starlight-links-validator` plugin. The build will fail if any internal links are broken. Never skip this step.
    ```bash
    cd docs/starlight-docs && npm install && npm run build
    ```
@@ -851,10 +851,16 @@ The docs site is built with [Starlight](https://starlight.astro.build/) (Astro).
    bash docs/starlight-docs/test/preview.sh
    ```
 
+**Critical rules:**
+- **Never start the astro server directly** (e.g. `npx astro preview`, `nohup`, `npm run preview`). Always use `test/preview.sh` — it handles background process management correctly. Direct invocations will block the terminal.
+- **Always build before previewing.** The link validator only runs during build. Previewing without building first will show stale output.
+- **Never use `grep -P` (Perl regex)** — macOS does not support it. Use `sed` or `grep -E` instead.
+- **Verify the server is responding** after starting preview by checking `curl -s http://localhost:4321/docs` returns 200 before telling the user it's ready.
+
 **Sidebar configuration:**
-- Sidebar labels and ordering are configured in `docs/starlight-docs/astro.config.mjs`
-- Sections using `autogenerate` derive group labels from directory names (lowercase). Use explicit `items` with `label` for proper casing (see "Send Data" and "Get Started" sections as examples)
-- Individual page titles come from frontmatter `title` field
+- Sidebar labels and ordering are configured in `docs/starlight-docs/astro.config.mjs` — this is the single source of truth.
+- **Do not use frontmatter `sidebar.label` or `sidebar.order` to control group/section headings.** Frontmatter only controls individual page labels, not the group name shown in the sidebar for a directory. Use explicit `items` with `label` in `astro.config.mjs` instead (see "Send Data" and "Get Started" sections as examples).
+- Sections using `autogenerate` derive group labels from directory names (lowercase). Replace `autogenerate` with explicit `items` when proper casing or custom ordering is needed.
 
 ### Icons
 
