@@ -2,6 +2,7 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 import mermaid from 'astro-mermaid';
+import starlightLinksValidator from 'starlight-links-validator';
 
 // https://astro.build/config
 export default defineConfig({
@@ -16,6 +17,17 @@ export default defineConfig({
 		}),
 		starlight({
 			title: 'OpenSearch - Observability Stack',
+			plugins: [starlightLinksValidator({
+				exclude: [
+					// Pre-existing broken links — tracked for cleanup
+					'/docs/apm/agent-traces/',
+					'/docs/get-started/',
+					'/docs/get-started/quickstart/',
+					'/docs/get-started/sandbox/',
+					'/docs/contributing/',
+				],
+				errorOnLocalLinks: false,
+			})],
 			logo: {
 				src: './src/assets/opensearch-logo-darkmode.svg',
 			},
@@ -54,7 +66,25 @@ export default defineConfig({
 				{
 					label: 'Send Data',
 					collapsed: true,
-					autogenerate: { directory: 'send-data' },
+					items: [
+						{ label: 'Overview', link: '/send-data/' },
+						{
+							label: 'OpenTelemetry',
+							autogenerate: { directory: 'send-data/opentelemetry' },
+						},
+						{
+							label: 'Applications',
+							autogenerate: { directory: 'send-data/applications' },
+						},
+						{
+							label: 'Infrastructure',
+							autogenerate: { directory: 'send-data/infrastructure' },
+						},
+						{
+							label: 'Data Pipeline',
+							autogenerate: { directory: 'send-data/data-pipeline' },
+						},
+					],
 				},
 				{
 					label: 'Investigate',

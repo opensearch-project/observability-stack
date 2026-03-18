@@ -826,6 +826,36 @@ helm uninstall observability-stack-test
 - Provide both quick start and detailed explanations
 - Include troubleshooting sections
 
+### Docs Site Development Workflow
+
+The docs site is built with [Starlight](https://starlight.astro.build/) (Astro). Source files are in `docs/starlight-docs/`.
+
+**Required workflow for all docs changes:**
+
+1. **Build** — validates internal links via `starlight-links-validator` plugin. The build will fail if any internal links are broken.
+   ```bash
+   cd docs/starlight-docs && npm install && npm run build
+   ```
+
+2. **Preview** — start a local preview server and visually verify changes.
+   ```bash
+   bash docs/starlight-docs/test/preview.sh          # start server
+   # Open http://localhost:4321/docs in browser
+   bash docs/starlight-docs/test/preview.sh --stop    # stop server
+   ```
+
+3. **Rebuild after changes** — if you make further edits, rebuild before previewing:
+   ```bash
+   bash docs/starlight-docs/test/preview.sh --stop
+   bash docs/starlight-docs/test/preview.sh --build
+   bash docs/starlight-docs/test/preview.sh
+   ```
+
+**Sidebar configuration:**
+- Sidebar labels and ordering are configured in `docs/starlight-docs/astro.config.mjs`
+- Sections using `autogenerate` derive group labels from directory names (lowercase). Use explicit `items` with `label` for proper casing (see "Send Data" and "Get Started" sections as examples)
+- Individual page titles come from frontmatter `title` field
+
 ### Icons
 
 Use OpenSearch UI (OUI) icons for documentation components. Browse the full set at https://oui.opensearch.org/1.23/#/display/icons. SVG sources are at https://github.com/opensearch-project/oui/tree/main/src/components/icon/assets. Prefer 32x32 icons over 16x16 for consistent sizing.
