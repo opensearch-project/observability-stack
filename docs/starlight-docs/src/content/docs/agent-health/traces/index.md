@@ -2,7 +2,7 @@
 title: "Trace Visualization"
 description: "Real-time trace monitoring and comparison for AI agent executions in Agent Health"
 sidebar:
-  order: 6
+  hidden: true
 ---
 
 Agent Health provides built-in trace visualization for monitoring and debugging AI agent executions. If your agent emits OpenTelemetry traces, Agent Health can display them alongside evaluation results.

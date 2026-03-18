@@ -1,0 +1,78 @@
+---
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+
+// Map of sidebar group labels to their display name and index page URL.
+// Keys match the rendered label text; displayName fixes casing if needed.
+const groupLinks: Record<string, { displayName: string; href: string }> = {
+	'Agent Health': { displayName: 'Agent Health', href: '/docs/agent-health/' },
+	'evaluations': { displayName: 'Evaluations', href: '/docs/agent-health/evaluations/' },
+	'traces': { displayName: 'Traces', href: '/docs/agent-health/traces/' },
+	'configuration': { displayName: 'Configuration', href: '/docs/agent-health/configuration/' },
+};
+---
+
+<div data-group-links={JSON.stringify(groupLinks)}>
+	<Default><slot /></Default>
+</div>
+
+<script>
+	function makeGroupHeadersClickable() {
+		const container = document.querySelector('[data-group-links]');
+		if (!container) return;
+		const groupLinks: Record<string, { displayName: string; href: string }> = JSON.parse(
+			container.getAttribute('data-group-links') || '{}'
+		);
+
+		const groups = document.querySelectorAll('nav.sidebar details');
+		for (const group of groups) {
+			const summary = group.querySelector('summary');
+			const label = summary?.querySelector('.group-label .large') as HTMLElement | null;
+			if (!summary || !label) continue;
+
+			const labelText = label.textContent?.trim() ?? '';
+			if (!(labelText in groupLinks)) continue;
+
+			const { displayName, href } = groupLinks[labelText];
+
+			const anchor = document.createElement('a');
+			anchor.href = href;
+			anchor.textContent = displayName;
+			anchor.className = 'group-header-link';
+
+			const isCurrentPage =
+				window.location.pathname === href ||
+				window.location.pathname === href.replace(/\/$/, '');
+
+			const isChildPage = window.location.pathname.startsWith(href);
+
+			if (isCurrentPage) {
+				anchor.setAttribute('aria-current', 'page');
+			}
+
+			// Open this group and all ancestors if we're on this page
+			// or any child page within this section
+			if (isCurrentPage || isChildPage) {
+				let el: HTMLElement | null = group as HTMLElement;
+				while (el) {
+					if (el.tagName === 'DETAILS') (el as HTMLDetailsElement).open = true;
+					el = el.parentElement;
+				}
+			}
+
+			label.textContent = '';
+			label.appendChild(anchor);
+
+			// When clicking the link: prevent the summary toggle, keep it open, navigate
+			summary.addEventListener('click', (e) => {
+				if ((e.target as HTMLElement).closest('.group-header-link')) {
+					e.preventDefault();
+					(group as HTMLDetailsElement).open = true;
+					window.location.href = anchor.href;
+				}
+			});
+		}
+	}
+
+	makeGroupHeadersClickable();
+	document.addEventListener('astro:after-swap', makeGroupHeadersClickable);
+</script>

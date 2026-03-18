@@ -2,7 +2,7 @@
 title: "Configuration"
 description: "Configure Agent Health to connect your AI agent, set up storage, and customize evaluation behavior"
 sidebar:
-  order: 7
+  hidden: true
 ---
 
 Agent Health works out of the box with demo data and file-based storage. Configure it when you're ready to connect your own agent or use production services.

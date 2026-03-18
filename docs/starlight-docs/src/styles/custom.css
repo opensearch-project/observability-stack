@@ -14,3 +14,16 @@
 .sl-markdown-content .icon-card-list li {
   margin: 0 !important;
 }
+
+/* Clickable sidebar group header links */
+.group-header-link {
+  color: inherit;
+  text-decoration: none;
+}
+.group-header-link:hover {
+  text-decoration: underline;
+  color: var(--sl-color-text-accent);
+}
+.group-header-link[aria-current='page'] {
+  color: var(--sl-color-text-accent);
+}

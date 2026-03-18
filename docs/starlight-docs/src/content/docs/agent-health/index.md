@@ -2,8 +2,7 @@
 title: "Agent Health"
 description: "Evaluation and observability framework for AI agents with Golden Path trajectory comparison"
 sidebar:
-  label: "Overview"
-  order: 1
+  hidden: true
 ---
 
 Agent Health is an evaluation and observability framework for AI agents. It helps you measure agent performance through "Golden Path" trajectory comparison — where an LLM judge evaluates agent actions against expected outcomes. Check out the [GitHub repository](https://github.com/opensearch-project/agent-health) for source code and contributions.

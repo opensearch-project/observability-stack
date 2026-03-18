@@ -2,7 +2,7 @@
 title: "Evaluations"
 description: "How Agent Health evaluates AI agents using Golden Path trajectory comparison and LLM judges"
 sidebar:
-  order: 3
+  hidden: true
 ---
 
 Agent Health evaluates AI agents by comparing their execution trajectories against expected outcomes using an LLM judge. This page explains the evaluation pipeline and core concepts.

@@ -33,6 +33,7 @@ export default defineConfig({
 			components: {
 				Header: './src/components/CustomHeader.astro',
 				PageSidebar: './src/components/PageSidebar.astro',
+				Sidebar: './src/components/Sidebar.astro',
 			},
 			sidebar: [
 				{
