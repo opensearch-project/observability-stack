@@ -264,6 +264,6 @@ with tracer.start_as_current_span("llm.chat") as span:
 - [Applications overview](/docs/send-data/applications/)
 - [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
 - [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)
-- [Agent traces](/docs/apm/agent-traces/)
+- [Agent traces](/docs/investigate/discover-traces/)
 - [OpenTelemetry Python documentation](https://opentelemetry.io/docs/languages/python/) -- Official OTel Python SDK reference
 - [Python instrumentation libraries](https://opentelemetry.io/ecosystem/registry/?language=python&component=instrumentation) -- Available auto-instrumentation packages

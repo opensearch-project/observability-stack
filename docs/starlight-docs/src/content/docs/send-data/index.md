@@ -52,13 +52,13 @@ Core instrumentation framework. Learn about the OTel Collector configuration, au
 
 Language-specific guides for instrumenting your services. Covers Python, Java, Node.js, Go, .NET, and browser applications, plus dedicated guidance for AI/LLM agent observability.
 
-### [Data Pipeline](/docs/send-data/pipeline/)
-
-Configure the backend processing layer. Covers Data Prepper pipelines for trace and log processing, Prometheus for metrics storage, and index management in OpenSearch.
-
 ### [Infrastructure](/docs/send-data/infrastructure/)
 
 Collect telemetry from your infrastructure. Covers host metrics, container monitoring, Kubernetes observability, and cloud provider integrations.
+
+### [Data Pipeline](/docs/send-data/data-pipeline/)
+
+Configure the backend processing layer. Covers Data Prepper pipelines for trace and log processing, Prometheus for metrics storage, and index management in OpenSearch.
 
 ## Quick Start
 
@@ -73,6 +73,6 @@ Then follow the language-specific guide in the [Applications](/docs/send-data/ap
 
 ## Related Links
 
-- [Get Started](/docs/get-started/) -- Platform overview and sandbox setup
+- [Get Started](/docs/get-started/installation/) -- Platform overview and sandbox setup
 - [Investigate](/docs/investigate/) -- Query and explore ingested data
 - [APM](/docs/apm/) -- Application performance monitoring views

@@ -826,6 +826,42 @@ helm uninstall observability-stack-test
 - Provide both quick start and detailed explanations
 - Include troubleshooting sections
 
+### Docs Site Development Workflow
+
+The docs site is built with [Starlight](https://starlight.astro.build/) (Astro). Source files are in `docs/starlight-docs/`.
+
+**Required workflow for all docs changes:**
+
+1. **Build** — validates internal links via `starlight-links-validator` plugin. The build will fail if any internal links are broken. Never skip this step.
+   ```bash
+   cd docs/starlight-docs && npm install && npm run build
+   ```
+
+2. **Preview** — start a local preview server and visually verify changes.
+   ```bash
+   bash docs/starlight-docs/test/preview.sh          # start server
+   # Open http://localhost:4321/docs in browser
+   bash docs/starlight-docs/test/preview.sh --stop    # stop server
+   ```
+
+3. **Rebuild after changes** — if you make further edits, rebuild before previewing:
+   ```bash
+   bash docs/starlight-docs/test/preview.sh --stop
+   bash docs/starlight-docs/test/preview.sh --build
+   bash docs/starlight-docs/test/preview.sh
+   ```
+
+**Critical rules:**
+- **Never start the astro server directly** (e.g. `npx astro preview`, `nohup`, `npm run preview`). Always use `test/preview.sh` — it handles background process management correctly. Direct invocations will block the terminal.
+- **Always build before previewing.** The link validator only runs during build. Previewing without building first will show stale output.
+- **Never use `grep -P` (Perl regex)** — macOS does not support it. Use `sed` or `grep -E` instead.
+- **Verify the server is responding** after starting preview by checking `curl -s http://localhost:4321/docs` returns 200 before telling the user it's ready.
+
+**Sidebar configuration:**
+- Sidebar labels and ordering are configured in `docs/starlight-docs/astro.config.mjs` — this is the single source of truth.
+- **Do not use frontmatter `sidebar.label` or `sidebar.order` to control group/section headings.** Frontmatter only controls individual page labels, not the group name shown in the sidebar for a directory. Use explicit `items` with `label` in `astro.config.mjs` instead (see "Send Data" and "Get Started" sections as examples).
+- Sections using `autogenerate` derive group labels from directory names (lowercase). Replace `autogenerate` with explicit `items` when proper casing or custom ordering is needed.
+
 ### Icons
 
 Use OpenSearch UI (OUI) icons for documentation components. Browse the full set at https://oui.opensearch.org/1.23/#/display/icons. SVG sources are at https://github.com/opensearch-project/oui/tree/main/src/components/icon/assets. Prefer 32x32 icons over 16x16 for consistent sizing.

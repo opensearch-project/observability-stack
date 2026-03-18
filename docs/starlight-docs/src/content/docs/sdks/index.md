@@ -41,6 +41,6 @@ The SDK configures a `BatchSpanProcessor` that exports in the background — you
 
 ## Related links
 
-- [Agent Traces](/docs/apm/agent-traces/) — viewing traces in OpenSearch Dashboards
+- [Agent Traces](/docs/investigate/discover-traces/) — viewing traces in OpenSearch Dashboards
 - [Send Data](/docs/send-data/) — OTLP pipeline setup and collector configuration
 - [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — the OTel spec the SDKs follow

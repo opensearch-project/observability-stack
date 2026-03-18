@@ -337,6 +337,6 @@ processors:
 
 - [OpenTelemetry Overview](/docs/send-data/opentelemetry/) -- Signals, protocols, and architecture
 - [Sampling Strategies](/docs/send-data/opentelemetry/sampling/) -- Head and tail sampling configuration
-- [Data Pipeline](/docs/send-data/pipeline/) -- Data Prepper and Prometheus configuration
+- [Data Pipeline](/docs/send-data/data-pipeline/) -- Data Prepper and Prometheus configuration
 - [OpenTelemetry Collector documentation](https://opentelemetry.io/docs/collector/) -- Official Collector configuration reference
 - [Collector contrib components](https://github.com/open-telemetry/opentelemetry-collector-contrib) -- Community receivers, processors, and exporters
