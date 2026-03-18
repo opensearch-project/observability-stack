@@ -17,8 +17,14 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Running install.sh..."
+# Patch install.sh to read from stdin instead of /dev/tty (no TTY in CI)
+PATCHED_SCRIPT=$(mktemp)
+sed 's|< /dev/tty||g' "$PROJECT_DIR/install.sh" > "$PATCHED_SCRIPT"
+chmod +x "$PATCHED_SCRIPT"
+
 # Feed answers: install dir, no examples, no otel demo, no custom creds
-printf '%s\n' "$INSTALL_DIR" "n" "n" "n" | bash "$PROJECT_DIR/install.sh" --skip-pull
+printf '%s\n' "$INSTALL_DIR" "n" "n" "n" | bash "$PATCHED_SCRIPT" --skip-pull
+rm -f "$PATCHED_SCRIPT"
 
 # Parse .env from the installed directory
 eval "$(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_PORT|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$INSTALL_DIR/.env")"
