@@ -137,6 +137,34 @@ services:
           memory: ${PROMETHEUS_MEMORY_LIMIT}
     logging: *logging
 
+  # OpenSearch Prometheus Exporter - Exposes OpenSearch metrics for Prometheus scraping
+  opensearch-exporter:
+    image: prometheuscommunity/elasticsearch-exporter:v1.10.0
+    container_name: opensearch-exporter
+    command:
+      - --es.uri=${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}
+      - --es.ssl-skip-verify
+      - --es.all
+      - --es.indices
+      - --es.shards
+    environment:
+      - ES_USERNAME=${OPENSEARCH_USER}
+      - ES_PASSWORD=${OPENSEARCH_PASSWORD}
+    ports:
+      - "9114:9114"
+    networks:
+      - observability-stack-network
+    depends_on:
+      opensearch:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *logging
+
   # OpenSearch Dashboards Initialization - Creates workspace, index patterns, and saved queries
   opensearch-dashboards-init:
     image: python:3.11-alpine
@@ -157,6 +185,8 @@ services:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
       - ./docker-compose/opensearch-dashboards/saved-queries-traces.yaml:/config/saved-queries-traces.yaml
       - ./docker-compose/opensearch-dashboards/saved-queries-metrics.yaml:/config/saved-queries-metrics.yaml
+      - ./docker-compose/opensearch-dashboards/dashboard-opensearch-health.yaml:/config/dashboard-opensearch-health.yaml
+      - ./docker-compose/opensearch-dashboards/dashboard-pipeline-health.yaml:/config/dashboard-pipeline-health.yaml
       - ./docker-compose/opensearch-dashboards/init/architecture.png:/config/architecture.png
     networks:
       - observability-stack-network

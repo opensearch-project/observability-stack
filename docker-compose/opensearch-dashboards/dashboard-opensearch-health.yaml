@@ -1,0 +1,62 @@
+# OpenSearch Cluster Health Dashboard — Cluster, index, JVM, and search metrics
+
+dashboard:
+  id: opensearch-cluster-health-dashboard
+  title: OpenSearch Cluster Health
+  description: Cluster status, index stats, JVM health, and indexing performance
+
+panels:
+  # --- Row 1: Cluster Status ---
+  - id: os-cluster-status
+    title: "Cluster Status (0=green, 1=yellow/red)"
+    query: "elasticsearch_cluster_health_status{color=\"yellow\"} or elasticsearch_cluster_health_status{color=\"red\"}"
+    chartType: line
+
+  - id: os-active-shards
+    title: "Active Shards"
+    query: "elasticsearch_cluster_health_active_shards"
+    chartType: line
+
+  # --- Row 2: Index Stats ---
+  - id: os-unassigned-shards
+    title: "Unassigned Shards"
+    query: "elasticsearch_cluster_health_unassigned_shards"
+    chartType: line
+
+  - id: os-docs-count
+    title: "Total Documents"
+    query: "sum(elasticsearch_indices_docs)"
+    chartType: line
+
+  # --- Row 3: Indexing & Storage ---
+  - id: os-indexing-rate
+    title: "Indexing Rate (docs/sec)"
+    query: "rate(elasticsearch_indices_indexing_index_total[5m])"
+    chartType: line
+
+  - id: os-store-size
+    title: "Store Size (bytes)"
+    query: "sum(elasticsearch_indices_store_size_bytes_total)"
+    chartType: line
+
+  # --- Row 4: JVM Health ---
+  - id: os-jvm-heap-used-pct
+    title: "JVM Heap Used %"
+    query: "100 * elasticsearch_jvm_memory_used_bytes{area=\"heap\"} / elasticsearch_jvm_memory_max_bytes{area=\"heap\"}"
+    chartType: line
+
+  - id: os-jvm-gc-rate
+    title: "JVM GC Collection Rate (sec/sec)"
+    query: "rate(elasticsearch_jvm_gc_collection_seconds_sum[5m])"
+    chartType: line
+
+  # --- Row 5: Search & CPU ---
+  - id: os-search-rate
+    title: "Search Rate (queries/sec)"
+    query: "rate(elasticsearch_indices_search_query_total[5m])"
+    chartType: line
+
+  - id: os-cpu-percent
+    title: "OpenSearch CPU %"
+    query: "elasticsearch_os_cpu_percent"
+    chartType: line

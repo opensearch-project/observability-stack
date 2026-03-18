@@ -950,6 +950,119 @@ def create_chart_visualization(workspace_id, vis_id, title, vis_type, field, ind
         return None
 
 
+def create_promql_dashboard_from_yaml(workspace_id, config_path, prometheus_datasource_title="ObservabilityStack_Prometheus"):
+    """Create a dashboard with PromQL explore panels from a YAML config file"""
+    import json
+
+    try:
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+    except (FileNotFoundError, yaml.YAMLError) as e:
+        print(f"⚠️  Skipping dashboard from {config_path}: {e}")
+        return None
+
+    dashboard_config = config.get("dashboard", {})
+    panel_defs = config.get("panels", [])
+    dashboard_id = dashboard_config.get("id", "promql-dashboard")
+
+    print(f"📊 Creating {dashboard_config.get('title', 'PromQL Dashboard')} dashboard ({len(panel_defs)} panels)...")
+
+    viz_template = json.dumps({
+        "title": "", "chartType": "line",
+        "params": {
+            "addLegend": True, "addTimeMarker": False, "legendPosition": "bottom",
+            "legendTitle": "", "lineMode": "straight", "lineStyle": "line", "lineWidth": 2,
+            "showFullTimeRange": False, "standardAxes": [],
+            "thresholdOptions": {"baseColor": "#00BD6B", "thresholds": [], "thresholdStyle": "off"},
+            "titleOptions": {"show": False, "titleName": ""},
+            "tooltipOptions": {"mode": "all"}
+        },
+        "axesMapping": {"color": "Series", "x": "Time", "y": "Value"}
+    })
+
+    dataset = {
+        "id": prometheus_datasource_title, "title": prometheus_datasource_title,
+        "type": "PROMETHEUS", "language": "PROMQL", "timeFieldName": "Time",
+        "dataSource": {}, "signalType": "metrics"
+    }
+
+    created_ids = []
+    for panel_def in panel_defs:
+        panel_id = panel_def["id"]
+        search_source = json.dumps({
+            "query": {"query": panel_def["query"], "language": "PROMQL", "dataset": dataset},
+            "filter": [], "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index"
+        })
+        payload = {
+            "attributes": {
+                "title": panel_def["title"], "description": "", "hits": 0,
+                "columns": ["_source"], "sort": [], "version": 1, "type": "metrics",
+                "visualization": viz_template,
+                "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
+                "kibanaSavedObjectMeta": {"searchSourceJSON": search_source}
+            },
+            "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": prometheus_datasource_title}]
+        }
+        if workspace_id and workspace_id != "default":
+            payload["workspaces"] = [workspace_id]
+            url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/explore/{panel_id}"
+        else:
+            url = f"{BASE_URL}/api/saved_objects/explore/{panel_id}"
+        try:
+            response = requests.post(url, auth=(USERNAME, PASSWORD), headers={"Content-Type": "application/json", "osd-xsrf": "true"}, json=payload, verify=False, timeout=10)
+            if response.status_code == 200:
+                created_ids.append(panel_id)
+                print(f"  ✅ {panel_def['title']}")
+            elif response.status_code == 409:
+                requests.put(url, auth=(USERNAME, PASSWORD), headers={"Content-Type": "application/json", "osd-xsrf": "true"}, json={"attributes": payload["attributes"], "references": payload["references"]}, verify=False, timeout=10)
+                created_ids.append(panel_id)
+                print(f"  🔄 {panel_def['title']} (updated)")
+            else:
+                print(f"  ⚠️  {panel_def['title']}: {response.status_code} {response.text[:100]}")
+        except requests.exceptions.RequestException as e:
+            print(f"  ⚠️  {panel_def['title']}: {e}")
+
+    if not created_ids:
+        print("⚠️  No panels created, skipping dashboard")
+        return None
+
+    panels = []
+    references = []
+    for i, pid in enumerate(created_ids):
+        panels.append({"version": "3.6.0", "panelIndex": pid, "gridData": {"i": pid, "x": (i % 2) * 24, "y": (i // 2) * 15, "w": 24, "h": 15}, "panelRefName": f"panel_{i}"})
+        references.append({"name": f"panel_{i}", "type": "explore", "id": pid})
+
+    dashboard_payload = {
+        "attributes": {
+            "title": dashboard_config.get("title", "PromQL Dashboard"),
+            "description": dashboard_config.get("description", ""),
+            "panelsJSON": json.dumps(panels),
+            "optionsJSON": json.dumps({"useMargins": True, "hidePanelTitles": False}),
+            "timeRestore": False,
+            "kibanaSavedObjectMeta": {"searchSourceJSON": json.dumps({})}
+        },
+        "references": references
+    }
+    if workspace_id and workspace_id != "default":
+        dashboard_payload["workspaces"] = [workspace_id]
+        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/dashboard/{dashboard_id}"
+    else:
+        url = f"{BASE_URL}/api/saved_objects/dashboard/{dashboard_id}"
+    try:
+        # Always delete and recreate the dashboard so panel order matches YAML
+        requests.delete(url, auth=(USERNAME, PASSWORD), headers={"osd-xsrf": "true"}, verify=False, timeout=10)
+        response = requests.post(url, auth=(USERNAME, PASSWORD), headers={"Content-Type": "application/json", "osd-xsrf": "true"}, json=dashboard_payload, verify=False, timeout=10)
+        if response.status_code == 200:
+            print(f"✅ Created {dashboard_config['title']} dashboard ({len(created_ids)} panels)")
+            return dashboard_id
+        else:
+            print(f"⚠️  Dashboard creation failed: {response.text[:200]}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error creating dashboard: {e}")
+        return None
+
+
 def create_overview_dashboard(workspace_id):
     """Create an overview landing dashboard with markdown links to all observability features"""
     import json
@@ -1171,6 +1284,10 @@ def main():
 
     # Create overview landing dashboard (becomes the new default)
     create_overview_dashboard(workspace_id)
+
+    # Create self-monitoring dashboards (PromQL explore panels)
+    create_promql_dashboard_from_yaml(workspace_id, "/config/dashboard-pipeline-health.yaml")
+    create_promql_dashboard_from_yaml(workspace_id, "/config/dashboard-opensearch-health.yaml")
 
     # Create saved queries for common agent observability patterns
     create_default_saved_queries(workspace_id)

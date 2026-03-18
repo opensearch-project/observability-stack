@@ -1,0 +1,138 @@
+# Observability Pipeline Health Dashboard — OTel Collector and Prometheus self-monitoring
+
+dashboard:
+  id: observability-pipeline-health-dashboard
+  title: Observability Pipeline Health
+  description: OTel Collector throughput, Prometheus ingestion, and pipeline health
+
+panels:
+  # --- Row 1: OTel Collector Throughput ---
+  - id: pipeline-otel-spans-received
+    title: "OTel Spans Received/sec"
+    query: "rate(otelcol_receiver_accepted_spans_total[5m])"
+    chartType: line
+
+  - id: pipeline-otel-spans-exported
+    title: "OTel Spans Exported/sec"
+    query: "rate(otelcol_exporter_sent_spans_total[5m])"
+    chartType: line
+
+  # --- Row 2: OTel Metrics & Failures ---
+  - id: pipeline-otel-metrics-received
+    title: "OTel Metrics Received/sec"
+    query: "rate(otelcol_receiver_accepted_metric_points_total[5m])"
+    chartType: line
+
+  - id: pipeline-otel-spans-dropped
+    title: "OTel Spans Dropped/sec"
+    query: "rate(otelcol_exporter_send_failed_spans_total[5m])"
+    chartType: line
+
+  # --- Row 3: OTel Collector Resources ---
+  - id: pipeline-otel-queue-size
+    title: "OTel Exporter Queue Size"
+    query: "otelcol_exporter_queue_size"
+    chartType: line
+
+  - id: pipeline-otel-collector-memory
+    title: "OTel Collector Memory (bytes)"
+    query: "otelcol_process_memory_rss_bytes"
+    chartType: line
+
+  # --- Row 4: OTel Collector CPU & Uptime ---
+  - id: pipeline-otel-collector-cpu
+    title: "OTel Collector CPU Usage"
+    query: "rate(otelcol_process_cpu_seconds_total[5m])"
+    chartType: line
+
+  - id: pipeline-otel-batch-cardinality
+    title: "OTel Batch Metadata Cardinality"
+    query: "otelcol_processor_batch_metadata_cardinality"
+    chartType: line
+
+  # --- Row 5: Prometheus Health ---
+  - id: pipeline-prometheus-ingestion
+    title: "Prometheus Ingestion Rate (chunks/sec)"
+    query: "rate(prometheus_tsdb_head_chunks_created_total[5m])"
+    chartType: line
+
+  - id: pipeline-prometheus-active-series
+    title: "Prometheus Active Time Series"
+    query: "prometheus_tsdb_head_series"
+    chartType: line
+
+  # --- Row 6: Prometheus Storage ---
+  - id: pipeline-prometheus-wal-size
+    title: "Prometheus WAL Size (bytes)"
+    query: "prometheus_tsdb_wal_storage_size_bytes"
+    chartType: line
+
+  - id: pipeline-prometheus-head-chunks
+    title: "Prometheus Head Chunks Size (bytes)"
+    query: "prometheus_tsdb_head_chunks_storage_size_bytes"
+    chartType: line
+
+  - id: pipeline-prometheus-query-latency
+    title: "Prometheus Query Latency P99 (sec)"
+    query: "histogram_quantile(0.99, rate(prometheus_http_request_duration_seconds_bucket{handler=\"/api/v1/query\"}[5m]))"
+    chartType: line
+
+  # --- Row 7: Data Prepper — Logs Pipeline ---
+  - id: pipeline-dp-logs-processed
+    title: "DP Logs Processed/sec"
+    query: "rate(otel_logs_pipeline_recordsProcessed_total[5m])"
+    chartType: line
+
+  - id: pipeline-dp-logs-latency
+    title: "DP Logs Pipeline Latency (avg sec)"
+    query: "rate(otel_logs_pipeline_opensearch_PipelineLatency_seconds_sum[5m]) / rate(otel_logs_pipeline_opensearch_PipelineLatency_seconds_count[5m])"
+    chartType: line
+
+  # --- Row 8: Data Prepper — Traces Pipeline ---
+  - id: pipeline-dp-traces-processed
+    title: "DP Traces Processed/sec"
+    query: "rate(otel_traces_pipeline_recordsProcessed_total[5m])"
+    chartType: line
+
+  - id: pipeline-dp-traces-latency
+    title: "DP Traces Pipeline Latency (avg sec)"
+    query: "rate(traces_raw_pipeline_opensearch_PipelineLatency_seconds_sum[5m]) / rate(traces_raw_pipeline_opensearch_PipelineLatency_seconds_count[5m])"
+    chartType: line
+
+  # --- Row 9: Data Prepper — Metrics Pipeline ---
+  - id: pipeline-dp-metrics-received
+    title: "DP Metrics Received/sec"
+    query: "rate(otlp_metrics_requestsReceived_total[5m])"
+    chartType: line
+
+  - id: pipeline-dp-otlp-requests
+    title: "DP OTLP Requests Received/sec (all)"
+    query: "rate(otlp_traces_requestsReceived_total[5m]) + rate(otlp_logs_requestsReceived_total[5m]) + rate(otlp_metrics_requestsReceived_total[5m])"
+    chartType: line
+
+  # --- Row 10: Data Prepper — Writes & Errors ---
+  - id: pipeline-dp-logs-docs-written
+    title: "DP Logs Docs Written/sec"
+    query: "rate(otel_logs_pipeline_opensearch_documentsSuccess_total[5m])"
+    chartType: line
+
+  - id: pipeline-dp-traces-docs-written
+    title: "DP Traces Docs Written/sec"
+    query: "rate(traces_raw_pipeline_opensearch_documentsSuccess_total[5m])"
+    chartType: line
+
+  # --- Row 11: Data Prepper — Errors & Buffer ---
+  - id: pipeline-dp-bulk-errors
+    title: "DP Bulk Request Errors"
+    query: "sum(rate(otel_logs_pipeline_opensearch_bulkRequestErrors_total[5m])) + sum(rate(traces_raw_pipeline_opensearch_bulkRequestErrors_total[5m]))"
+    chartType: line
+
+  - id: pipeline-dp-buffer-usage
+    title: "DP Buffer Writes/sec"
+    query: "rate(otel_logs_pipeline_BlockingBuffer_recordsWritten_total[5m]) + rate(otel_traces_pipeline_BlockingBuffer_recordsWritten_total[5m])"
+    chartType: line
+
+  - id: pipeline-dp-buffer-capacity
+    title: "DP Buffer Capacity Used %"
+    query: "otlp_pipeline_BlockingBuffer_capacityUsed + otel_logs_pipeline_BlockingBuffer_capacityUsed + otel_traces_pipeline_BlockingBuffer_capacityUsed"
+    chartType: line
