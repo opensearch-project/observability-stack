@@ -18,8 +18,11 @@ trap cleanup EXIT
 
 echo "==> Running install.sh..."
 # Patch install.sh to read from stdin instead of /dev/tty (no TTY in CI)
+# and replace git clone with a local copy so we test the PR's code
 PATCHED_SCRIPT=$(mktemp)
-sed 's|< /dev/tty||g' "$PROJECT_DIR/install.sh" > "$PATCHED_SCRIPT"
+sed -e 's|< /dev/tty||g' \
+    -e 's|git clone --depth 1 "$REPO_URL" "$INSTALL_DIR" >/dev/null 2>\&1|cp -r "'"$PROJECT_DIR"'/." "$INSTALL_DIR"|' \
+    "$PROJECT_DIR/install.sh" > "$PATCHED_SCRIPT"
 chmod +x "$PATCHED_SCRIPT"
 
 # Feed answers: install dir, no examples, no otel demo, no custom creds

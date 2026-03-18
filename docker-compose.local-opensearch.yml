@@ -59,14 +59,3 @@ services:
       timeout: 10s
       retries: 30
     logging: *logging
-
-  # Add depends_on opensearch to services that need it for local startup ordering
-  otel-collector:
-    depends_on:
-      opensearch:
-        condition: service_healthy
-
-  data-prepper:
-    depends_on:
-      opensearch:
-        condition: service_healthy

@@ -54,6 +54,10 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}
       - OPENSEARCH_PORT=${OPENSEARCH_PORT}
       - GOMEMLIMIT=160MiB
+    depends_on:
+      opensearch:
+        condition: service_healthy
+        required: false
     logging: *logging
 
   # Data Prepper - Transforms and enriches logs/traces before OpenSearch ingestion
@@ -86,6 +90,10 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_PORT}
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    depends_on:
+      opensearch:
+        condition: service_healthy
+        required: false
     networks:
       - observability-stack-network
     restart: unless-stopped
