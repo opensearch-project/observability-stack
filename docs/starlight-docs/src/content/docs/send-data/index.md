@@ -73,6 +73,6 @@ Then follow the language-specific guide in the [Applications](/docs/send-data/ap
 
 ## Related Links
 
-- [Get Started](/docs/get-started/) -- Platform overview and sandbox setup
+- [Get Started](/docs/get-started/installation/) -- Platform overview and sandbox setup
 - [Investigate](/docs/investigate/) -- Query and explore ingested data
 - [APM](/docs/apm/) -- Application performance monitoring views

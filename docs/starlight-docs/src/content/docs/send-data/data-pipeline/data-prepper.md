@@ -7,7 +7,7 @@ Data Prepper is the pipeline engine that receives OTLP telemetry, routes events 
 
 ## Prerequisites
 
-- OpenSearch Observability Stack running (see [Quickstart](/docs/get-started/quickstart/))
+- OpenSearch Observability Stack running (see [Quickstart](/docs/get-started/quickstart/first-traces/))
 - OTel Collector configured to export to Data Prepper on port 21890
 
 ## Pipeline configuration

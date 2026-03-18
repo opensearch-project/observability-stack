@@ -107,7 +107,7 @@ Infrastructure traces are less common but useful for:
 
 Before setting up infrastructure monitoring, ensure you have:
 
-- A running OpenSearch Observability Stack (see [Sandbox](/docs/get-started/sandbox/))
+- A running OpenSearch Observability Stack (see [Sandbox](/docs/get-started/installation/))
 - Network access from your infrastructure to the OTel Collector endpoints (ports 4317/4318)
 - Appropriate permissions to deploy agents on your target infrastructure
 

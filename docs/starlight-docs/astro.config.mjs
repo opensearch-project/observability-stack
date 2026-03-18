@@ -18,14 +18,6 @@ export default defineConfig({
 		starlight({
 			title: 'OpenSearch - Observability Stack',
 			plugins: [starlightLinksValidator({
-				exclude: [
-					// Pre-existing broken links — tracked for cleanup
-					'/docs/apm/agent-traces/',
-					'/docs/get-started/',
-					'/docs/get-started/quickstart/',
-					'/docs/get-started/sandbox/',
-					'/docs/contributing/',
-				],
 				errorOnLocalLinks: false,
 			})],
 			logo: {

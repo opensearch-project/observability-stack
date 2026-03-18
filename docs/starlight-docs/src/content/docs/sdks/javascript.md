@@ -259,7 +259,7 @@ register({ autoInstrument: false });
 ## Related links
 
 - [Python SDK](/docs/sdks/python/) — Python equivalent
-- [Agent Traces](/docs/apm/agent-traces/) — viewing traces in OpenSearch Dashboards
+- [Agent Traces](/docs/investigate/discover-traces/) — viewing traces in OpenSearch Dashboards
 - [Send Data](/docs/send-data/) — OTLP pipeline and collector setup
 - [FAQ](/docs/sdks/faq/) — common questions
 - [npm](https://www.npmjs.com/package/opensearch-genai-sdk) — package page
