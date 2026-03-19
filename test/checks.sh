@@ -7,6 +7,20 @@ set -euo pipefail
 
 OPENSEARCH_URL="https://localhost:${OPENSEARCH_PORT}"
 CURL_OPTS=(-s -k -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}")
+HEALTH_CHECK_RETRIES="${HEALTH_CHECK_RETRIES:-30}"
+
+# Retry a curl check until it returns the expected HTTP status code.
+# Usage: retry_check <label> <max_retries> <expected_status> <curl_args...>
+retry_check() {
+  local label="$1" max="$2" expected="$3"
+  shift 3
+  for i in $(seq 1 "$max"); do
+    status=$(curl -s -o /dev/null -w "%{http_code}" "$@") && true
+    [[ "$status" == "$expected" ]] && return 0
+    [[ "$i" -eq "$max" ]] && { echo "FAIL: $label not ready after ${max}s (last status: $status)"; exit 1; }
+    sleep 1
+  done
+}
 
 run_checks() {
   echo "==> Checking OpenSearch cluster health..."
@@ -18,30 +32,21 @@ run_checks() {
   echo "  OpenSearch cluster health: $health"
 
   echo "==> Checking OTel Collector is accepting OTLP..."
-  otel_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${OTEL_COLLECTOR_PORT_HTTP}/v1/traces" \
+  retry_check "OTel Collector" "$HEALTH_CHECK_RETRIES" "200" \
+    "http://localhost:${OTEL_COLLECTOR_PORT_HTTP}/v1/traces" \
     -H "Content-Type: application/json" \
-    -d '{"resourceSpans":[]}')
-  if [[ "$otel_status" != "200" ]]; then
-    echo "FAIL: OTel Collector OTLP HTTP endpoint returned $otel_status"
-    exit 1
-  fi
+    -d '{"resourceSpans":[]}'
   echo "  OTel Collector OTLP HTTP: OK"
 
   echo "==> Checking Prometheus is up..."
-  prom_status=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:${PROMETHEUS_PORT}/-/healthy")
-  if [[ "$prom_status" != "200" ]]; then
-    echo "FAIL: Prometheus health check returned $prom_status"
-    exit 1
-  fi
+  retry_check "Prometheus" "$HEALTH_CHECK_RETRIES" "200" \
+    "http://localhost:${PROMETHEUS_PORT}/-/healthy"
   echo "  Prometheus: OK"
 
   echo "==> Checking OpenSearch Dashboards is up..."
-  dashboards_status=$(curl -s -o /dev/null -w "%{http_code}" -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" \
-    "http://localhost:${OPENSEARCH_DASHBOARDS_PORT}/api/status")
-  if [[ "$dashboards_status" != "200" ]]; then
-    echo "FAIL: OpenSearch Dashboards returned $dashboards_status"
-    exit 1
-  fi
+  retry_check "OpenSearch Dashboards" "$HEALTH_CHECK_RETRIES" "200" \
+    -u "${OPENSEARCH_USER}:${OPENSEARCH_PASSWORD}" \
+    "http://localhost:${OPENSEARCH_DASHBOARDS_PORT}/api/status"
   echo "  OpenSearch Dashboards: OK"
 
   echo "==> Sending test trace through OTel Collector..."
