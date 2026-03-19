@@ -232,7 +232,7 @@ def create_prometheus_datasource(workspace_id):
 
     payload = {
         "name": datasource_name,
-        "allowedRoles": [],
+        "allowedRoles": ["all_access", "opendistro_security_anonymous_role"],
         "connector": "prometheus",
         "properties": {
             "prometheus.uri": prometheus_endpoint,
@@ -425,6 +425,39 @@ def create_opensearch_datasource(workspace_id):
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error creating OpenSearch datasource: {e}")
         return None
+
+
+def set_default_workspace(workspace_id):
+    """Set the default workspace so all users land here on login.
+
+    When workspace.enabled is true, users see a workspace picker on first load.
+    Setting defaultWorkspace directs all users (including anonymous) straight
+    to the Observability Stack workspace instead.
+    """
+    if not workspace_id or workspace_id == "default":
+        return
+
+    print(f"⭐ Setting default workspace: {workspace_id}")
+
+    url = f"{BASE_URL}/api/opensearch-dashboards/settings"
+    payload = {"changes": {"defaultWorkspace": workspace_id}}
+
+    try:
+        response = requests.post(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            print("✅ Default workspace set")
+        else:
+            print(f"⚠️  Failed to set default workspace: {response.status_code} {response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error setting default workspace: {e}")
 
 
 def set_default_index_pattern(workspace_id, pattern_id):
@@ -1252,6 +1285,9 @@ def main():
         print("✅ Observability Stack workspace already exists")
     else:
         workspace_id = create_workspace()
+
+    # Direct all users (including anonymous) to this workspace on login
+    set_default_workspace(workspace_id)
 
     # Create index patterns (idempotent - will skip if already exist)
     # Titles must match exactly what the APM plugin expects

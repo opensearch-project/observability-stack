@@ -949,7 +949,13 @@ The setting is injected at container startup via `sed` into two templates:
 - `docker-compose/opensearch/opensearch-security/config.template.yml` → OpenSearch security plugin config
 - `docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml` → Dashboards config
 
-Anonymous users can browse data, view and create saved objects (visualizations, dashboards, saved queries), explore traces and service maps, run queries, and access the REST API without credentials. They cannot modify or delete existing saved objects or perform admin operations.
+Additionally, `savedObjects.permission.enabled: false` is set in the Dashboards config to disable workspace-level permission checks. This version of OSD does not support per-workspace permission grants via the API, so without this setting anonymous users get 403 on all workspace-scoped API calls.
+
+The init script sets the `defaultWorkspace` UI setting after creating the Observability Stack workspace, so all users (including anonymous) land directly in the workspace instead of seeing a workspace picker.
+
+Anonymous users can browse data, view, create, and modify saved objects (visualizations, dashboards, saved queries), explore traces and service maps, run queries, and access the REST API without credentials. They cannot delete existing saved objects or perform admin operations.
+
+Modify access is required because Dashboards persists UI settings on every page load via `update` and `bulk` writes to its system indices. Without these permissions the page fails with 403 errors. Since UI settings and saved objects share the same indices, this also allows modification of existing saved objects.
 
 **Important**: Toggling `OPENSEARCH_ANONYMOUS_AUTH` requires `docker compose down -v` (not just `restart`) because OpenSearch applies security configuration to an internal index on first startup. The `-v` flag removes all stored data to force reinitialization. Any saved objects created by anonymous users are preserved and remain accessible to authenticated users after disabling anonymous auth.
 
@@ -959,7 +965,7 @@ Anonymous users can browse data, view and create saved objects (visualizations, 
 - **OpenTelemetry Collector**: `docker-compose/otel-collector/config.yaml`
 - **Data Prepper**: `docker-compose/data-prepper/pipelines.template.yaml` (credentials injected at startup) and `docker-compose/data-prepper/data-prepper-config.yaml`
 - **Prometheus**: `docker-compose/prometheus/prometheus.yml`
-- **OpenSearch Dashboards**: `docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml` (credentials and anonymous auth injected at startup)
+- **OpenSearch Dashboards**: `docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml` (credentials, anonymous auth, and `savedObjects.permission.enabled` injected at startup)
 - **Environment Variables**: `.env` file in repository root
 
 ### Index Management

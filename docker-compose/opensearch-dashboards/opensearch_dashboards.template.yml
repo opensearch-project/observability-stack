@@ -32,8 +32,9 @@ opensearch.pingTimeout: 3000
 opensearch.requestHeadersAllowlist: [authorization, securitytenant]
 
 # Anonymous authentication - skip login page for browse access
-# Anonymous users can view all data and create saved objects (visualizations, dashboards, saved queries)
-# but cannot modify or delete existing saved objects or perform admin operations
+# Anonymous users can view all data and create/modify saved objects (visualizations, dashboards, saved queries)
+# but cannot delete existing saved objects or perform admin operations
+# Modify access is required — Dashboards persists UI settings via update/bulk writes on page load
 # Set OPENSEARCH_ANONYMOUS_AUTH=true in .env to enable
 opensearch_security.auth.anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH_ENABLED
 
@@ -85,6 +86,11 @@ explore.discoverTraces.enabled: true
 explore.discoverMetrics.enabled: true
 explore.agentTraces.enabled: true
 workspace.enabled: true
+# Disable saved-object-level permission checks so all users (including anonymous)
+# can access workspaces created by the init script. Without this, only the workspace
+# owner (admin) can access workspace-scoped API calls — anonymous users get 403.
+# This version of OSD does not support per-workspace permission grants via the API.
+savedObjects.permission.enabled: false
 data_source.enabled: true
 data_source.ssl.verificationMode: none
 datasetManagement.enabled: true

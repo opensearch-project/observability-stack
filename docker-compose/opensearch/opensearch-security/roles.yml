@@ -17,33 +17,21 @@ opendistro_security_anonymous_role:
   cluster_permissions:
     - "read"
     - "cluster_monitor"
-    - "cluster_composite_ops_ro"
-    # Read access to ISM
-    - cluster:admin/opendistro/ism/policy/search
-    - cluster:admin/opendistro/ism/managedindex/explain
-    - cluster:admin/opendistro/rollup/search
-    - cluster:admin/opendistro/transform/get_transforms
-    # Read access to ISM Jobs
-    - cluster:admin/opendistro/rollup/explain
-    - cluster:admin/opendistro/ism/policy/get
-    - cluster:admin/opendistro/rollup/get
-    - cluster:admin/opendistro/transform/explain
-    - cluster:admin/opendistro/transform/get
-    # Read access to security analytics
-    - cluster:admin/opensearch/securityanalytics/rule/search
-    - cluster:admin/opensearch/securityanalytics/detector/search
-    - cluster:admin/opensearch/securityanalytics/findings/get
-    - cluster:admin/opensearch/securityanalytics/alerts/get
-    - cluster:admin/opensearch/securityanalytics/detector/get
-    - cluster:admin/opensearch/securityanalytics/logtype/search
+    - "cluster_composite_ops"
     # For scroll queries
     - "indices:data/read/scroll*"
-    # For PPL queries
+    # PPL and SQL query APIs
     - "cluster:admin/opensearch/ppl"
+    - "cluster:admin/opensearch/sql"
+    # Direct query APIs (SQL plugin) — datasource listing and query execution
+    - "cluster:admin/opensearch/ql/datasources/read"
+    - "cluster:admin/opensearch/ql/async_query/read"
+    - "cluster:admin/opensearch/direct_query/read/query"
   index_permissions:
-    # OpenSearch Dashboards system indices - scoped write access for UI settings and saved objects
-    # Only index (create/upsert) is granted; update, delete, and bulk are NOT included,
-    # so anonymous users cannot modify or remove existing dashboards, saved queries, or index patterns.
+    # OpenSearch Dashboards system indices - write access for UI settings and saved objects
+    # index (create/upsert), update, and bulk are granted so Dashboards can persist UI settings
+    # on page load and allow normal saved-object workflows. delete is NOT included,
+    # so anonymous users cannot remove existing dashboards, saved queries, or index patterns.
     - index_patterns:
       - ".kibana"
       - ".kibana-6"
@@ -54,6 +42,8 @@ opendistro_security_anonymous_role:
       allowed_actions:
         - "read"
         - "indices:data/write/index*"
+        - "indices:data/write/update*"
+        - "indices:data/write/bulk*"
     # Task and management indices
     - index_patterns:
       - ".tasks"
@@ -62,23 +52,26 @@ opendistro_security_anonymous_role:
       - "*:.management-beats"
       allowed_actions:
         - "read"
-    # All other indices - read-only access
+    # All other indices - full read access
     - index_patterns:
       - '*'
       allowed_actions:
         - "read"
-        - "indices:data/read/mget"
-        - "indices:data/read/msearch"
-        - "indices:data/read/mtv"
+        - "indices:data/read/*"
         - "indices:admin/get"
+        - "indices:admin/exists"
         - "indices:admin/aliases/exists*"
         - "indices:admin/aliases/get*"
         - "indices:admin/mappings/get"
-        - "indices:data/read/scroll"
+        - "indices:admin/resolve/index"
         - "indices:monitor/settings/get"
         - "indices:monitor/stats"
   tenant_permissions:
+    # kibana_all_write is required — Dashboards API endpoints (/api/saved_objects/*,
+    # /api/opensearch-dashboards/settings) enforce tenant-level permissions on top of
+    # index-level permissions. kibana_all_read blocks all writes through these APIs,
+    # causing 403 errors on page load when Dashboards tries to persist UI settings.
     - tenant_patterns:
       - '*'
       allowed_actions:
-        - "kibana_all_read"
+        - "kibana_all_write"

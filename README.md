@@ -330,15 +330,17 @@ docker compose up -d
 **What anonymous users can do:**
 - Browse and search all data (traces, logs, metrics)
 - View existing dashboards, visualizations, and saved queries
-- Create **new** visualizations, dashboards, saved queries, and index patterns
+- Create and modify visualizations, dashboards, saved queries, and index patterns
 - Explore trace analytics and service maps
 - Run PPL and SQL queries
 - Access the OpenSearch REST API without credentials (e.g., `curl -k https://localhost:9200/_cat/indices`)
 
 **What anonymous users cannot do:**
-- Modify or delete existing dashboards, visualizations, or saved objects
+- Delete existing dashboards, visualizations, or saved objects
 - Write data to OpenSearch indices
 - Perform admin operations (cluster settings, security configuration, user management)
+
+> **Why modify is allowed:** OpenSearch Dashboards requires `update` and `bulk` write permissions on its system indices to persist UI settings (theme, date format, default index) on every page load. Without these permissions the page fails with 403 "Unable to update UI setting" errors. Because UI settings and saved objects share the same system indices, granting the permissions Dashboards needs to function also allows modification of existing saved objects. Deletion is still blocked.
 
 Admin operations still require full credentials. When disabled (the default), all users must authenticate via the login page.
 

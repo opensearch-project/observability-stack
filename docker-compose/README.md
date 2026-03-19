@@ -315,7 +315,9 @@ docker compose up -d
 
 > **Warning:** The `-v` flag removes all stored data (traces, logs, saved dashboards). This is required because OpenSearch applies security configuration (roles, role mappings) to an internal index on first startup. Without `-v`, the security settings are not reinitialized and the change won't take effect.
 
-Anonymous users can browse all data, view and create saved objects (visualizations, dashboards, saved queries, index patterns), explore traces and service maps, run queries, and access the OpenSearch REST API without credentials. They cannot modify or delete existing saved objects or perform admin operations — those still require credentials.
+Anonymous users can browse all data, view, create, and modify saved objects (visualizations, dashboards, saved queries, index patterns), explore traces and service maps, run queries, and access the OpenSearch REST API without credentials. They cannot delete existing saved objects or perform admin operations — those still require credentials.
+
+> **Note:** Modify access is required because OpenSearch Dashboards persists UI settings (theme, date format, default index) on every page load via `update` and `bulk` writes to its system indices. Without these permissions the page fails with 403 errors. Since UI settings and saved objects share the same indices, this also allows modification of existing saved objects. Deletion is still blocked.
 
 Set `OPENSEARCH_ANONYMOUS_AUTH=false` (the default) to require login for all users. Restart with `docker compose down -v && docker compose up -d` to apply. Any saved objects created by anonymous users are preserved and remain accessible to authenticated users.
 
