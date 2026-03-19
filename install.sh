@@ -724,10 +724,6 @@ print_summary() {
     echo -e "  ${GREEN}${BOLD}${STAR} Observability Stack Install Complete! ${STAR}${RESET}"
     echo ""
 
-    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}${RESET}"
-    echo -e "           ${DIM}Username: ${RESET}${BOLD}$OPENSEARCH_USER${RESET}  ${DIM}Password: ${RESET}${BOLD}$OPENSEARCH_PASSWORD${RESET}"
-    echo ""
-
     if [[ "$INCLUDE_OTEL_DEMO" =~ ^[Yy]$ ]]; then
         echo -e "${GREEN}${ARROW}${RESET} ${BOLD}OTel Demo:${RESET}"
         echo -e "  ${DIM}${ARROW} Web Store:             http://localhost:8080/${RESET}"
@@ -767,11 +763,12 @@ print_summary() {
 
     echo ""
     echo -e "${PURPLE}${BOLD}Next Steps:${RESET}"
-    echo -e "  1. Visit ${PURPLE}${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}${RESET} to explore your data"
-    echo -e "  2. Learn more at ${PURPLE}https://opensearch.org/platform/observability/${RESET}"
+    echo -e "  1. Learn more at ${PURPLE}https://observability.opensearch.org${RESET}"
+    echo -e "  2. For support, open an issue at ${PURPLE}https://github.com/opensearch-project/observability-stack/issues${RESET}"
 
     echo ""
-    echo -e "${DIM}For support, visit: https://github.com/opensearch-project/observability-stack${RESET}"
+    echo -e "${GREEN}${ARROW}${RESET} ${BOLD}UI:${RESET}        OpenSearch Dashboards  ${BOLD}${OPENSEARCH_DASHBOARDS_PROTOCOL}://${OPENSEARCH_DASHBOARDS_HOST}:${OPENSEARCH_DASHBOARDS_PORT}${RESET}"
+    echo -e "           ${DIM}Username: ${RESET}${BOLD}$OPENSEARCH_USER${RESET}  ${DIM}Password: ${RESET}${BOLD}$OPENSEARCH_PASSWORD${RESET}"
     echo ""
 }
 
@@ -779,6 +776,12 @@ print_summary() {
 run_simulated_installer() {
     OPENSEARCH_USER="admin"
     OPENSEARCH_PASSWORD="My_password_123!@#"
+    OPENSEARCH_PROTOCOL="https"
+    OPENSEARCH_HOST="localhost"
+    OPENSEARCH_PORT="9200"
+    OPENSEARCH_DASHBOARDS_PROTOCOL="http"
+    OPENSEARCH_DASHBOARDS_HOST="localhost"
+    OPENSEARCH_DASHBOARDS_PORT="5601"
     INCLUDE_EXAMPLES="Y"
     INCLUDE_OTEL_DEMO="Y"
     INSTALL_DIR="observability-stack"
