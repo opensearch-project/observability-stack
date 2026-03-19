@@ -50,9 +50,13 @@ services:
     container_name: canary
     environment:
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
+      - WEATHER_AGENT_URL=http://weather-agent:8000
+      - EVENTS_AGENT_URL=http://events-agent:8002
       - CANARY_INTERVAL=${CANARY_INTERVAL}
     depends_on:
       - example-travel-planner
+      - example-weather-agent
+      - example-events-agent
     networks:
       - observability-stack-network
     restart: unless-stopped
