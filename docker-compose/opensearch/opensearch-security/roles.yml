@@ -1,0 +1,84 @@
+# OpenSearch Security Roles
+# Defines the anonymous access role for browse access and creating saved objects
+# Anonymous users are automatically assigned `opendistro_security_anonymous_role`
+#
+# NOTE: This file replaces the default OpenSearch roles.yml.
+# Only the anonymous role is defined here. Reserved/static roles
+# (all_access, kibana_server, etc.) are built into the security plugin
+# and remain available. If you need additional custom roles, add them to this file.
+
+_meta:
+  type: "roles"
+  config_version: 2
+
+# Read-only role for anonymous (unauthenticated) users
+opendistro_security_anonymous_role:
+  reserved: true
+  cluster_permissions:
+    - "read"
+    - "cluster_monitor"
+    - "cluster_composite_ops_ro"
+    # Read access to ISM
+    - cluster:admin/opendistro/ism/policy/search
+    - cluster:admin/opendistro/ism/managedindex/explain
+    - cluster:admin/opendistro/rollup/search
+    - cluster:admin/opendistro/transform/get_transforms
+    # Read access to ISM Jobs
+    - cluster:admin/opendistro/rollup/explain
+    - cluster:admin/opendistro/ism/policy/get
+    - cluster:admin/opendistro/rollup/get
+    - cluster:admin/opendistro/transform/explain
+    - cluster:admin/opendistro/transform/get
+    # Read access to security analytics
+    - cluster:admin/opensearch/securityanalytics/rule/search
+    - cluster:admin/opensearch/securityanalytics/detector/search
+    - cluster:admin/opensearch/securityanalytics/findings/get
+    - cluster:admin/opensearch/securityanalytics/alerts/get
+    - cluster:admin/opensearch/securityanalytics/detector/get
+    - cluster:admin/opensearch/securityanalytics/logtype/search
+    # For scroll queries
+    - "indices:data/read/scroll*"
+    # For PPL queries
+    - "cluster:admin/opensearch/ppl"
+  index_permissions:
+    # OpenSearch Dashboards system indices - scoped write access for UI settings and saved objects
+    # Only index (create/upsert) is granted; update, delete, and bulk are NOT included,
+    # so anonymous users cannot modify or remove existing dashboards, saved queries, or index patterns.
+    - index_patterns:
+      - ".kibana"
+      - ".kibana-6"
+      - ".kibana_*"
+      - ".opensearch_dashboards"
+      - ".opensearch_dashboards-6"
+      - ".opensearch_dashboards_*"
+      allowed_actions:
+        - "read"
+        - "indices:data/write/index*"
+    # Task and management indices
+    - index_patterns:
+      - ".tasks"
+      - ".management-beats"
+      - "*:.tasks"
+      - "*:.management-beats"
+      allowed_actions:
+        - "read"
+    # All other indices - read-only access
+    - index_patterns:
+      - '*'
+      allowed_actions:
+        - "read"
+        - "indices:data/read/mget"
+        - "indices:data/read/msearch"
+        - "indices:data/read/mtv"
+        - "indices:admin/get"
+        - "indices:admin/aliases/exists*"
+        - "indices:admin/aliases/get*"
+        - "indices:admin/mappings/get"
+        - "indices:data/read/scroll"
+        - "indices:monitor/settings/get"
+        - "indices:monitor/stats"
+  tenant_permissions:
+    - tenant_patterns:
+      - '*'
+      allowed_actions:
+        - "kibana_all_read"

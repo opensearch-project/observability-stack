@@ -1,0 +1,28 @@
+# OpenSearch Security Role Mappings
+# Maps backend roles and users to security roles
+#
+# NOTE: This file replaces the default OpenSearch roles_mapping.yml.
+# Only mappings required for anonymous auth and core admin access are included.
+# Reserved/static role mappings are built into the security plugin and remain available.
+# If you need additional custom mappings, add them to this file.
+
+_meta:
+  type: "rolesmapping"
+  config_version: 2
+
+# Anonymous users are automatically assigned the anonymous backend role
+opendistro_security_anonymous_role:
+  backend_roles:
+  - "opendistro_security_anonymous_backendrole"
+
+all_access:
+  reserved: true
+  backend_roles:
+  - "admin"
+  description: "Maps admin to all_access"
+
+kibana_server:
+  reserved: true
+  users:
+  - "kibanaserver"
+  description: "Maps kibana_server role to kibanaserver user"

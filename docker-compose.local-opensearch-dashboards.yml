@@ -18,9 +18,10 @@ services:
     command: >
       /bin/bash -c "
       cp /tmp/opensearch_dashboards.template.yml /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH_ENABLED|${OPENSEARCH_ANONYMOUS_AUTH}|g' /tmp/opensearch_dashboards.yml &&
       sed -i 's|OPENSEARCH_HOSTS|${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}|g' /tmp/opensearch_dashboards.yml &&
-      sed -i 's|OPENSEARCH_USER|${OPENSEARCH_USER}|g' /tmp/opensearch_dashboards.yml &&
       sed -i 's|OPENSEARCH_PASSWORD|${OPENSEARCH_PASSWORD}|g' /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_USER|${OPENSEARCH_USER}|g' /tmp/opensearch_dashboards.yml &&
       cp /tmp/opensearch_dashboards.yml /usr/share/opensearch-dashboards/config/opensearch_dashboards.yml &&
       cd /usr/share/opensearch-dashboards &&
       exec ./opensearch-dashboards-docker-entrypoint.sh opensearch-dashboards"

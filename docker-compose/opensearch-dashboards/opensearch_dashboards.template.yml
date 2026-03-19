@@ -31,6 +31,12 @@ opensearch.pingTimeout: 3000
 # Allow requests from any origin for development
 opensearch.requestHeadersAllowlist: [authorization, securitytenant]
 
+# Anonymous authentication - skip login page for browse access
+# Anonymous users can view all data and create saved objects (visualizations, dashboards, saved queries)
+# but cannot modify or delete existing saved objects or perform admin operations
+# Set OPENSEARCH_ANONYMOUS_AUTH=true in .env to enable
+opensearch_security.auth.anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH_ENABLED
+
 # Multi-tenancy configuration
 # Disabled for simpler development setup
 opensearch_security.multitenancy.enabled: false

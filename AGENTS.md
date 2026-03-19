@@ -205,6 +205,10 @@ OPENSEARCH_PASSWORD='My_password_123!@#'
 OPENSEARCH_HOST=opensearch
 OPENSEARCH_PORT=9200
 
+# Anonymous Authentication
+# Set to true to allow access to OpenSearch/Dashboards without login
+OPENSEARCH_ANONYMOUS_AUTH=false
+
 # OpenTelemetry Collector Configuration
 OTEL_COLLECTOR_VERSION=0.143.0
 OTEL_COLLECTOR_HOST=otel-collector
@@ -937,13 +941,25 @@ When modifying OpenSearch credentials:
 
 Data Prepper uses a template (`pipelines.template.yaml`) with placeholders processed at container startup via `command:` in docker-compose.yml. No manual credential edits needed in pipeline configs.
 
+### Anonymous Authentication
+
+Anonymous auth is controlled by `OPENSEARCH_ANONYMOUS_AUTH` in `.env` (default: `false`). When enabled, users can access OpenSearch Dashboards without logging in.
+
+The setting is injected at container startup via `sed` into two templates:
+- `docker-compose/opensearch/opensearch-security/config.template.yml` → OpenSearch security plugin config
+- `docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml` → Dashboards config
+
+Anonymous users can browse data, view and create saved objects (visualizations, dashboards, saved queries), explore traces and service maps, run queries, and access the REST API without credentials. They cannot modify or delete existing saved objects or perform admin operations.
+
+**Important**: Toggling `OPENSEARCH_ANONYMOUS_AUTH` requires `docker compose down -v` (not just `restart`) because OpenSearch applies security configuration to an internal index on first startup. The `-v` flag removes all stored data to force reinitialization. Any saved objects created by anonymous users are preserved and remain accessible to authenticated users after disabling anonymous auth.
+
 ### Configuration File Locations
 
-- **OpenSearch**: No custom config file - uses environment variables in docker-compose.yml
+- **OpenSearch**: Environment variables in docker-compose.yml + `docker-compose/opensearch/opensearch-security/config.template.yml` (anonymous auth injected at startup)
 - **OpenTelemetry Collector**: `docker-compose/otel-collector/config.yaml`
 - **Data Prepper**: `docker-compose/data-prepper/pipelines.template.yaml` (credentials injected at startup) and `docker-compose/data-prepper/data-prepper-config.yaml`
 - **Prometheus**: `docker-compose/prometheus/prometheus.yml`
-- **OpenSearch Dashboards**: `docker-compose/opensearch-dashboards/opensearch_dashboards.yml`
+- **OpenSearch Dashboards**: `docker-compose/opensearch-dashboards/opensearch_dashboards.template.yml` (credentials and anonymous auth injected at startup)
 - **Environment Variables**: `.env` file in repository root
 
 ### Index Management
@@ -967,6 +983,7 @@ When adding new services, consider adding health checks if they depend on other 
 
 Development configuration includes:
 - OpenSearch security enabled with default admin/admin credentials
+- Anonymous authentication disabled by default (enable via `OPENSEARCH_ANONYMOUS_AUTH=true` in `.env`)
 - SSL certificate verification disabled for development
 - CORS enabled for all origins
 - No network isolation
