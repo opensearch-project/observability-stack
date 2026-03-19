@@ -433,9 +433,12 @@ def set_default_workspace(workspace_id):
     When workspace.enabled is true, users see a workspace picker on first load.
     Setting defaultWorkspace directs all users (including anonymous) straight
     to the Observability Stack workspace instead.
+
+    Returns True on success, False on failure or skip.
     """
     if not workspace_id or workspace_id == "default":
-        return
+        print("⏭️  Skipping default workspace (using default)")
+        return False
 
     print(f"⭐ Setting default workspace: {workspace_id}")
 
@@ -454,10 +457,13 @@ def set_default_workspace(workspace_id):
 
         if response.status_code == 200:
             print("✅ Default workspace set")
+            return True
         else:
             print(f"⚠️  Failed to set default workspace: {response.status_code} {response.text}")
+            return False
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error setting default workspace: {e}")
+        return False
 
 
 def set_default_index_pattern(workspace_id, pattern_id):

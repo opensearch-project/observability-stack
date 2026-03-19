@@ -33,7 +33,7 @@ services:
     command: >
       /bin/bash -c "
       cp /tmp/opensearch-security/config.template.yml /usr/share/opensearch/config/opensearch-security/config.yml &&
-      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH_ENABLED|${OPENSEARCH_ANONYMOUS_AUTH}|g' /usr/share/opensearch/config/opensearch-security/config.yml &&
+      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH|${OPENSEARCH_ANONYMOUS_AUTH}|g' /usr/share/opensearch/config/opensearch-security/config.yml &&
       exec ./opensearch-docker-entrypoint.sh"
     volumes:
       # Persist data across container restarts

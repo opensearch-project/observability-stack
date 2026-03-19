@@ -11,7 +11,7 @@ _meta:
 config:
   dynamic:
     http:
-      anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH_ENABLED
+      anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH
       xff:
         enabled: false
         internalProxies: "192\\.168\\.0\\.10|192\\.168\\.0\\.11"

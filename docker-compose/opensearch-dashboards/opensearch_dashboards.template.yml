@@ -36,7 +36,7 @@ opensearch.requestHeadersAllowlist: [authorization, securitytenant]
 # but cannot delete existing saved objects or perform admin operations
 # Modify access is required — Dashboards persists UI settings via update/bulk writes on page load
 # Set OPENSEARCH_ANONYMOUS_AUTH=true in .env to enable
-opensearch_security.auth.anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH_ENABLED
+opensearch_security.auth.anonymous_auth_enabled: OPENSEARCH_ANONYMOUS_AUTH
 
 # Multi-tenancy configuration
 # Disabled for simpler development setup
