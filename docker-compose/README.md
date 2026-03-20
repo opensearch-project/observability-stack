@@ -304,7 +304,7 @@ Then access your cloud Dashboards URL directly — no local container needed.
 By default, users must log in to access OpenSearch Dashboards. To skip the login page (useful for demos or workshops), enable anonymous authentication in `.env`:
 
 ```env
-OPENSEARCH_ANONYMOUS_AUTH=true
+OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true
 ```
 
 Then restart:
@@ -319,9 +319,9 @@ Anonymous users can browse all data, view, create, and modify saved objects (vis
 
 > **Note:** Modify access is required because OpenSearch Dashboards persists UI settings (theme, date format, default index) on every page load via `update` and `bulk` writes to its system indices. Without these permissions the page fails with 403 errors. Since UI settings and saved objects share the same indices, this also allows modification of existing saved objects. Deletion is still blocked.
 
-Set `OPENSEARCH_ANONYMOUS_AUTH=false` (the default) to require login for all users. Restart with `docker compose down -v && docker compose up -d` to apply. Any saved objects created by anonymous users are preserved and remain accessible to authenticated users.
+Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=false` (the default) to require login for all users. Restart with `docker compose down -v && docker compose up -d` to apply. Note that the `-v` flag removes all stored data (traces, logs, saved dashboards) — this is required because OpenSearch applies security configuration to an internal index on first startup.
 
-**Troubleshooting:** If toggling `OPENSEARCH_ANONYMOUS_AUTH` doesn't take effect, make sure you used `docker compose down -v` (not just `docker compose restart` or `docker compose down` without `-v`). The `-v` flag is required to reinitialize OpenSearch's security configuration.
+**Troubleshooting:** If toggling `OPENSEARCH_ANONYMOUS_AUTH_ENABLED` doesn't take effect, make sure you used `docker compose down -v` (not just `docker compose restart` or `docker compose down` without `-v`). The `-v` flag is required to reinitialize OpenSearch's security configuration.
 
 ## Security Warning
 
@@ -332,7 +332,7 @@ Security considerations:
 - SSL certificate verification is disabled for development ease
 - Permissive CORS settings
 - No network isolation between services
-- Anonymous authentication is disabled by default (enable via `OPENSEARCH_ANONYMOUS_AUTH=true` in `.env`)
+- Anonymous authentication is disabled by default (enable via `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true` in `.env`)
 
 For production use:
 - Change default passwords

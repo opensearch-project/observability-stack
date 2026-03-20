@@ -32,8 +32,10 @@ services:
       - plugins.query.datasources.encryption.masterkey=BTqK4Ytdz67La1kShIKV3Pu9
     command: >
       /bin/bash -c "
+      ANON_AUTH='${OPENSEARCH_ANONYMOUS_AUTH_ENABLED}';
+      if [ \"$$ANON_AUTH\" != 'true' ]; then ANON_AUTH='false'; fi;
       cp /tmp/opensearch-security/config.template.yml /usr/share/opensearch/config/opensearch-security/config.yml &&
-      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH|${OPENSEARCH_ANONYMOUS_AUTH}|g' /usr/share/opensearch/config/opensearch-security/config.yml &&
+      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH_ENABLED|'$$ANON_AUTH'|g' /usr/share/opensearch/config/opensearch-security/config.yml &&
       exec ./opensearch-docker-entrypoint.sh"
     volumes:
       # Persist data across container restarts

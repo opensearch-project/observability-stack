@@ -17,8 +17,12 @@ services:
     pull_policy: always
     command: >
       /bin/bash -c "
+      ANON_AUTH='${OPENSEARCH_ANONYMOUS_AUTH_ENABLED}';
+      if [ \"$$ANON_AUTH\" != 'true' ]; then ANON_AUTH='false'; fi;
+      if [ \"$$ANON_AUTH\" = 'true' ]; then SO_PERM='false'; else SO_PERM='true'; fi;
       cp /tmp/opensearch_dashboards.template.yml /tmp/opensearch_dashboards.yml &&
-      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH|${OPENSEARCH_ANONYMOUS_AUTH}|g' /tmp/opensearch_dashboards.yml &&
+      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH_ENABLED|'$$ANON_AUTH'|g' /tmp/opensearch_dashboards.yml &&
+      sed -i 's|SAVED_OBJECTS_PERMISSION_ENABLED|'$$SO_PERM'|g' /tmp/opensearch_dashboards.yml &&
       sed -i 's|OPENSEARCH_HOSTS|${OPENSEARCH_PROTOCOL}://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}|g' /tmp/opensearch_dashboards.yml &&
       sed -i 's|OPENSEARCH_PASSWORD|${OPENSEARCH_PASSWORD}|g' /tmp/opensearch_dashboards.yml &&
       sed -i 's|OPENSEARCH_USER|${OPENSEARCH_USER}|g' /tmp/opensearch_dashboards.yml &&

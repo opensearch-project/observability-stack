@@ -316,7 +316,7 @@ By default, OpenSearch Dashboards requires login with credentials. You can enabl
 
 **To enable anonymous access**, set in `.env`:
 ```env
-OPENSEARCH_ANONYMOUS_AUTH=true
+OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true
 ```
 
 Then restart the stack:
@@ -344,7 +344,7 @@ docker compose up -d
 
 Admin operations still require full credentials. When disabled (the default), all users must authenticate via the login page.
 
-**Toggling back to require login:** Set `OPENSEARCH_ANONYMOUS_AUTH=false` in `.env` and restart with `docker compose down -v && docker compose up -d`. Any saved objects created by anonymous users are preserved and remain accessible to authenticated users.
+**Toggling back to require login:** Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=false` in `.env` and restart with `docker compose down -v && docker compose up -d`. Note that the `-v` flag removes all stored data (traces, logs, saved dashboards) — this is required because OpenSearch applies security configuration to an internal index on first startup.
 
 ## Resource Requirements
 

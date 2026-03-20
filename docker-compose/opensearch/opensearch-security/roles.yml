@@ -2,10 +2,13 @@
 # Defines the anonymous access role for browse access and creating saved objects
 # Anonymous users are automatically assigned `opendistro_security_anonymous_role`
 #
-# NOTE: This file replaces the default OpenSearch roles.yml.
-# Only the anonymous role is defined here. Reserved/static roles
-# (all_access, kibana_server, etc.) are built into the security plugin
-# and remain available. If you need additional custom roles, add them to this file.
+# WARNING: This file REPLACES the default OpenSearch roles.yml entirely.
+# Only the anonymous role is defined here because it is the only custom role needed.
+# Reserved/static roles built into the security plugin are NOT affected:
+#   - all_access, kibana_server, kibana_read_only, own_index, manage_snapshots,
+#     readall, readall_and_monitor, security_rest_api_access, etc.
+# The default roles.yml ships with no non-reserved custom roles, so nothing is lost.
+# If you need additional custom roles, add them to this file.
 
 _meta:
   type: "roles"

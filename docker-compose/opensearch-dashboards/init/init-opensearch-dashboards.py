@@ -15,6 +15,7 @@ PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
 _opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
 OPENSEARCH_ENDPOINT = f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
+ANONYMOUS_AUTH_ENABLED = os.getenv("OPENSEARCH_ANONYMOUS_AUTH_ENABLED", "false").lower() == "true"
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -232,7 +233,7 @@ def create_prometheus_datasource(workspace_id):
 
     payload = {
         "name": datasource_name,
-        "allowedRoles": ["all_access", "opendistro_security_anonymous_role"],
+        "allowedRoles": ["all_access", "opendistro_security_anonymous_role"] if ANONYMOUS_AUTH_ENABLED else ["all_access"],
         "connector": "prometheus",
         "properties": {
             "prometheus.uri": prometheus_endpoint,

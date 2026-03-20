@@ -45,7 +45,7 @@ grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
 ```
 
 :::tip[Skip the login page]
-For demos or workshops, enable anonymous authentication so users can access Dashboards without logging in. Set `OPENSEARCH_ANONYMOUS_AUTH=true` in `.env` and restart:
+For demos or workshops, enable anonymous authentication so users can access Dashboards without logging in. Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true` in `.env` and restart:
 ```bash
 docker compose down -v && docker compose up -d
 ```
