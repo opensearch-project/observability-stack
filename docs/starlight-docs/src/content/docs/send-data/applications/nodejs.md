@@ -250,7 +250,7 @@ export async function register() {
 
 ## Related links
 
-- [JavaScript SDK](/docs/sdks/javascript/) — purpose-built instrumentation for AI agent applications
+- [JavaScript SDK](/docs/send-data/ai-agents/javascript/) — purpose-built instrumentation for AI agent applications
 - [Applications overview](/docs/send-data/applications/)
 - [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
 - [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)

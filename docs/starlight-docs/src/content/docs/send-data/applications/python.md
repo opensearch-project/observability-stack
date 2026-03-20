@@ -234,7 +234,7 @@ DjangoInstrumentor().instrument()
 For AI/ML applications, use the OpenTelemetry semantic conventions for generative AI to capture LLM interactions.
 
 :::tip[Use the GenAI Python SDK]
-For AI agent applications, the [Python SDK](/docs/sdks/python/) (`opensearch-genai-observability-sdk-py`) provides purpose-built instrumentation with one-line setup, the `@observe` decorator for tracing agents and tools, `enrich()` for GenAI attributes, evaluation scoring, and auto-instrumentation for OpenAI, Anthropic, Bedrock, LangChain, and more. It handles all the GenAI semantic conventions automatically.
+For AI agent applications, the [Python SDK](/docs/send-data/ai-agents/python/) (`opensearch-genai-observability-sdk-py`) provides purpose-built instrumentation with one-line setup, the `@observe` decorator for tracing agents and tools, `enrich()` for GenAI attributes, evaluation scoring, and auto-instrumentation for OpenAI, Anthropic, Bedrock, LangChain, and more. It handles all the GenAI semantic conventions automatically.
 :::
 
 If you prefer manual instrumentation:
@@ -267,7 +267,7 @@ with tracer.start_as_current_span("llm.chat") as span:
 
 ## Related links
 
-- [Python SDK](/docs/sdks/python/) — purpose-built instrumentation for AI agent applications
+- [Python SDK](/docs/send-data/ai-agents/python/) — purpose-built instrumentation for AI agent applications
 - [Applications overview](/docs/send-data/applications/)
 - [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
 - [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)

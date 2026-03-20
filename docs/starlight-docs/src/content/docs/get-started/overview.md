@@ -42,7 +42,7 @@ flowchart LR
 
 ## Data flow
 
-1. **Instrument**: Your applications emit traces, logs, and metrics using the [GenAI SDK](/docs/sdks/python/) or standard OpenTelemetry instrumentation.
+1. **Instrument**: Your applications emit traces, logs, and metrics using the [GenAI SDK](/docs/send-data/ai-agents/python/) or standard OpenTelemetry instrumentation.
 2. **Normalize**: The OTel Collector batches, processes, and standardizes telemetry using semantic conventions.
 3. **Local Tooling**: [Agent Health](/docs/agent-health/) provides local debugging, evaluation scoring, and trace inspection during development.
 4. **Process**: Data Prepper ingests trace data, builds service maps, and computes RED metrics (request rate, error rate, duration).
