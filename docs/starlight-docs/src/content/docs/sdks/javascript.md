@@ -10,7 +10,7 @@ sidebar:
 - **npm:** `opensearch-genai-sdk`
 - **Node.js:** 18+
 - **TypeScript:** full type definitions included
-- **Source:** [github.com/vamsimanohar/opensearch-genai-sdk-py](https://github.com/vamsimanohar/opensearch-genai-sdk-py)
+- **Source:** [github.com/opensearch-project/genai-observability-sdk-js](https://github.com/opensearch-project/genai-observability-sdk-js)
 
 ## Installation
 
