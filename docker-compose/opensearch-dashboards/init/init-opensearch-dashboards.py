@@ -1138,12 +1138,16 @@ def create_overview_dashboard(workspace_id):
     markdown_text = f"""## Welcome to OpenSearch Observability Stack!
 Your entire stack, fully visible. APM traces, logs, Prometheus metrics, service maps, and AI agent tracing — unified in one open-source platform built for modern infrastructure. Total observability, zero lock-in.
 
+[Observability Stack Website](https://observability.opensearch.org) | [GitHub](https://github.com/opensearch-project/observability-stack)
+
 ### Architecture
 {arch_img_tag}
 
 ---
 
 ### Getting started
+For full setup instructions and guides, see the [Documentation](https://observability.opensearch.org/docs/).
+
 1. **Send telemetry** to the OTel Collector via gRPC (`:4317`) or HTTP (`:4318`)
 2. **Explore logs** to see application log events
 3. **Explore traces** to follow requests across services
