@@ -30,6 +30,23 @@ pip install "opensearch-genai-observability-sdk-py[opensearch]"          # trace
 pip install "opensearch-genai-observability-sdk-py[all]"                 # everything
 ```
 
+## API overview
+
+The SDK exports these functions and classes. This page covers the instrumentation APIs. Evaluation APIs are documented in [Evaluation & Scoring](/docs/ai-observability/evaluation/).
+
+| Export | Purpose | Docs |
+|---|---|---|
+| `register()` | Configure OTEL pipeline | [This page](#register) |
+| `observe()` | Trace agents, tools, LLM calls | [This page](#observe) |
+| `Op` | Operation name constants | [This page](#op-constants) |
+| `enrich()` | Set GenAI attributes on active span | [This page](#enrich) |
+| `score()` | Attach evaluation scores to traces | [This page](#score) |
+| `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
+| `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evaluate--run-experiments) |
+| `Experiment` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#experiment--upload-pre-computed-results) |
+| `Score` | Scorer return type | [Evaluation & Scoring](/docs/ai-observability/evaluation/#score-dataclass) |
+| `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/ai-observability/evaluation/#opensearchtraceretriever--query-stored-traces) |
+
 ## Quick start
 
 ```python
@@ -263,6 +280,37 @@ All parameters are optional. Only provided values are set.
 ```python
 register(auto_instrument=False)  # to disable
 ```
+
+---
+
+## `score()`
+
+Attaches an evaluation score to a trace or span. Scores are emitted as OTEL spans through the same OTLP pipeline — no separate client or index needed.
+
+```python
+from opensearch_genai_observability_sdk_py import score
+
+# Score an entire trace
+score(name="relevance", value=0.92, trace_id="abc123...",
+      explanation="Response addresses the user's query")
+
+# Score a specific span
+score(name="accuracy", value=0.95, trace_id="abc123...", span_id="def456...",
+      label="pass")
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | `str` | Metric name, e.g. `"relevance"`, `"factuality"`. |
+| `value` | `float` | Numeric score. |
+| `trace_id` | `str` | Hex trace ID to score. Omit for standalone scores. |
+| `span_id` | `str` | Hex span ID for span-level scoring. |
+| `label` | `str` | Human-readable label, e.g. `"pass"`. |
+| `explanation` | `str` | Evaluator rationale (truncated to 500 chars). |
+| `response_id` | `str` | LLM completion ID for correlation. |
+| `attributes` | `dict` | Additional span attributes. |
+
+For running evaluations at scale (`evaluate()`, `Experiment`, `OpenSearchTraceRetriever`), see [Evaluation & Scoring](/docs/ai-observability/evaluation/).
 
 ---
 
