@@ -187,10 +187,14 @@ def accuracy_scorer(input, output, expected) -> EvalScore:
 def latency_scorer(input, output, expected) -> EvalScore:
     return EvalScore(name="response_length", value=len(output))
 
+def my_agent(input: str) -> str:
+    # Replace with your agent logic
+    return f"Answer to: {input}"
+
 def test_agent_quality():
     result = evaluate(
         name="ci_regression_test",
-        task=my_agent,  # your agent function
+        task=my_agent,
         data=[
             {"input": "What is OpenSearch?", "expected": "search"},
             {"input": "What is OTEL?", "expected": "opentelemetry"},
