@@ -14,6 +14,14 @@ This skill teaches how to correlate traces, logs, and metrics across all three t
 
 All OpenSearch queries use the PPL API at `/_plugins/_ppl` with HTTPS and basic authentication. Prometheus queries use the HTTP API at `localhost:9090`. Credentials are read from the `.env` file (default: `admin` / `My_password_123!@#`).
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+
 ## OTel Correlation Fields Reference
 
 ### Trace Context Correlation
@@ -77,8 +85,8 @@ The following GenAI resource attributes are promoted to Prometheus metric labels
 Given a trace ID, find all log entries emitted during that trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -88,8 +96,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Given a span ID, find all log entries emitted during that specific span:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where spanId = '\''<SPAN_ID>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -99,8 +107,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Use PPL `join` to combine trace spans with their correlated logs in a single query:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | join left=s right=l ON s.traceId = l.traceId logs-otel-v1-* | fields s.spanId, s.name, s.serviceName, s.durationInNanos, l.severityText, l.body, l.`@timestamp`"}'
 ```
@@ -112,8 +120,8 @@ Reconstruct the complete request timeline by interleaving spans and logs sorted 
 Step 1 — Get all spans for the trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | eval signal = '\''span'\'' | fields traceId, spanId, serviceName, name, startTime, endTime, durationInNanos, `status.code`, signal | sort startTime"}'
 ```
@@ -121,8 +129,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Step 2 — Get all logs for the trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' | eval signal = '\''log'\'' | fields traceId, spanId, `resource.attributes.service.name`, severityText, body, `@timestamp`, signal | sort `@timestamp`"}'
 ```
@@ -139,8 +147,8 @@ When you find an error log, extract its `traceId` and query the Trace_Index to r
 Step 1 — Find error logs and get their traceId:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 10"}'
 ```
@@ -148,8 +156,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Step 2 — Query the Trace_Index with the extracted traceId to get all spans:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID_FROM_LOG>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | sort startTime"}'
 ```
@@ -159,8 +167,8 @@ curl -sk -u admin:'My_password_123!@#' \
 When a log entry has a `spanId`, query the Trace_Index to find the exact span that was active when the log was emitted:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where spanId = '\''<SPAN_ID_FROM_LOG>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code`, `attributes.gen_ai.operation.name`"}'
 ```
@@ -173,7 +181,7 @@ curl -sk -u admin:'My_password_123!@#' \
 Use the Prometheus exemplars API to retrieve trace context attached to metric samples. This links a metric observation back to the specific trace that produced it:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query_exemplars' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query_exemplars" \
   --data-urlencode 'query=http_server_duration_seconds_bucket' \
   --data-urlencode 'start=2024-01-01T00:00:00Z' \
   --data-urlencode 'end=2024-01-02T00:00:00Z'
@@ -204,7 +212,7 @@ The response contains exemplar objects with `trace_id` and `span_id` in the `lab
 Query exemplars for GenAI operation duration, filtered by agent name:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query_exemplars' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query_exemplars" \
   --data-urlencode 'query=gen_ai_client_operation_duration_bucket{gen_ai_agent_name="my-agent"}' \
   --data-urlencode 'start=2024-01-01T00:00:00Z' \
   --data-urlencode 'end=2024-01-02T00:00:00Z'
@@ -215,8 +223,8 @@ curl -s 'http://localhost:9090/api/v1/query_exemplars' \
 After extracting a `trace_id` from an exemplar response, query the Trace_Index for the full trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID_FROM_EXEMPLAR>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | sort startTime"}'
 ```
@@ -228,14 +236,14 @@ Filter metrics by GenAI resource labels before correlating to traces via exempla
 By agent name:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=rate(gen_ai_client_operation_duration_count{gen_ai_agent_name="my-agent"}[5m])'
 ```
 
 By model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=rate(gen_ai_client_token_usage_count{gen_ai_request_model="anthropic.claude-v3"}[5m])'
 ```
 
@@ -251,8 +259,8 @@ The `service.name` resource attribute is the primary key for correlating telemet
 Find all traces from a specific service:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where serviceName = '\''my-service'\'' | stats count() as span_count, avg(durationInNanos) as avg_duration by serviceName"}'
 ```
@@ -260,8 +268,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all logs from the same service:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where `resource.attributes.service.name` = '\''my-service'\'' | stats count() by severityText"}'
 ```
@@ -269,7 +277,7 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all metrics from the same service in Prometheus:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=rate(http_server_duration_seconds_count{service_name="my-service"}[5m])'
 ```
 
@@ -280,14 +288,14 @@ Query metrics filtered by GenAI resource attributes that are promoted to Prometh
 By agent:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count{gen_ai_agent_name="my-agent"}[5m])) by (gen_ai_agent_name)'
 ```
 
 By provider and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count[5m])) by (gen_ai_provider_name, gen_ai_request_model)'
 ```
 
@@ -310,7 +318,7 @@ Investigate a metric anomaly by correlating from metrics → traces → logs.
 **Step 1 — Detect the spike via PromQL:**
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=rate(http_server_duration_seconds_count[5m])'
 ```
 
@@ -319,7 +327,7 @@ Look for services with unusually high request rates or latency.
 **Step 2 — Query exemplars to get trace IDs from the spike window:**
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query_exemplars' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query_exemplars" \
   --data-urlencode 'query=http_server_duration_seconds_bucket' \
   --data-urlencode 'start=<SPIKE_START>' \
   --data-urlencode 'end=<SPIKE_END>'
@@ -330,8 +338,8 @@ Extract `trace_id` values from the exemplar response.
 **Step 3 — Query the Trace_Index for those traces:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID_FROM_EXEMPLAR>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | sort startTime"}'
 ```
@@ -339,8 +347,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 4 — Query the Log_Index for correlated logs:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID_FROM_EXEMPLAR>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -352,8 +360,8 @@ Start from an error log and trace back to the root cause.
 **Step 1 — Find error logs:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 10"}'
 ```
@@ -361,8 +369,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 2 — Extract the traceId from the error log and reconstruct the full trace tree:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID_FROM_ERROR_LOG>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | sort startTime"}'
 ```
@@ -370,8 +378,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 3 — Identify the root cause span (look for error status or exceptions):**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID_FROM_ERROR_LOG>'\'' AND `status.code` = 2 | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message` | sort startTime"}'
 ```
@@ -379,8 +387,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 4 — Get all logs for the error span to see the full context:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID_FROM_ERROR_LOG>'\'' | fields traceId, spanId, severityText, body, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -392,8 +400,8 @@ Investigate a slow agent invocation by correlating spans, child operations, logs
 **Step 1 — Find slow `invoke_agent` spans:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' AND durationInNanos > 5000000000 | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos, startTime | sort - durationInNanos | head 10"}'
 ```
@@ -401,8 +409,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 2 — Get all child spans to identify the bottleneck:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, parentSpanId, name, `attributes.gen_ai.operation.name`, durationInNanos, startTime | sort startTime"}'
 ```
@@ -412,8 +420,8 @@ Look for child spans with high `durationInNanos` — these are the bottleneck op
 **Step 3 — Check tool calls within the slow trace:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' AND `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields spanId, `attributes.gen_ai.tool.name`, `attributes.gen_ai.tool.call.arguments`, durationInNanos | sort - durationInNanos"}'
 ```
@@ -421,8 +429,8 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 4 — Get correlated logs for the slow spans:**
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' | fields spanId, severityText, body, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -430,7 +438,7 @@ curl -sk -u admin:'My_password_123!@#' \
 **Step 5 — Check GenAI token usage metrics for the agent via PromQL:**
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count{gen_ai_agent_name="<AGENT_NAME>"}[5m])) by (gen_ai_agent_name, gen_ai_request_model)'
 ```
 
@@ -444,8 +452,8 @@ Check if the agent is consuming unusually high token counts, which may explain s
 When you have a set of traceIds from span queries, use `IN` to fetch all correlated logs in one query:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId IN ('\''<TRACE_ID_1>'\'', '\''<TRACE_ID_2>'\'', '\''<TRACE_ID_3>'\'') | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -457,8 +465,8 @@ This is more efficient than querying logs one traceId at a time.
 Some logs may have empty or null traceId. Include those alongside correlated logs:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where `resource.attributes.service.name` = '\''frontend'\'' | where (traceId IN ('\''<TRACE_ID_1>'\'', '\''<TRACE_ID_2>'\'') OR traceId = '\'''\'' OR isnull(traceId)) | sort - `@timestamp` | head 50"}'
 ```
@@ -468,8 +476,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Identify which remote services a given service calls using `coalesce()` across OTel attribute variants. Different instrumentation libraries (Node.js, Go, Python, .NET) use different attributes:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where serviceName = '\''checkout'\'' | where kind = '\''SPAN_KIND_CLIENT'\'' | eval _remoteService = coalesce(`attributes.net.peer.name`, `attributes.server.address`, `attributes.rpc.service`, `attributes.db.system`, `attributes.gen_ai.system`, '\''unknown'\'') | stats count() as calls, avg(durationInNanos) as avg_latency by _remoteService | sort - calls"}'
 ```
@@ -486,6 +494,10 @@ When correlating across different service types, these are the key fields by pro
 | Envoy/Istio | `attributes.upstream_cluster` | span `name` |
 | LLM/GenAI | `attributes.gen_ai.system` + `attributes.server.address` | `attributes.gen_ai.request.model` |
 | Message Queue | `attributes.messaging.destination.name` | span `name` |
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
 
 ## AWS Managed Service Variants
 

@@ -14,6 +14,14 @@ This skill provides health check commands, data verification queries, and troubl
 
 Credentials are read from the `.env` file (default: `admin` / `My_password_123!@#`). All OpenSearch curl commands use HTTPS with `-k` to skip TLS certificate verification for local development.
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+
 ## Health Checks
 
 ### OpenSearch Cluster Health
@@ -21,7 +29,7 @@ Credentials are read from the `.env` file (default: `admin` / `My_password_123!@
 Check the overall cluster status (green, yellow, or red):
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' https://localhost:9200/_cluster/health?pretty
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "$OPENSEARCH_ENDPOINT/_cluster/health?pretty"
 ```
 
 A healthy cluster returns `"status": "green"` or `"status": "yellow"` (yellow is normal for single-node development clusters).
@@ -31,7 +39,7 @@ A healthy cluster returns `"status": "green"` or `"status": "yellow"` (yellow is
 Verify Prometheus is running and healthy:
 
 ```bash
-curl -s http://localhost:9090/-/healthy
+curl -s "$PROMETHEUS_ENDPOINT/-/healthy"
 ```
 
 Returns `Prometheus Server is Healthy.` when operational.
@@ -51,7 +59,7 @@ Look for `otelcol_receiver_accepted_spans`, `otelcol_exporter_sent_spans`, and `
 List all indices to verify data ingestion has created the expected trace, log, and service map indices:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' https://localhost:9200/_cat/indices?v
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "$OPENSEARCH_ENDPOINT/_cat/indices?v"
 ```
 
 You should see indices matching `otel-v1-apm-span-*`, `logs-otel-v1-*`, and `otel-v2-apm-service-map` if data is flowing.
@@ -63,8 +71,8 @@ You should see indices matching `otel-v1-apm-span-*`, `logs-otel-v1-*`, and `ote
 Verify trace data exists by counting documents in the trace index:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count()"}'
 ```
@@ -74,8 +82,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Verify log data exists by counting documents in the log index:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | stats count()"}'
 ```
@@ -136,7 +144,7 @@ docker compose logs otel-collector
    ```
 3. Check the OpenSearch health endpoint directly:
    ```bash
-   curl -sk -u admin:'My_password_123!@#' https://localhost:9200/_cluster/health?pretty
+   curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "$OPENSEARCH_ENDPOINT/_cluster/health?pretty"
    ```
 4. Check OpenSearch container logs for startup errors:
    ```bash
@@ -163,7 +171,7 @@ docker compose logs otel-collector
    - HTTP: `localhost:4318`
 4. Send test telemetry and verify it appears:
    ```bash
-   curl -sk -u admin:'My_password_123!@#' https://localhost:9200/_cat/indices?v
+   curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" "$OPENSEARCH_ENDPOINT/_cat/indices?v"
    ```
 5. Check that Data Prepper can connect to OpenSearch — look for authentication or TLS errors in Data Prepper logs.
 
@@ -219,8 +227,8 @@ docker compose logs otel-collector
 Use the PPL `describe` command to inspect the field mappings and types of an index. This is useful for verifying which fields are available for querying:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "describe otel-v1-apm-span-*"}'
 ```
@@ -230,13 +238,17 @@ curl -sk -u admin:'My_password_123!@#' \
 Use the PPL `_explain` endpoint to debug query execution plans. This shows how OpenSearch will execute a PPL query without actually running it:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl/_explain \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl/_explain" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | head 10"}'
 ```
 
 This is useful for diagnosing slow queries, understanding how filters are applied, and verifying that field names resolve correctly.
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
 
 ## AWS Managed Variants
 

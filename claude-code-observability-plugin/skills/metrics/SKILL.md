@@ -14,12 +14,18 @@ This skill provides PromQL query templates for querying metrics from Prometheus.
 
 Prometheus runs on port 9090 using HTTP (not HTTPS).
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `PROMETHEUS_ENDPOINT` | `http://localhost:9090` | Prometheus base URL |
+
 ## HTTP Request Rate by Service
 
 Calculate the per-second HTTP request rate over a 5-minute window, grouped by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -30,7 +36,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate the 95th percentile HTTP request latency by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -39,7 +45,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate the 99th percentile HTTP request latency by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.99, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -48,7 +54,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate the ratio of 5xx error responses to total requests by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -57,7 +63,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Query the current number of active HTTP connections by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(http_server_active_requests) by (service_name)'
 ```
 
@@ -68,7 +74,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate the 95th percentile database operation latency by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(db_client_operation_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -79,14 +85,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Query GenAI token usage histograms grouped by operation name and request model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model)'
 ```
 
 Token usage p95 by operation and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_token_usage_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
@@ -95,14 +101,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Query GenAI operation duration histograms grouped by operation and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model)'
 ```
 
 Operation duration p95 by operation and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
@@ -123,6 +129,11 @@ curl -s 'http://localhost:9090/api/v1/query' \
 ## PPL Alternative for OpenSearch-Ingested Metrics
 
 PPL can also query metrics stored in OpenSearch when metrics are ingested via Data Prepper, as an alternative to PromQL. This is useful for OpenSearch-native workflows where you want to query metrics alongside traces and logs using a single query language. When Data Prepper is configured to ingest metrics into OpenSearch, you can use PPL `source=` queries against the metrics index just as you would for traces and logs.
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
+- [Prometheus Querying Basics](https://prometheus.io/docs/prometheus/latest/querying/basics/) — PromQL syntax reference.
 
 ## AWS Managed Service for Prometheus
 

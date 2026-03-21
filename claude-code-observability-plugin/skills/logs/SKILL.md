@@ -14,6 +14,29 @@ This skill provides PPL (Piped Processing Language) query templates for searchin
 
 Credentials are read from the `.env` file (default: `admin` / `My_password_123!@#`). All curl commands use `-k` to skip TLS certificate verification for local development.
 
+## Connection Defaults
+
+All commands below use these variables. Set them in your environment or use the defaults:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+
+## Base Command
+
+All PPL queries in this skill use this curl pattern:
+
+```bash
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "<PPL_QUERY>"}'
+```
+
+The examples below show the full command for clarity, but only the PPL query varies.
+
 ## Log Index Key Fields
 
 Key fields available in the `logs-otel-v1-*` index:
@@ -37,8 +60,8 @@ Key fields available in the `logs-otel-v1-*` index:
 Query all error-level logs:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' | fields traceId, spanId, `resource.attributes.service.name`, body, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -46,8 +69,8 @@ curl -sk -u admin:'My_password_123!@#' \
 ### WARN Logs
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''WARN'\'' | fields traceId, spanId, `resource.attributes.service.name`, body, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -55,8 +78,8 @@ curl -sk -u admin:'My_password_123!@#' \
 ### INFO Logs
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''INFO'\'' | fields traceId, spanId, `resource.attributes.service.name`, body, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -66,8 +89,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Use `severityNumber` for numeric comparisons. For example, find all logs at WARN level or above (severityNumber >= 13):
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityNumber >= 13 | fields severityText, severityNumber, `resource.attributes.service.name`, body, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -77,8 +100,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all logs associated with a specific trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -86,8 +109,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find error logs for a specific trace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' AND severityText = '\''ERROR'\'' | fields spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -99,8 +122,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Identify error patterns by aggregating log counts grouped by severity level and service name:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | stats count() by severityText, `resource.attributes.service.name`"}'
 ```
@@ -108,8 +131,8 @@ curl -sk -u admin:'My_password_123!@#' \
 ### Error Count by Service Only
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' | stats count() as error_count by `resource.attributes.service.name` | sort - error_count"}'
 ```
@@ -121,8 +144,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Analyze log volume over time using `stats count() by span(@timestamp, 1h)`:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | stats count() as log_count by span(`@timestamp`, 1h)"}'
 ```
@@ -134,8 +157,8 @@ Change the interval to suit your analysis. Common intervals: `5m`, `15m`, `1h`, 
 15-minute buckets:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | stats count() as log_count by span(`@timestamp`, 15m)"}'
 ```
@@ -145,8 +168,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Track error log volume specifically:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' | stats count() as error_count by span(`@timestamp`, 1h), `resource.attributes.service.name`"}'
 ```
@@ -158,8 +181,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Search log body content for a specific string using `where` with `like`:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where body like '\''%timeout%'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -169,8 +192,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Use the `match` relevance function for full-text search on the body field:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where match(body, '\''connection refused'\'') | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -180,8 +203,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Use `match_phrase` for exact phrase matching in the body:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where match_phrase(body, '\''failed to connect'\'') | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -193,8 +216,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all logs associated with a specific span to understand what happened during that operation:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where spanId = '\''<SPAN_ID>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -204,8 +227,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find error logs and their associated trace spans. First, find error logs with traceId:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' AND traceId != '\'''\'' | fields traceId, spanId, body, `resource.attributes.service.name`, `@timestamp` | sort - `@timestamp` | head 20"}'
 ```
@@ -213,8 +236,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Then query the trace index for the corresponding spans using the traceId from the error log:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, serviceName, name, `status.code`, durationInNanos, startTime | sort startTime"}'
 ```
@@ -222,8 +245,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Correlate exception spans with their associated error logs using shared traceId and spanId:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' AND spanId = '\''<SPAN_ID>'\'' AND severityText = '\''ERROR'\'' | fields body, severityText, `@timestamp`"}'
 ```
@@ -250,6 +273,11 @@ The following PPL commands are particularly useful when analyzing log data:
 | `dedup` | Remove duplicate log entries (e.g., deduplicate by body to find unique messages) |
 | `fillnull` | Replace null field values with defaults for cleaner output |
 | `regex` | Filter logs using regular expression patterns on field values |
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
+- [OpenTelemetry Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/) — Standard attribute names used in log records.
 
 ## AWS Managed OpenSearch
 

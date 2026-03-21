@@ -143,8 +143,8 @@ _PPL_CURL_BLOCKS = _collect_ppl_curl_blocks()
 def test_property_2_ppl_curl_completeness(block: str) -> None:
     """Every PPL code block in traces.md / logs.md must be a complete curl command."""
     assert "/_plugins/_ppl" in block, "Missing PPL API endpoint (/_plugins/_ppl)"
-    assert "-u admin:" in block or "-u admin'" in block, "Missing basic auth (-u admin:)"
-    assert "https" in block.lower(), "Missing HTTPS protocol"
+    assert "-u admin:" in block or "-u admin'" in block or "$OPENSEARCH_USER" in block, "Missing basic auth (-u admin: or $OPENSEARCH_USER)"
+    assert "https" in block.lower() or "$OPENSEARCH_ENDPOINT" in block, "Missing HTTPS protocol or $OPENSEARCH_ENDPOINT"
     assert '"query"' in block, 'Missing JSON body with "query" field'
 
 
@@ -182,10 +182,10 @@ _OS_CURL_COMMANDS = _collect_opensearch_curl_commands()
 )
 def test_property_3_opensearch_curl_auth(block: str) -> None:
     """Every OpenSearch curl command must use HTTPS, -k flag, and basic auth."""
-    assert "https" in block.lower(), "OpenSearch command must use HTTPS"
+    assert "https" in block.lower() or "$OPENSEARCH_ENDPOINT" in block, "OpenSearch command must use HTTPS or $OPENSEARCH_ENDPOINT"
     assert "-k" in block or "-sk" in block, "OpenSearch command must include -k flag"
-    assert "-u admin:" in block or "-u admin'" in block, (
-        "OpenSearch command must include basic auth (-u admin:)"
+    assert "-u admin:" in block or "-u admin'" in block or "$OPENSEARCH_USER" in block, (
+        "OpenSearch command must include basic auth (-u admin: or $OPENSEARCH_USER)"
     )
 
 
@@ -340,8 +340,8 @@ _PROMQL_METRICS_BLOCKS = _collect_promql_blocks_from_metrics()
 )
 def test_property_6_promql_curl_completeness(block: str) -> None:
     """Every PromQL code block in metrics.md must target localhost:9090/api/v1/query."""
-    assert "localhost:9090/api/v1/query" in block, (
-        "PromQL block must contain curl command targeting localhost:9090/api/v1/query"
+    assert "localhost:9090/api/v1/query" in block or "$PROMETHEUS_ENDPOINT/api/v1/query" in block, (
+        "PromQL block must contain curl command targeting localhost:9090/api/v1/query or $PROMETHEUS_ENDPOINT/api/v1/query"
     )
 
 
@@ -513,12 +513,12 @@ def test_property_9_red_query_completeness(block: str) -> None:
     is_promql = promql_pat.search(block)
 
     if is_promql and not is_ppl:
-        assert "localhost:9090" in block, (
-            "PromQL RED block must target Prometheus at localhost:9090"
+        assert "localhost:9090" in block or "$PROMETHEUS_ENDPOINT" in block, (
+            "PromQL RED block must target Prometheus at localhost:9090 or $PROMETHEUS_ENDPOINT"
         )
     if is_ppl:
-        assert "-u admin:" in block or "-u admin'" in block, (
-            "PPL RED block must include OpenSearch basic auth"
+        assert "-u admin:" in block or "-u admin'" in block or "$OPENSEARCH_USER" in block, (
+            "PPL RED block must include OpenSearch basic auth or $OPENSEARCH_USER"
         )
 
 

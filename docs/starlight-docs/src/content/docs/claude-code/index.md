@@ -38,7 +38,7 @@ First, add the repository as a plugin marketplace:
 Then install the plugin:
 
 ```
-/plugin install observability@observability-stack
+/plugin install observability@observability
 ```
 
 All eight skills are registered and Claude automatically routes to the right one based on your question.
@@ -53,7 +53,7 @@ Verify the skills loaded:
 
 Claude Desktop supports custom skills through **Settings → Capabilities → Skills**. Each skill must be uploaded as a separate ZIP file.
 
-Pre-built ZIP files are available in the [`claude-code-observability-plugin/dist/`](https://github.com/opensearch-project/observability-stack/tree/main/claude-code-observability-plugin/dist) directory — one per skill:
+Pre-built ZIP files are attached to each [GitHub release](https://github.com/opensearch-project/observability-stack/releases) — one per skill:
 
 | ZIP file | Skill |
 |---|---|
@@ -197,4 +197,4 @@ docker compose up -d prometheus
 - [MCP Server](/docs/mcp/) — query OpenSearch via Model Context Protocol
 - [Investigate Traces](/docs/investigate/discover-traces/) — explore traces in OpenSearch Dashboards
 - [Investigate Logs](/docs/investigate/discover-logs/) — explore logs in OpenSearch Dashboards
-- [SDKs](/docs/sdks/) — instrument your applications with OpenTelemetry
+- [Send Data](/docs/send-data/) — instrument your applications with OpenTelemetry

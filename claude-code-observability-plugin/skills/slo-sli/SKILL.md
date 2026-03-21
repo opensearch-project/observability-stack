@@ -14,6 +14,15 @@ This skill provides templates for implementing Service Level Objectives (SLOs) a
 
 All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`. Credentials are not required for local Prometheus (HTTP, no auth). Recording rules and alerting rules are YAML blocks that can be added to the Prometheus configuration at `docker-compose/prometheus/prometheus.yml`.
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+| `PROMETHEUS_ENDPOINT` | `http://localhost:9090` | Prometheus base URL |
+
 
 ## SLI Definition Templates
 
@@ -22,14 +31,14 @@ All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`.
 The availability SLI measures the ratio of successful requests (non-5xx) to total requests. A value of 1.0 means all requests succeeded; 0.99 means 1% failed.
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_duration_seconds_count[5m]))'
 ```
 
 Per-service availability:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code!~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -38,14 +47,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 The latency SLI measures the ratio of requests completing within a threshold (e.g., 250ms) to total requests. A value of 0.95 means 95% of requests finished within the threshold.
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_bucket{le="0.25"}[5m])) / sum(rate(http_server_duration_seconds_count[5m]))'
 ```
 
 Per-service latency SLI with a 500ms threshold:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_bucket{le="0.5"}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -54,14 +63,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 The GenAI SLI measures agent response time objectives using the `gen_ai_client_operation_duration` histogram. For example, the ratio of GenAI operations completing within 5 seconds:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_bucket{le="5.0"}[5m])) by (gen_ai_operation_name) / sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_operation_name)'
 ```
 
 Per-model GenAI availability (non-error operations):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count{gen_ai_operation_name!="error"}[5m])) by (gen_ai_request_model) / sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_request_model)'
 ```
 
@@ -210,12 +219,12 @@ groups:
 Query a recording rule value:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_availability:ratio_rate30d'
 ```
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_latency:ratio_rate1h'
 ```
 
@@ -239,21 +248,21 @@ Formula: `1 - (1 - SLI) / (1 - SLO_target)`
 For a 99.9% SLO target using the 30-day availability SLI:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=1 - ((1 - sli:http_availability:ratio_rate30d) / (1 - 0.999))'
 ```
 
 For a 99.5% SLO target:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=1 - ((1 - sli:http_availability:ratio_rate30d) / (1 - 0.995))'
 ```
 
 For a 99.0% SLO target:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=1 - ((1 - sli:http_availability:ratio_rate30d) / (1 - 0.99))'
 ```
 
@@ -262,14 +271,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 The consumption rate shows how fast the error budget is being consumed. A value of 1.0 means the budget is being consumed at exactly the expected rate; values above 1.0 mean the budget is being consumed faster than sustainable.
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1h) / (1 - 0.999)'
 ```
 
 Per-service error budget consumption over the last day:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1d) / (1 - 0.999)'
 ```
 
@@ -283,14 +292,14 @@ Burn rate measures how fast you are consuming your error budget relative to the 
 Burn rate over a 1-hour window for a 99.9% SLO:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1h) / (1 - 0.999)'
 ```
 
 Burn rate over a 6-hour window:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate6h) / (1 - 0.999)'
 ```
 
@@ -305,14 +314,14 @@ Detects severe incidents that will exhaust the entire 30-day error budget in ~2 
 1-hour burn rate:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1h) / (1 - 0.999) > 14.4'
 ```
 
 6-hour burn rate (confirmation window):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate6h) / (1 - 0.999) > 14.4'
 ```
 
@@ -323,14 +332,14 @@ Detects slow, sustained degradation that will exhaust the error budget by the en
 3-day burn rate:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate3d) / (1 - 0.999) > 1'
 ```
 
 30-day burn rate (confirmation window):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate30d) / (1 - 0.999) > 1'
 ```
 
@@ -416,13 +425,13 @@ groups:
 Query active alerts:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/alerts'
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/alerts"
 ```
 
 Query alerting rules:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/rules'
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/rules"
 ```
 
 
@@ -433,14 +442,14 @@ curl -s 'http://localhost:9090/api/v1/rules'
 Query the current availability SLI over the 30-day window for all services:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_availability:ratio_rate30d'
 ```
 
 Query the current latency SLI over the 30-day window:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_latency:ratio_rate30d'
 ```
 
@@ -449,14 +458,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Check which services are meeting the 99.9% availability SLO:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_availability:ratio_rate30d >= 0.999'
 ```
 
 Check which services are violating the SLO:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_availability:ratio_rate30d < 0.999'
 ```
 
@@ -465,7 +474,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Remaining error budget for each service against a 99.9% target:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=1 - ((1 - sli:http_availability:ratio_rate30d) / (1 - 0.999))'
 ```
 
@@ -474,14 +483,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Current burn rate for each service over the last hour:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1h) / (1 - 0.999)'
 ```
 
 Current burn rate over the last day:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1d) / (1 - 0.999)'
 ```
 
@@ -500,7 +509,7 @@ Choose the SLIs that matter for your service. Most services need at least availa
 Verify the raw metrics exist in Prometheus:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=http_server_duration_seconds_count'
 ```
 
@@ -518,13 +527,13 @@ rule_files:
 Reload Prometheus to pick up the new rules:
 
 ```bash
-curl -s -X POST 'http://localhost:9090/-/reload'
+curl -s -X POST "$PROMETHEUS_ENDPOINT/-/reload"
 ```
 
 Verify the recording rules are loaded:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/rules' | python3 -m json.tool
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/rules" | python3 -m json.tool
 ```
 
 ### Step 3: Set Targets
@@ -544,7 +553,7 @@ Add the burn rate alerting rules from the [Prometheus Alerting Rules for Burn Ra
 Verify alerts are configured:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/rules' | python3 -m json.tool
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/rules" | python3 -m json.tool
 ```
 
 ### Step 5: Query Compliance
@@ -553,21 +562,26 @@ Run the compliance report queries from the [SLO Compliance Reporting](#slo-compl
 
 ```bash
 # Current SLI
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sli:http_availability:ratio_rate30d'
 
 # Budget remaining
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=1 - ((1 - sli:http_availability:ratio_rate30d) / (1 - 0.999))'
 
 # Burn rate
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sli:http_availability:ratio_rate1h) / (1 - 0.999)'
 
 # Active alerts
-curl -s 'http://localhost:9090/api/v1/alerts'
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/alerts"
 ```
 
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
+- [Prometheus Querying Basics](https://prometheus.io/docs/prometheus/latest/querying/basics/) — PromQL syntax reference.
 
 ## AWS Managed Service Variants
 

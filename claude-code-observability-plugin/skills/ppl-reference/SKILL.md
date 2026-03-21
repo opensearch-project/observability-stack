@@ -15,6 +15,14 @@ This is a comprehensive reference for the Piped Processing Language (PPL) used b
 Grammar sourced from the `opensearch-project/sql` repository's `docs/user/ppl/` directory:
 https://github.com/opensearch-project/sql
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+
 ## Field Name Escaping
 
 Field names containing dots must be enclosed in backticks to avoid parsing errors:
@@ -36,8 +44,8 @@ This is critical for OTel attribute fields which use dotted naming conventions.
 Execute a PPL query:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() by serviceName"}'
 ```
@@ -49,8 +57,8 @@ Request body: `{"query": "<ppl_query>"}`
 Retrieve the query execution plan (useful for debugging and profiling):
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl/_explain \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl/_explain" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() by serviceName"}'
 ```
@@ -60,8 +68,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Retrieve PPL grammar metadata:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X GET https://localhost:9200/_plugins/_ppl/_grammar
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X GET "$OPENSEARCH_ENDPOINT/_plugins/_ppl/_grammar"
 ```
 
 ---
@@ -77,8 +85,8 @@ Start a query by specifying the data source index pattern.
 **Syntax**: `search source=<index-pattern>` or `source=<index-pattern>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | head 10"}'
 ```
@@ -90,8 +98,8 @@ Filter results based on a condition.
 **Syntax**: `where <condition>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | head 10"}'
 ```
@@ -107,8 +115,8 @@ Select specific fields to return.
 Use `+` to include or `-` to exclude fields.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | fields traceId, spanId, serviceName, durationInNanos | head 10"}'
 ```
@@ -120,8 +128,8 @@ Aggregate data using statistical functions.
 **Syntax**: `stats <aggregation>... [by <field-list>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as span_count, avg(durationInNanos) as avg_duration by serviceName"}'
 ```
@@ -137,8 +145,8 @@ Order results by one or more fields.
 Use `+` for ascending (default), `-` for descending.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | sort - durationInNanos | head 10"}'
 ```
@@ -150,8 +158,8 @@ Limit the number of results returned.
 **Syntax**: `head [N]` (default N=10)
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | head 5"}'
 ```
@@ -163,8 +171,8 @@ Compute new fields from expressions.
 **Syntax**: `eval <new-field> = <expression> [, ...]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = durationInNanos / 1000000 | fields traceId, serviceName, duration_ms | sort - duration_ms | head 10"}'
 ```
@@ -176,8 +184,8 @@ Remove duplicate results based on field values.
 **Syntax**: `dedup [N] <field-list> [keepempty=<bool>] [consecutive=<bool>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | dedup serviceName | fields serviceName"}'
 ```
@@ -189,8 +197,8 @@ Rename one or more fields.
 **Syntax**: `rename <old-field> AS <new-field> [, ...]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | rename serviceName as service, durationInNanos as duration | fields traceId, service, duration | head 10"}'
 ```
@@ -202,8 +210,8 @@ Find the most frequent values for a field.
 **Syntax**: `top [N] <field> [by <group-field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | top 5 serviceName"}'
 ```
@@ -215,8 +223,8 @@ Find the least frequent values for a field.
 **Syntax**: `rare <field> [by <group-field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | rare `attributes.gen_ai.operation.name`"}'
 ```
@@ -228,8 +236,8 @@ Display results in tabular format (alias for fields in some contexts).
 **Syntax**: `table <field-list>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | table traceId, spanId, serviceName, name | head 10"}'
 ```
@@ -243,8 +251,8 @@ Aggregate data into time buckets for time-series visualization.
 **Syntax**: `timechart span(<time-field>, <interval>) <aggregation>... [by <field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 5m) count() as span_count by serviceName"}'
 ```
@@ -252,8 +260,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Rate functions for timechart: `per_second()`, `per_minute()`, `per_hour()`, `per_day()` — compute rate of an aggregation per time unit.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 1h) per_minute(count()) as spans_per_min by serviceName"}'
 ```
@@ -265,8 +273,8 @@ General charting command for aggregation over arbitrary fields.
 **Syntax**: `chart <aggregation>... by <field> [span(<field>, <interval>)]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | chart avg(durationInNanos) by serviceName"}'
 ```
@@ -278,8 +286,8 @@ Bucket numeric or date values into intervals.
 **Syntax**: `eval <new-field> = bin(<field>, <interval>)` or used within `stats ... by span(<field>, <interval>)`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() by span(durationInNanos, 1000000000)"}'
 ```
@@ -293,8 +301,8 @@ Calculate moving averages over sorted data.
 SMA = Simple Moving Average.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | trendline sort startTime sma(10, durationInNanos) as avg_duration | fields startTime, durationInNanos, avg_duration | head 50"}'
 ```
@@ -306,8 +314,8 @@ Compute running (cumulative) statistics over ordered results.
 **Syntax**: `streamstats <aggregation>... [by <field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | sort startTime | streamstats count() as running_count, sum(`attributes.gen_ai.usage.input_tokens`) as cumulative_tokens | fields startTime, running_count, cumulative_tokens | head 50"}'
 ```
@@ -319,8 +327,8 @@ Add aggregation results as new fields to each row without collapsing rows (unlik
 **Syntax**: `eventstats <aggregation>... [by <field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eventstats avg(durationInNanos) as avg_svc_duration by serviceName | eval deviation = durationInNanos - avg_svc_duration | fields traceId, serviceName, durationInNanos, avg_svc_duration, deviation | sort - deviation | head 20"}'
 ```
@@ -334,8 +342,8 @@ Extract fields from text using a regular expression with named groups.
 **Syntax**: `parse <field> '<regex-with-named-groups>'`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | parse body '\''(?P<level>\\w+): (?P<msg>.+)'\'' | fields level, msg | head 10"}'
 ```
@@ -347,8 +355,8 @@ Extract fields using Grok patterns (predefined regex patterns).
 **Syntax**: `grok <field> '<grok-pattern>'`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | grok body '\''%{LOGLEVEL:level} %{GREEDYDATA:message}'\'' | fields level, message | head 10"}'
 ```
@@ -360,8 +368,8 @@ Extract fields using named capture groups (similar to parse but with Splunk-comp
 **Syntax**: `rex field=<field> '<regex-with-named-groups>'`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | rex field=body '\''(?<status_code>\\d{3})'\'' | fields status_code, body | head 10"}'
 ```
@@ -373,8 +381,8 @@ Filter results using a regular expression match on a field.
 **Syntax**: `<field> = regex '<pattern>'` (used within `where`)
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where body like '\''%error%'\'' | fields traceId, body, severityText | head 10"}'
 ```
@@ -386,8 +394,8 @@ Auto-discover log patterns by clustering similar log messages.
 **Syntax**: `patterns <field> [pattern='<regex>'] [new_field=<name>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | patterns body | fields body, patterns_field | head 20"}'
 ```
@@ -399,8 +407,8 @@ Extract values from structured data (JSON, XML) using path expressions.
 **Syntax**: `spath input=<field> [path=<path>] [output=<field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.tool.call.arguments` != '\'''\'' | spath input=`attributes.gen_ai.tool.call.arguments` | head 10"}'
 ```
@@ -416,8 +424,8 @@ Join results from two indices.
 Types: `inner`, `left`, `right`, `cross`.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | join left=s right=l ON s.traceId = l.traceId logs-otel-v1-* | fields s.spanId, s.name, l.severityText, l.body | head 10"}'
 ```
@@ -429,8 +437,8 @@ Enrich results by looking up values from another index.
 **Syntax**: `lookup <lookup-index> <match-field> [AS <alias>] [OUTPUT <field-list>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | lookup otel-v2-apm-service-map serviceName | fields serviceName, `destination.domain`, durationInNanos | head 10"}'
 ```
@@ -442,8 +450,8 @@ Perform graph traversal lookups for hierarchical or connected data.
 **Syntax**: `graphlookup <index> connectFromField=<field> connectToField=<field> [maxDepth=<N>] [as <alias>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v2-apm-service-map | graphlookup otel-v2-apm-service-map connectFromField=`destination.domain` connectToField=serviceName maxDepth=3 as dependencies | head 10"}'
 ```
@@ -455,8 +463,8 @@ Use a nested query as a data source or filter.
 **Syntax**: `where <field> IN [ source=<index> | ... | fields <field> ]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId IN [ source=otel-v1-apm-span-* | where `status.code` = 2 | fields traceId ] | fields traceId, spanId, serviceName, name | head 20"}'
 ```
@@ -468,8 +476,8 @@ Append results from another query to the current result set.
 **Syntax**: `append [ source=<index> | ... ]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as cnt by serviceName | append [ source=logs-otel-v1-* | stats count() as cnt by `resource.attributes.service.name` ] | head 20"}'
 ```
@@ -481,8 +489,8 @@ Append columns from another query to the current result set.
 **Syntax**: `appendcol [ source=<index> | ... ]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as span_count | appendcol [ source=logs-otel-v1-* | stats count() as log_count ]"}'
 ```
@@ -494,8 +502,8 @@ Append the results of a sub-pipeline to the current results.
 **Syntax**: `appendpipe [ <commands> ]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as cnt by serviceName | appendpipe [ stats sum(cnt) as total ]"}'
 ```
@@ -509,8 +517,8 @@ Replace null values with a specified value.
 **Syntax**: `fillnull [with <value>] [<field-list>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | fillnull with 0 `attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens` | fields traceId, `attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens` | head 10"}'
 ```
@@ -522,8 +530,8 @@ Flatten nested fields into top-level fields.
 **Syntax**: `flatten <field>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | flatten events | head 10"}'
 ```
@@ -535,8 +543,8 @@ Expand multi-value or array fields into separate rows.
 **Syntax**: `expand <field>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | expand events | fields traceId, spanId, events | head 20"}'
 ```
@@ -548,8 +556,8 @@ Pivot rows into columns.
 **Syntax**: `transpose [<N>] [include_null=<bool>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as cnt by serviceName | transpose"}'
 ```
@@ -563,8 +571,8 @@ Convert field types (e.g., string to number).
 Functions: `auto()`, `num()`, `ip()`, `ctime()`, `dur2sec()`, `mktime()`, `mstime()`, `rmcomma()`, `rmunit()`, `memk()`, `none()`.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_str = CAST(durationInNanos AS STRING) | convert num(duration_str) as duration_num | fields traceId, duration_num | head 10"}'
 ```
@@ -576,8 +584,8 @@ Replace values in a field using a regex or literal match.
 **Syntax**: `replace <field> '<old>' WITH '<new>'`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | replace severityText '\''ERROR'\'' WITH '\''ERR'\'' | fields severityText, body | head 10"}'
 ```
@@ -589,8 +597,8 @@ Reverse the order of results.
 **Syntax**: `reverse`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | sort startTime | head 20 | reverse"}'
 ```
@@ -604,8 +612,8 @@ Expand a multi-value field into separate rows (one row per value).
 **Syntax**: `mvexpand <field>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | mvexpand events | fields traceId, spanId, events | head 20"}'
 ```
@@ -617,8 +625,8 @@ Combine multiple rows with the same key into a single row with a multi-value fie
 **Syntax**: `mvcombine <field>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | fields traceId, serviceName | mvcombine serviceName | head 10"}'
 ```
@@ -630,8 +638,8 @@ Convert a multi-value field to a single-value field (takes the first value or jo
 **Syntax**: `nomv <field>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | nomv events | fields traceId, events | head 10"}'
 ```
@@ -645,8 +653,8 @@ Add a summary row at the bottom with column totals.
 **Syntax**: `addcoltotals [<field-list>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as cnt by serviceName | addcoltotals"}'
 ```
@@ -658,8 +666,8 @@ Add a new field to each row containing the sum of specified numeric fields.
 **Syntax**: `addtotals [row=<bool>] [col=<bool>] [<field-list>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats sum(`attributes.gen_ai.usage.input_tokens`) as input_tok, sum(`attributes.gen_ai.usage.output_tokens`) as output_tok by serviceName | addtotals"}'
 ```
@@ -673,8 +681,8 @@ Anomaly detection — identify anomalous values in a numeric field using built-i
 **Syntax**: `ad <field> [shingle_size=<N>] [time_decay=<float>] [time_field=<field>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ad durationInNanos time_field=startTime | head 50"}'
 ```
@@ -686,8 +694,8 @@ Cluster data points using the k-means algorithm.
 **Syntax**: `kmeans <field-list> [centroids=<N>] [iterations=<N>] [distance_type=<type>]`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | kmeans durationInNanos centroids=3 | fields traceId, serviceName, durationInNanos, ClusterID | head 30"}'
 ```
@@ -701,8 +709,8 @@ General ML command for running machine learning algorithms on query results.
 Supported algorithms include: `kmeans`, `ad` (anomaly detection), `rcf` (Random Cut Forest).
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ml action=rcf durationInNanos time_field=startTime | head 50"}'
 ```
@@ -716,8 +724,8 @@ Inspect the index mapping and field types for an index.
 **Syntax**: `describe <index-pattern>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "describe otel-v1-apm-span-*"}'
 ```
@@ -729,8 +737,8 @@ Show the query execution plan (used via the `_explain` API endpoint rather than 
 **Syntax**: Use the `/_plugins/_ppl/_explain` endpoint with the query body.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl/_explain \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl/_explain" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() by serviceName"}'
 ```
@@ -742,8 +750,8 @@ List all configured data sources available for PPL queries.
 **Syntax**: `show datasources`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "show datasources"}'
 ```
@@ -755,15 +763,15 @@ Execute multiple PPL queries in a single request. Each query is independent.
 **Syntax**: Use the `/_plugins/_ppl` endpoint with multiple queries separated by newlines (NDJSON format), or execute sequentially.
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as total_spans"}'
 ```
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | stats count() as total_logs"}'
 ```
@@ -777,8 +785,8 @@ Format the display of a field's values without changing the underlying data.
 **Syntax**: `fieldformat <field> = <format-expression>`
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = durationInNanos / 1000000 | fieldformat duration_ms = CONCAT(CAST(duration_ms AS STRING), '\'' ms'\'') | fields traceId, serviceName, duration_ms | head 10"}'
 ```
@@ -816,8 +824,8 @@ stats count() by span(durationInNanos, 1000000000)
 ### Example
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as span_count, avg(durationInNanos) as avg_duration by span(startTime, 1h)"}'
 ```
@@ -836,8 +844,8 @@ Rate functions normalize aggregation values to a per-time-unit rate within `time
 ### Example
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 5m) per_second(count()) as requests_per_sec"}'
 ```
@@ -871,8 +879,8 @@ Used with `stats`, `eventstats`, `streamstats`, `timechart`, and `chart` command
 | `LAST` | `last(field)` | Last value encountered |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as total, avg(durationInNanos) as avg_ns, percentile(durationInNanos, 95) as p95_ns, distinct_count(serviceName) as services"}'
 ```
@@ -898,8 +906,8 @@ Functions for working with multi-value fields and arrays.
 | `MVFILTER` | `mvfilter(expression)` | Filter values in a multi-value field |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval tokens = array(`attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens`) | fields traceId, tokens | head 10"}'
 ```
@@ -922,8 +930,8 @@ Functions for conditional logic and null handling.
 | `BETWEEN` | `field BETWEEN val1 AND val2` | Range check (inclusive) |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval status_label = case(`status.code` = 0, '\''UNSET'\'', `status.code` = 1, '\''OK'\'', `status.code` = 2, '\''ERROR'\'') | stats count() by status_label"}'
 ```
@@ -944,8 +952,8 @@ Functions for type casting and conversion.
 | `TOBOOLEAN` | `toboolean(field)` | Convert to boolean |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = CAST(durationInNanos AS DOUBLE) / 1000000.0 | fields traceId, serviceName, duration_ms | sort - duration_ms | head 10"}'
 ```
@@ -961,8 +969,8 @@ Functions for computing hash digests.
 | `SHA2` | `sha2(field, numBits)` | SHA-2 hash (numBits: 224, 256, 384, 512) |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval trace_hash = md5(traceId) | fields traceId, trace_hash | head 5"}'
 ```
@@ -1005,8 +1013,8 @@ Functions for date and time manipulation.
 | `UTC_TIMESTAMP` | `utc_timestamp()` | Current UTC timestamp |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where startTime > DATE_SUB(NOW(), INTERVAL 1 HOUR) | stats count() as recent_spans by serviceName"}'
 ```
@@ -1045,8 +1053,8 @@ Operators for arithmetic, comparison, and logical expressions used in `eval`, `w
 | `XOR` | Logical exclusive OR |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = durationInNanos / 1000000, total_tokens = `attributes.gen_ai.usage.input_tokens` + `attributes.gen_ai.usage.output_tokens` | where duration_ms > 1000 AND total_tokens > 0 | fields traceId, serviceName, duration_ms, total_tokens | head 10"}'
 ```
@@ -1061,8 +1069,8 @@ Functions for IP address operations.
 | `GEOIP` | `geoip(ip_field)` | Geo-locate an IP address (returns country, region, city, lat/lon) |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where isnotnull(`attributes.net.peer.ip`) | where cidrmatch(`attributes.net.peer.ip`, '\''10.0.0.0/8'\'') | fields traceId, `attributes.net.peer.ip`, serviceName | head 10"}'
 ```
@@ -1083,8 +1091,8 @@ Functions for working with JSON data.
 | `TO_JSON_STRING` | `to_json_string(field)` | Convert value to JSON string |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where json_valid(`attributes.gen_ai.tool.call.arguments`) | eval tool_args = json_extract(`attributes.gen_ai.tool.call.arguments`, '\''$'\'') | fields traceId, `attributes.gen_ai.tool.name`, tool_args | head 10"}'
 ```
@@ -1126,8 +1134,8 @@ Functions for mathematical operations.
 | `CRC32` | `crc32(val)` | CRC-32 checksum |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = round(durationInNanos / 1000000.0, 2) | where duration_ms > 0 | fields traceId, serviceName, duration_ms | sort - duration_ms | head 10"}'
 ```
@@ -1152,8 +1160,8 @@ Full-text search functions for relevance-based querying.
 | `WILDCARD_QUERY` | `wildcard_query(field, pattern)` | Wildcard pattern match (`*` and `?`) |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where match(body, '\''timeout error'\'') | fields traceId, severityText, body | head 10"}'
 ```
@@ -1169,8 +1177,8 @@ Functions for computing statistical correlations and covariances.
 | `COVAR_SAMP` | `covar_samp(field1, field2)` | Sample covariance |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.usage.input_tokens` > 0 | stats corr(`attributes.gen_ai.usage.input_tokens`, durationInNanos) as token_duration_corr"}'
 ```
@@ -1217,8 +1225,8 @@ Functions for string manipulation.
 | `REGEXP_REPLACE` | `regexp_replace(str, pattern, replacement)` | Replace regex matches |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | eval body_lower = lower(body) | where body_lower like '\''%exception%'\'' | eval short_body = left(body, 200) | fields traceId, severityText, short_body | head 10"}'
 ```
@@ -1230,8 +1238,8 @@ curl -sk -u admin:'My_password_123!@#' \
 | `TYPEOF` | `typeof(field)` | Returns the data type of a field value |
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | eval type_of_duration = typeof(durationInNanos) | fields traceId, durationInNanos, type_of_duration | head 5"}'
 ```
@@ -1245,3 +1253,7 @@ This PPL reference is sourced from the `opensearch-project/sql` repository's `do
 Repository: https://github.com/opensearch-project/sql
 
 The PPL grammar is maintained as part of the OpenSearch SQL plugin. For the latest syntax additions and changes, consult the repository documentation directly.
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.

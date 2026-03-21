@@ -22,6 +22,15 @@ RED metrics give you a complete picture of service health at a glance. Every ser
 
 All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`. All OpenSearch queries use the PPL API at `https://localhost:9200/_plugins/_ppl` with HTTPS and basic authentication. Credentials are read from the `.env` file (default: `admin` / `My_password_123!@#`).
 
+## Connection Defaults
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+| `PROMETHEUS_ENDPOINT` | `http://localhost:9090` | Prometheus base URL |
+
 
 ## Rate Queries
 
@@ -30,7 +39,7 @@ All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`.
 Calculate the per-second HTTP request rate over a 5-minute window, grouped by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -39,7 +48,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Break down request rate by service and HTTP route to identify hot endpoints:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count[5m])) by (service_name, http_route)'
 ```
 
@@ -48,8 +57,8 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate request rate from trace spans as an alternative to PromQL. This counts spans per 5-minute bucket grouped by service:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as request_count by span(startTime, 5m), serviceName"}'
 ```
@@ -62,7 +71,7 @@ curl -sk -u admin:'My_password_123!@#' \
 Calculate the ratio of 5xx error responses to total requests by service. A value of 0.01 means 1% of requests are failing:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
@@ -71,7 +80,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate the per-second rate of 5xx errors by service (useful for alerting on absolute error volume):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name)'
 ```
 
@@ -80,8 +89,8 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Count error spans (status code 2 = Error in OTel) grouped by service:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() as error_count by serviceName"}'
 ```
@@ -94,21 +103,21 @@ curl -sk -u admin:'My_password_123!@#' \
 #### p50 (Median) Latency by Service
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.50, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
 #### p95 Latency by Service
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
 #### p99 Latency by Service
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.99, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -117,8 +126,8 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate p50, p95, and p99 latency directly from trace span durations. Values are in nanoseconds — divide by 1,000,000 for milliseconds:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats percentile(durationInNanos, 50) as p50, percentile(durationInNanos, 95) as p95, percentile(durationInNanos, 99) as p99 by serviceName"}'
 ```
@@ -131,21 +140,21 @@ Run all three RED signals for every service in a single investigation. Execute t
 ### Rate — Requests per second by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
 ### Errors — Error ratio by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
 
 ### Duration — p95 latency by service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -154,8 +163,8 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Get all three RED signals from trace spans in a single PPL query:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() as total_requests, sum(case(`status.code` = 2, 1 else 0)) as error_count, percentile(durationInNanos, 50) as p50, percentile(durationInNanos, 95) as p95, percentile(durationInNanos, 99) as p99 by serviceName"}'
 ```
@@ -168,7 +177,7 @@ Apply the RED methodology to GenAI operations using the `gen_ai_client_operation
 ### GenAI Rate — Operations per second by operation and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_operation_name, gen_ai_request_model)'
 ```
 
@@ -177,8 +186,8 @@ curl -s 'http://localhost:9090/api/v1/query' \
 GenAI operations that result in errors (e.g., model timeouts, rate limits) are tracked via span status. Use trace spans to calculate GenAI error rates:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` is not null | stats count() as total, sum(case(`status.code` = 2, 1 else 0)) as errors by `attributes.gen_ai.operation.name`, `attributes.gen_ai.request.model`"}'
 ```
@@ -186,17 +195,17 @@ curl -sk -u admin:'My_password_123!@#' \
 ### GenAI Duration — p50/p95/p99 by operation and model:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.50, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.99, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
@@ -272,21 +281,21 @@ Error counts are derived by filtering `traces_spanmetrics_calls_total` on `statu
 Rate from spanmetrics:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name)'
 ```
 
 Error rate from spanmetrics:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name) / sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name)'
 ```
 
 Duration p95 from spanmetrics:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(traces_spanmetrics_duration_seconds_bucket[5m])) by (le, service_name))'
 ```
 
@@ -300,7 +309,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 When dividing metrics (e.g., error rate = errors/total), use `clamp_min()` to avoid division-by-zero which produces NaN or Inf:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / clamp_min(sum(rate(http_server_duration_seconds_count[5m])) by (service_name), 1) * 100'
 ```
 
@@ -309,7 +318,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Find the top 5 services with the highest fault rate using `topk()`:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=topk(5, sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / clamp_min(sum(rate(http_server_duration_seconds_count[5m])) by (service_name), 1) * 100)'
 ```
 
@@ -318,7 +327,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Drill into a specific service to find its worst-performing operations:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=topk(5, sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5..", service_name="frontend"}[5m])) by (http_route) / clamp_min(sum(rate(http_server_duration_seconds_count{service_name="frontend"}[5m])) by (http_route), 1) * 100)'
 ```
 
@@ -327,7 +336,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Calculate availability as the inverse of fault rate (percentage of non-5xx responses):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=(1 - sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / clamp_min(sum(rate(http_server_duration_seconds_count[5m])) by (service_name), 1)) * 100'
 ```
 
@@ -336,7 +345,7 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Find the 5 services with the lowest availability (most errors):
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=bottomk(5, (1 - sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / clamp_min(sum(rate(http_server_duration_seconds_count[5m])) by (service_name), 1)) * 100)'
 ```
 
@@ -345,9 +354,14 @@ curl -s 'http://localhost:9090/api/v1/query' \
 Get latency, request rate, and error rate per operation for a specific service:
 
 ```bash
-curl -s 'http://localhost:9090/api/v1/query' \
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket{service_name="checkout"}[5m])) by (le, http_route))'
 ```
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
+- [Prometheus Querying Basics](https://prometheus.io/docs/prometheus/latest/querying/basics/) — PromQL syntax reference.
 
 ## AWS Managed Service Variants
 

@@ -14,13 +14,36 @@ This skill provides PPL (Piped Processing Language) query templates for investig
 
 Credentials are read from the `.env` file (default: `admin` / `My_password_123!@#`). All curl commands use `-k` to skip TLS certificate verification for local development.
 
+## Connection Defaults
+
+All commands below use these variables. Set them in your environment or use the defaults:
+
+| Variable | Default | Description |
+|---|---|---|
+| `OPENSEARCH_ENDPOINT` | `https://localhost:9200` | OpenSearch base URL |
+| `OPENSEARCH_USER` | `admin` | OpenSearch username |
+| `OPENSEARCH_PASSWORD` | `My_password_123!@#` | OpenSearch password |
+
+## Base Command
+
+All PPL queries in this skill use this curl pattern:
+
+```bash
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "<PPL_QUERY>"}'
+```
+
+The examples below show the full command for clarity, but only the PPL query varies.
+
 ## Agent Invocation Spans
 
 Query all spans where a GenAI agent was invoked:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, `attributes.gen_ai.request.model`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
@@ -30,8 +53,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Query all spans where a tool was executed:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
@@ -41,8 +64,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Identify spans exceeding a latency threshold. The default threshold is 5 seconds (5,000,000,000 nanoseconds). Adjust the value as needed:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 5000000000 | fields traceId, spanId, serviceName, name, durationInNanos, startTime | sort - durationInNanos | head 20"}'
 ```
@@ -50,8 +73,8 @@ curl -sk -u admin:'My_password_123!@#' \
 To find slow agent invocations specifically:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' AND durationInNanos > 5000000000 | fields traceId, `attributes.gen_ai.agent.name`, durationInNanos | sort - durationInNanos"}'
 ```
@@ -61,8 +84,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Query spans with error status (`status.code` = 2 means ERROR in OTel):
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | fields traceId, spanId, serviceName, name, `status.code`, startTime | sort - startTime | head 20"}'
 ```
@@ -72,8 +95,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Aggregate input and output token usage grouped by the requested model:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.usage.input_tokens` > 0 | stats sum(`attributes.gen_ai.usage.input_tokens`) as total_input, sum(`attributes.gen_ai.usage.output_tokens`) as total_output by `attributes.gen_ai.request.model`"}'
 ```
@@ -83,8 +106,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Aggregate token usage grouped by agent name:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.usage.input_tokens` > 0 | stats sum(`attributes.gen_ai.usage.input_tokens`) as total_input, sum(`attributes.gen_ai.usage.output_tokens`) as total_output by `attributes.gen_ai.agent.name`"}'
 ```
@@ -94,8 +117,8 @@ curl -sk -u admin:'My_password_123!@#' \
 List distinct services and their GenAI operation types with counts:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | stats count() by serviceName, `attributes.gen_ai.operation.name`"}'
 ```
@@ -107,8 +130,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Query the service dependency map to explore service-to-service connections. Use `dedup nodeConnectionHash` to get unique connections:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v2-apm-service-map-* | dedup nodeConnectionHash | fields sourceNode, targetNode, sourceOperation, targetOperation"}'
 ```
@@ -118,8 +141,8 @@ curl -sk -u admin:'My_password_123!@#' \
 List all operations for a specific service from the service map:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v2-apm-service-map-* | dedup operationConnectionHash | fields sourceNode, sourceOperation, targetNode, targetOperation"}'
 ```
@@ -129,8 +152,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Count how many downstream dependencies each service calls:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v2-apm-service-map-* | dedup nodeConnectionHash | stats distinct_count(targetNode) as dependency_count by sourceNode"}'
 ```
@@ -140,8 +163,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Different OTel instrumentation libraries use different attributes to identify remote services. Use `coalesce()` to check multiple fields in priority order:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where serviceName = '\''frontend'\'' | where kind = '\''SPAN_KIND_CLIENT'\'' | eval _remoteService = coalesce(`attributes.net.peer.name`, `attributes.server.address`, `attributes.upstream_cluster`, `attributes.rpc.service`, `attributes.peer.service`, `attributes.db.system`, `attributes.gen_ai.system`, `attributes.http.host`, `attributes.messaging.destination.name`, '\'''\'' ) | where _remoteService != '\'''\'' | stats count() as calls by _remoteService | sort - calls"}'
 ```
@@ -167,8 +190,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all logs associated with a specific trace by querying the log index with the same traceId:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=logs-otel-v1-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | sort `@timestamp`"}'
 ```
@@ -176,8 +199,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Join trace spans with correlated logs using PPL join:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | join left=s right=l ON s.traceId = l.traceId logs-otel-v1-* | fields s.spanId, s.name, l.severityText, l.body"}'
 ```
@@ -187,8 +210,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Reconstruct the full trace tree by querying all spans for a traceId, sorted by startTime with parentSpanId for hierarchy:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | sort startTime"}'
 ```
@@ -198,8 +221,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Compare parent and child span timing to identify latency gaps within a trace. First retrieve all spans, then compare startTime/endTime values between parent and child:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | fields spanId, parentSpanId, name, startTime, endTime, durationInNanos | sort startTime"}'
 ```
@@ -211,8 +234,8 @@ To find spans where the child started significantly after the parent, look for g
 Find the root span of a trace (where parentSpanId is empty or null):
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' AND parentSpanId = '\'''\'' | fields traceId, spanId, serviceName, name, durationInNanos, startTime, endTime"}'
 ```
@@ -220,8 +243,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find all root spans (entry points) across all traces:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where parentSpanId = '\'''\'' | fields traceId, spanId, serviceName, name, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
@@ -246,8 +269,8 @@ The OpenTelemetry GenAI semantic conventions define the following operation type
 #### invoke_agent
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -255,8 +278,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### execute_tool
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -264,8 +287,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### chat
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''chat'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, `attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -273,8 +296,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### embeddings
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''embeddings'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -282,8 +305,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### retrieval
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''retrieval'\'' | fields traceId, spanId, serviceName, name, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -291,8 +314,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### create_agent
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''create_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, `attributes.gen_ai.agent.id` | sort - startTime | head 20"}'
 ```
@@ -300,8 +323,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### text_completion
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''text_completion'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -309,8 +332,8 @@ curl -sk -u admin:'My_password_123!@#' \
 #### generate_content
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''generate_content'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -342,8 +365,8 @@ The OTel GenAI semantic conventions provide these extended attributes on trace s
 Find spans that contain exception events with type, message, and stacktrace:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `events.attributes.exception.type` != '\'''\'' | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message` | sort - startTime | head 20"}'
 ```
@@ -351,8 +374,8 @@ curl -sk -u admin:'My_password_123!@#' \
 ### Query Exception Stacktraces
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `events.attributes.exception.stacktrace` != '\'''\'' | fields traceId, spanId, `events.attributes.exception.type`, `events.attributes.exception.message`, `events.attributes.exception.stacktrace` | head 10"}'
 ```
@@ -362,8 +385,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Find spans with a specific error type category:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.error.type` != '\'''\'' | fields traceId, spanId, serviceName, `attributes.error.type`, `status.code` | sort - startTime | head 20"}'
 ```
@@ -373,8 +396,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Combine error status with exception information for a complete error view:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message`, `attributes.error.type` | sort - startTime | head 20"}'
 ```
@@ -384,8 +407,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Track multi-turn conversations by grouping spans with the same conversation ID:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.conversation.id` != '\'''\'' | stats count() as turns, sum(`attributes.gen_ai.usage.input_tokens`) as total_input_tokens, sum(`attributes.gen_ai.usage.output_tokens`) as total_output_tokens by `attributes.gen_ai.conversation.id`"}'
 ```
@@ -393,8 +416,8 @@ curl -sk -u admin:'My_password_123!@#' \
 View all spans in a specific conversation ordered by time:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.conversation.id` = '\''<CONVERSATION_ID>'\'' | fields traceId, spanId, `attributes.gen_ai.operation.name`, `attributes.gen_ai.agent.name`, startTime, durationInNanos | sort startTime"}'
 ```
@@ -404,8 +427,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Inspect tool call arguments and results for debugging agent behavior:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, `attributes.gen_ai.tool.call.id`, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos | sort - startTime | head 20"}'
 ```
@@ -413,8 +436,8 @@ curl -sk -u admin:'My_password_123!@#' \
 Inspect tool calls for a specific tool:
 
 ```bash
-curl -sk -u admin:'My_password_123!@#' \
-  -X POST https://localhost:9200/_plugins/_ppl \
+curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
   -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' AND `attributes.gen_ai.tool.name` = '\''<TOOL_NAME>'\'' | fields traceId, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos | sort - startTime"}'
 ```
@@ -475,6 +498,11 @@ Key fields available in the `otel-v1-apm-span-*` index:
 | `events.attributes.exception.type` | keyword | Exception class/type |
 | `events.attributes.exception.message` | text | Exception message |
 | `events.attributes.exception.stacktrace` | text | Exception stacktrace |
+
+## References
+
+- [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — Official PPL syntax documentation. Fetch this if queries fail due to OpenSearch version differences or new syntax.
+- [OpenTelemetry GenAI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — Standard attribute names for AI/LLM operations.
 
 ## AWS Managed OpenSearch
 
