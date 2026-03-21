@@ -1,0 +1,227 @@
+---
+title: "Integrations"
+description: "Instrument popular AI agent frameworks with the GenAI Observability SDK"
+---
+
+The GenAI Observability SDK works with any Python agent framework. Use `@observe` to wrap your agent's entry points and tools, and `enrich()` to capture model details. Auto-instrumentation handles LLM calls automatically.
+
+Each example below shows a complete, runnable integration. All examples assume the [observability stack is running locally](/docs/get-started/installation/).
+
+## Strands Agents
+
+[Strands Agents](https://github.com/strands-agents/sdk-python) is a model-driven agent framework from AWS. The SDK's auto-instrumentation captures Bedrock/OpenAI calls automatically — add `@observe` for agent-level visibility.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[bedrock]" strands-agents strands-agents-bedrock
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+from strands import Agent
+from strands.models.bedrock import BedrockModel
+
+register(
+    endpoint="http://localhost:4318/v1/traces",
+    service_name="strands-agent",
+)
+
+@observe(op=Op.EXECUTE_TOOL)
+def weather_tool(city: str) -> str:
+    """Get weather for a city."""
+    return f"72°F and sunny in {city}"
+
+@observe(op=Op.INVOKE_AGENT)
+def run_agent(query: str) -> str:
+    model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
+    agent = Agent(
+        model=model,
+        tools=[weather_tool],
+        system_prompt="You are a helpful travel assistant.",
+    )
+    enrich(model="claude-sonnet-4-20250514", provider="bedrock")
+    result = agent(query)
+    return str(result)
+
+run_agent("What's the weather in Seattle?")
+```
+
+## LangGraph
+
+[LangGraph](https://langchain-ai.github.io/langgraph/) builds stateful, multi-step agent workflows. Install the LangChain auto-instrumentor for automatic LLM tracing.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[langchain]" langgraph langchain-openai
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+from langgraph.graph import StateGraph, START, END
+from langchain_openai import ChatOpenAI
+from typing import TypedDict
+
+register(
+    endpoint="http://localhost:4318/v1/traces",
+    service_name="langgraph-agent",
+)
+
+class State(TypedDict):
+    query: str
+    result: str
+
+@observe(op=Op.CHAT, name="llm_call")
+def call_model(state: State) -> dict:
+    llm = ChatOpenAI(model="gpt-4o")
+    response = llm.invoke(state["query"])
+    enrich(model="gpt-4o", provider="openai")
+    return {"result": response.content}
+
+@observe(op=Op.EXECUTE_TOOL)
+def check_facts(state: State) -> dict:
+    # fact-checking logic
+    return {"result": f"Verified: {state['result']}"}
+
+graph = StateGraph(State)
+graph.add_node("model", call_model)
+graph.add_node("fact_check", check_facts)
+graph.add_edge(START, "model")
+graph.add_edge("model", "fact_check")
+graph.add_edge("fact_check", END)
+app = graph.compile()
+
+@observe(op=Op.INVOKE_AGENT, name="fact_check_agent")
+def run(query: str) -> str:
+    result = app.invoke({"query": query, "result": ""})
+    return result["result"]
+
+run("What is OpenSearch?")
+```
+
+## CrewAI
+
+[CrewAI](https://www.crewai.com/) orchestrates role-playing AI agents. Wrap crew execution with `@observe`.
+
+```bash
+pip install opensearch-genai-observability-sdk-py crewai
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+from crewai import Agent, Task, Crew
+
+register(
+    endpoint="http://localhost:4318/v1/traces",
+    service_name="crewai-agent",
+)
+
+researcher = Agent(
+    role="Researcher",
+    goal="Find accurate information",
+    backstory="Expert research analyst",
+    llm="gpt-4o",
+)
+
+writer = Agent(
+    role="Writer",
+    goal="Write clear summaries",
+    backstory="Technical writer",
+    llm="gpt-4o",
+)
+
+@observe(op=Op.INVOKE_AGENT, name="research_crew")
+def run_crew(topic: str) -> str:
+    enrich(model="gpt-4o", provider="openai")
+    research_task = Task(
+        description=f"Research: {topic}",
+        expected_output="Key findings",
+        agent=researcher,
+    )
+    write_task = Task(
+        description="Summarize the research findings",
+        expected_output="Clear summary",
+        agent=writer,
+    )
+    crew = Crew(agents=[researcher, writer], tasks=[research_task, write_task])
+    result = crew.kickoff()
+    return str(result)
+
+run_crew("OpenTelemetry observability for AI agents")
+```
+
+## OpenAI Agents SDK
+
+The [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) has built-in tracing. Install the OpenAI auto-instrumentor to capture all LLM calls, and use `@observe` for top-level orchestration.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[openai]" openai-agents
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+from agents import Agent, Runner
+
+register(
+    endpoint="http://localhost:4318/v1/traces",
+    service_name="openai-agents",
+)
+
+agent = Agent(
+    name="assistant",
+    instructions="You are a helpful assistant.",
+    model="gpt-4o",
+)
+
+@observe(op=Op.INVOKE_AGENT, name="openai_agent")
+def run(query: str) -> str:
+    enrich(model="gpt-4o", provider="openai")
+    result = Runner.run_sync(agent, query)
+    enrich(
+        input_tokens=result.raw_responses[-1].usage.input_tokens,
+        output_tokens=result.raw_responses[-1].usage.output_tokens,
+    )
+    return result.final_output
+
+run("Explain observability in three sentences.")
+```
+
+## Amazon Bedrock
+
+For direct Bedrock `converse` or `invoke_model` calls, install the Bedrock auto-instrumentor.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[bedrock]"
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+import boto3
+
+register(
+    endpoint="http://localhost:4318/v1/traces",
+    service_name="bedrock-agent",
+)
+
+@observe(op=Op.INVOKE_AGENT, name="bedrock_agent")
+def run(query: str) -> str:
+    client = boto3.client("bedrock-runtime", region_name="us-east-1")
+    enrich(model="claude-sonnet-4-20250514", provider="bedrock")
+    response = client.converse(
+        modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
+        messages=[{"role": "user", "content": [{"text": query}]}],
+    )
+    result = response["output"]["message"]["content"][0]["text"]
+    enrich(
+        input_tokens=response["usage"]["inputTokens"],
+        output_tokens=response["usage"]["outputTokens"],
+    )
+    return result
+
+run("What is OpenSearch?")
+```
+
+---
+
+## Related links
+
+- [Python SDK reference](/docs/send-data/ai-agents/python/) — full API documentation for `register`, `observe`, `enrich`
+- [Auto-instrumentation](/docs/send-data/ai-agents/python/#auto-instrumentation) — supported providers and extras
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) — score and evaluate your agent outputs

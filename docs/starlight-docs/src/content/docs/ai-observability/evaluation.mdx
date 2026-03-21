@@ -1,0 +1,592 @@
+---
+title: "Evaluation & Scoring"
+description: "Score agent traces, run experiments against datasets, and upload evaluation results"
+sidebar:
+  order: 5
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The Python SDK provides three evaluation capabilities that all emit data through the standard OTLP pipeline:
+
+- **`score()`** — attach quality scores to individual traces or spans
+- **`evaluate()`** — run an agent against a dataset with automated scorer functions
+- **`Experiment`** — upload pre-computed results from any evaluation framework
+
+All evaluation data lands in the same OpenSearch index as your traces, so you can query scores alongside agent spans.
+
+---
+
+## `score()` — attach scores to traces
+
+Submits an evaluation score as an OTEL span linked to the trace being scored.
+
+```python
+from opensearch_genai_observability_sdk_py import score
+
+# Score an entire trace
+score(
+    name="relevance",
+    value=0.92,
+    trace_id="abc123def456...",
+    explanation="Response addresses the user's query",
+)
+
+# Score a specific span
+score(
+    name="accuracy",
+    value=0.95,
+    trace_id="abc123def456...",
+    span_id="789abc...",
+    label="pass",
+)
+
+# Standalone score (no trace link)
+score(name="baseline", value=0.75, label="acceptable")
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | `str` | Metric name, e.g. `"relevance"`, `"factuality"`. |
+| `value` | `float` | Numeric score. |
+| `trace_id` | `str` | Hex trace ID of the trace being scored. |
+| `span_id` | `str` | Hex span ID for span-level scoring. Omit to score the whole trace. |
+| `label` | `str` | Human-readable label, e.g. `"pass"`, `"relevant"`. |
+| `explanation` | `str` | Evaluator rationale. Truncated to 500 characters. |
+| `response_id` | `str` | LLM completion ID for correlation. |
+| `attributes` | `dict` | Additional span attributes. |
+
+### Getting the trace ID
+
+```python
+from opentelemetry import trace
+from opensearch_genai_observability_sdk_py import observe, Op
+
+@observe(op=Op.INVOKE_AGENT, name="my_agent")
+def run(query: str) -> str:
+    ctx = trace.get_current_span().get_span_context()
+    trace_id = format(ctx.trace_id, "032x")
+    # ... agent logic ...
+    return result
+```
+
+---
+
+## `evaluate()` — run experiments
+
+Executes a task function against each item in a dataset, runs scorer functions, and records everything as OTel experiment spans.
+
+```python
+from opensearch_genai_observability_sdk_py import register, observe, evaluate, Op, EvalScore
+
+register(service_name="my-eval")
+
+@observe(op=Op.INVOKE_AGENT, name="my_agent")
+def my_agent(input: str) -> str:
+    return f"Answer to: {input}"
+
+def relevance_scorer(input, output, expected) -> EvalScore:
+    is_relevant = expected.lower() in output.lower()
+    return EvalScore(
+        name="relevance",
+        value=1.0 if is_relevant else 0.0,
+        label="relevant" if is_relevant else "irrelevant",
+    )
+
+result = evaluate(
+    name="my_agent_v1_eval",
+    task=my_agent,
+    data=[
+        {"input": "What is Python?", "expected": "programming language"},
+        {"input": "What is OpenSearch?", "expected": "search engine"},
+    ],
+    scores=[relevance_scorer],
+    metadata={"agent_version": "v1"},
+)
+
+print(result.summary)
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `name` | `str` | Experiment name. |
+| `task` | `Callable` | Function that takes input and returns output. Use `@observe` for full tracing. |
+| `data` | `list[dict]` | Test cases: `"input"` (required), `"expected"`, `"case_id"`, `"case_name"` (optional). |
+| `scores` | `list[Callable]` | Scorer functions — each receives `(input, output, expected)`. |
+| `metadata` | `dict` | Attached to the root experiment span. |
+| `record_io` | `bool` | Record input/output/expected as span attributes. Default `False`. |
+
+### Scorer functions
+
+Scorers return one of:
+
+```python
+# Full EvalScore object
+def accuracy(input, output, expected) -> EvalScore:
+    return EvalScore(name="accuracy", value=0.95, label="pass", explanation="Correct")
+
+# Multiple scores
+def multi(input, output, expected) -> list[EvalScore]:
+    return [EvalScore(name="relevance", value=0.9), EvalScore(name="coherence", value=0.85)]
+
+# Simple float (function name becomes metric name)
+def brevity(input, output, expected) -> float:
+    return min(1.0, 100 / max(len(output), 1))
+```
+
+### `EvalScore` dataclass
+
+```python
+@dataclass
+class EvalScore:
+    name: str                       # Metric name
+    value: float                    # Numeric score
+    label: str | None = None        # Human-readable label
+    explanation: str | None = None  # Rationale
+    metadata: dict | None = None    # Extra metadata
+```
+
+### OTel span structure
+
+```mermaid
+flowchart TD
+    A["test_suite_run — experiment root"] --> B["test_case — case 1"]
+    A --> C["test_case — case 2"]
+    B --> D["invoke_agent my_agent"]
+    B --> E["evaluation result events"]
+    D --> F["execute_tool ..."]
+```
+
+Agent traces from the task become children of `test_case` spans — full waterfall from experiment to individual LLM calls.
+
+### Result types
+
+```python
+result = evaluate(...)
+result.summary          # ExperimentSummary
+result.summary.scores   # dict[str, ScoreSummary] — avg, min, max, count per metric
+result.cases            # list[CaseResult] — per-case input, output, scores, status
+```
+
+---
+
+## `Experiment` — upload pre-computed results
+
+Use `Experiment` when you already have evaluation results from another framework (RAGAS, DeepEval, pytest, custom) and want to upload them as OTel spans.
+
+```python
+from opensearch_genai_observability_sdk_py import register, Experiment
+
+register(service_name="eval-upload")
+
+with Experiment("ragas_eval_v2", metadata={"framework": "ragas"}) as exp:
+    exp.log(
+        input="What is OpenSearch?",
+        output="OpenSearch is an open-source search engine.",
+        expected="search and analytics engine",
+        scores={"faithfulness": 0.92, "relevance": 0.88},
+        case_name="opensearch_definition",
+    )
+    exp.log(
+        input="How does RAG work?",
+        output="RAG retrieves documents then generates answers.",
+        scores={"faithfulness": 0.95, "relevance": 0.91},
+        case_name="rag_explanation",
+    )
+# summary printed on close
+```
+
+### `log()` parameters
+
+| Parameter | Type | Description |
+|---|---|---|
+| `input` | any | Test case input. |
+| `output` | any | Agent output. |
+| `expected` | any | Ground truth. |
+| `scores` | `dict[str, float]` | Pre-computed scores. |
+| `metadata` | `dict` | Per-case metadata. |
+| `error` | `str` | Error message (sets status to `"fail"`). |
+| `case_id` | `str` | Explicit ID. Defaults to SHA256 of input. |
+| `case_name` | `str` | Human-readable name. |
+| `trace_id` | `str` | Creates OTel span link to an agent trace. |
+| `span_id` | `str` | Span-level linking (with `trace_id`). |
+
+---
+
+## Using external evaluation frameworks
+
+The `Experiment` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
+
+### DeepEval
+
+[DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection.
+
+```bash
+pip install deepeval
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, Experiment
+from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
+from deepeval.test_case import LLMTestCase
+
+register(service_name="deepeval-experiment")
+
+# Define your test cases
+test_cases = [
+    {
+        "input": "What is OpenSearch?",
+        "output": "OpenSearch is an open-source search and analytics engine.",
+        "expected": "OpenSearch is a search and analytics engine.",
+        "context": ["OpenSearch is an open-source search and analytics suite."],
+    },
+    {
+        "input": "How does RAG work?",
+        "output": "RAG retrieves relevant documents and uses them to generate answers.",
+        "expected": "Retrieval-augmented generation combines retrieval with generation.",
+        "context": ["RAG first retrieves documents, then feeds them to an LLM."],
+    },
+]
+
+# Run DeepEval metrics and upload results
+relevancy = AnswerRelevancyMetric(model="gpt-4o")
+faithfulness = FaithfulnessMetric(model="gpt-4o")
+
+with Experiment("deepeval_run", metadata={"framework": "deepeval"}) as exp:
+    for case in test_cases:
+        tc = LLMTestCase(
+            input=case["input"],
+            actual_output=case["output"],
+            expected_output=case["expected"],
+            retrieval_context=case["context"],
+        )
+        relevancy.measure(tc)
+        faithfulness.measure(tc)
+        exp.log(
+            input=case["input"],
+            output=case["output"],
+            expected=case["expected"],
+            scores={
+                "answer_relevancy": relevancy.score,
+                "faithfulness": faithfulness.score,
+            },
+            case_name=case["input"][:50],
+        )
+```
+
+### RAGAS
+
+[RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness.
+
+```bash
+pip install ragas
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, Experiment
+from ragas import evaluate as ragas_evaluate
+from ragas.metrics import faithfulness, answer_correctness, context_precision
+from datasets import Dataset
+
+register(service_name="ragas-experiment")
+
+# Prepare your RAG evaluation dataset
+data = {
+    "question": ["What is OpenSearch?", "How does RAG work?"],
+    "answer": [
+        "OpenSearch is an open-source search and analytics engine.",
+        "RAG retrieves documents and generates answers from them.",
+    ],
+    "contexts": [
+        ["OpenSearch is a community-driven, open-source search and analytics suite."],
+        ["RAG combines information retrieval with text generation."],
+    ],
+    "ground_truth": [
+        "OpenSearch is a search and analytics engine.",
+        "Retrieval-augmented generation retrieves then generates.",
+    ],
+}
+dataset = Dataset.from_dict(data)
+
+# Run RAGAS evaluation
+ragas_result = ragas_evaluate(
+    dataset=dataset,
+    metrics=[faithfulness, answer_correctness, context_precision],
+)
+
+# Upload results to OpenSearch via Experiment
+with Experiment("ragas_eval", metadata={"framework": "ragas"}) as exp:
+    for i, row in enumerate(ragas_result.to_pandas().itertuples()):
+        exp.log(
+            input=data["question"][i],
+            output=data["answer"][i],
+            expected=data["ground_truth"][i],
+            scores={
+                "faithfulness": row.faithfulness,
+                "answer_correctness": row.answer_correctness,
+                "context_precision": row.context_precision,
+            },
+            case_name=data["question"][i][:50],
+        )
+```
+
+### MLflow
+
+[MLflow](https://mlflow.org/) tracks ML experiments. Export MLflow evaluation results into the observability stack:
+
+```bash
+pip install mlflow
+```
+
+```python
+from opensearch_genai_observability_sdk_py import register, Experiment
+import mlflow
+
+register(service_name="mlflow-experiment")
+
+# Run MLflow evaluation
+eval_data = [
+    {"inputs": {"question": "What is OpenSearch?"}, "ground_truth": "search engine"},
+    {"inputs": {"question": "What is OTEL?"}, "ground_truth": "observability framework"},
+]
+
+mlflow_result = mlflow.evaluate(
+    model="openai:/gpt-4o",
+    data=eval_data,
+    model_type="question-answering",
+)
+
+# Upload to observability stack
+with Experiment("mlflow_eval", metadata={"framework": "mlflow"}) as exp:
+    for _, row in mlflow_result.tables["eval_results_table"].iterrows():
+        exp.log(
+            input=row["inputs"],
+            output=row["outputs"],
+            expected=row.get("ground_truth", ""),
+            scores={
+                col: row[col]
+                for col in mlflow_result.metrics
+                if col in row and row[col] is not None
+            },
+        )
+```
+
+### pytest with custom scorers
+
+Use `evaluate()` directly in your test suite for CI/CD integration:
+
+```python
+from opensearch_genai_observability_sdk_py import register, evaluate, EvalScore
+
+register(service_name="pytest-eval")
+
+def accuracy_scorer(input, output, expected) -> EvalScore:
+    is_correct = expected.lower() in output.lower()
+    return EvalScore(
+        name="accuracy",
+        value=1.0 if is_correct else 0.0,
+        label="pass" if is_correct else "fail",
+    )
+
+def latency_scorer(input, output, expected) -> EvalScore:
+    return EvalScore(name="response_length", value=len(output))
+
+def test_agent_quality():
+    result = evaluate(
+        name="ci_regression_test",
+        task=my_agent,  # your agent function
+        data=[
+            {"input": "What is OpenSearch?", "expected": "search"},
+            {"input": "What is OTEL?", "expected": "opentelemetry"},
+        ],
+        scores=[accuracy_scorer, latency_scorer],
+    )
+    avg_accuracy = result.summary.scores["accuracy"].avg
+    assert avg_accuracy >= 0.8, f"Accuracy dropped to {avg_accuracy}"
+```
+
+Run with: `pytest test_agent.py` — results are recorded as OTel experiment spans and available in OpenSearch Dashboards.
+
+---
+
+### A/B comparison
+
+Run the same dataset against different agent versions:
+
+```python
+result_a = evaluate(name="comparison", task=agent_v1, data=cases, scores=[accuracy],
+                    metadata={"version": "v1"})
+result_b = evaluate(name="comparison", task=agent_v2, data=cases, scores=[accuracy],
+                    metadata={"version": "v2"})
+
+print(f"V1: {result_a.summary.scores['accuracy'].avg:.2f}")
+print(f"V2: {result_b.summary.scores['accuracy'].avg:.2f}")
+```
+
+---
+
+## `OpenSearchTraceRetriever` — query stored traces
+
+Retrieves traces from OpenSearch for building evaluation pipelines. Requires the `[opensearch]` extra:
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[opensearch]"
+```
+
+```python
+from opensearch_genai_observability_sdk_py import OpenSearchTraceRetriever
+
+retriever = OpenSearchTraceRetriever(
+    host="https://localhost:9200",
+    auth=("admin", "admin"),
+    verify_certs=False,
+)
+```
+
+### Constructor parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `host` | `str` | `"https://localhost:9200"` | OpenSearch endpoint URL. |
+| `index` | `str` | `"otel-v1-apm-span-*"` | Index pattern for span data. |
+| `auth` | `tuple` \| `RequestsAWSV4SignerAuth` | | `("user", "pass")` for basic auth, or a SigV4 signer for AWS. |
+| `verify_certs` | `bool` | `True` | Whether to verify TLS certificates. |
+
+### Methods
+
+**`list_root_spans()`** — find recent agent traces:
+
+```python
+roots = retriever.list_root_spans(services=["my-agent"], max_results=20)
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `services` | `list[str]` | `None` | Filter by service names. |
+| `since` | `datetime` | 15 min ago | Only traces started after this time. |
+| `max_results` | `int` | `50` | Maximum root spans to return. |
+
+Returns `list[SpanRecord]` — one per trace (the root span with no parent).
+
+**`get_traces()`** — fetch full trace with all spans:
+
+```python
+session = retriever.get_traces(roots[0].trace_id)
+for trace in session.traces:
+    for span in trace.spans:
+        print(f"  {span.name} | {span.operation_name} | tokens: {span.input_tokens}")
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `identifier` | `str` | | A conversation/session ID or trace ID. Queries by `gen_ai.conversation.id` first, falls back to `traceId`. |
+| `max_spans` | `int` | `10000` | Maximum spans to fetch. |
+
+Returns a `SessionRecord`.
+
+**`find_evaluated_trace_ids()`** — filter out already-scored traces:
+
+```python
+evaluated = retriever.find_evaluated_trace_ids([s.trace_id for s in roots])
+to_score = [s for s in roots if s.trace_id not in evaluated]
+```
+
+Returns `set[str]` — trace IDs that already have an evaluation span.
+
+### Return types
+
+**`SpanRecord`** — normalised view of one span:
+
+```python
+@dataclass
+class SpanRecord:
+    trace_id: str
+    span_id: str
+    parent_span_id: str
+    name: str                            # Span name, e.g. "invoke_agent my_agent"
+    start_time: str
+    end_time: str
+    operation_name: str                  # "invoke_agent" | "execute_tool" | "chat"
+    agent_name: str = ""                 # gen_ai.agent.name
+    model: str = ""                      # gen_ai.request.model
+    input_messages: list[Message] = []   # Parsed gen_ai.input.messages
+    output_messages: list[Message] = []  # Parsed gen_ai.output.messages
+    tool_name: str = ""                  # gen_ai.tool.name
+    tool_call_arguments: str = ""        # gen_ai.tool.call.arguments
+    tool_call_result: str = ""           # gen_ai.tool.call.result
+    input_tokens: int = 0               # gen_ai.usage.input_tokens
+    output_tokens: int = 0              # gen_ai.usage.output_tokens
+    raw: dict = {}                       # Original OpenSearch document
+```
+
+**`Message`** — a single user or assistant message:
+
+```python
+@dataclass
+class Message:
+    role: str       # "user", "assistant", etc.
+    content: str
+```
+
+**`TraceRecord`** — all spans sharing a single trace ID:
+
+```python
+@dataclass
+class TraceRecord:
+    trace_id: str
+    spans: list[SpanRecord] = []
+```
+
+**`SessionRecord`** — all traces for a session/conversation:
+
+```python
+@dataclass
+class SessionRecord:
+    session_id: str
+    traces: list[TraceRecord] = []
+    truncated: bool = False     # True if max_spans was reached
+```
+
+### Complete evaluation pipeline
+
+```python
+from opensearch_genai_observability_sdk_py import register, score, OpenSearchTraceRetriever
+
+register(service_name="eval-pipeline")
+retriever = OpenSearchTraceRetriever(host="https://localhost:9200",
+                                     auth=("admin", "admin"), verify_certs=False)
+
+# Find un-evaluated traces → score them
+roots = retriever.list_root_spans(services=["my-agent"])
+evaluated = retriever.find_evaluated_trace_ids([s.trace_id for s in roots])
+
+for root in roots:
+    if root.trace_id not in evaluated:
+        session = retriever.get_traces(root.trace_id)
+        relevance = compute_relevance(session.traces[0].spans)
+        score(name="relevance", value=relevance, trace_id=root.trace_id)
+```
+
+### AWS authentication
+
+```python
+from opensearchpy import RequestsAWSV4SignerAuth
+import boto3
+
+auth = RequestsAWSV4SignerAuth(boto3.Session().get_credentials(), "us-east-1", "es")
+retriever = OpenSearchTraceRetriever(
+    host="https://search-my-domain.us-east-1.es.amazonaws.com", auth=auth,
+)
+```
+
+---
+
+## Related links
+
+- [Python SDK reference](/docs/send-data/ai-agents/python/) — `register`, `observe`, `enrich` documentation
+- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) — explore traces in OpenSearch Dashboards
+- [Agent Health — Experiments](/docs/agent-health/evaluations/experiments/) — UI and CLI-based experiment workflows

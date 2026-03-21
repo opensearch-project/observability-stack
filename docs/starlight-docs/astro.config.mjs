@@ -10,6 +10,13 @@ export default defineConfig({
 	base: '/docs',
 	redirects: {
 		'/get-started': '/get-started/installation/',
+		'/sdks/python': '/send-data/ai-agents/python/',
+		'/sdks/javascript': '/send-data/ai-agents/typescript/',
+		'/sdks/python-experiments': '/ai-observability/evaluation/',
+		'/sdks/python-retrieval': '/ai-observability/evaluation/',
+		'/sdks/faq': '/ai-observability/getting-started/',
+		'/sdks': '/send-data/ai-agents/',
+		'/send-data/ai-agents/javascript': '/send-data/ai-agents/typescript/',
 	},
 	integrations: [
 		mermaid({
@@ -62,6 +69,15 @@ export default defineConfig({
 					items: [
 						{ label: 'Overview', link: '/send-data/' },
 						{
+							label: 'AI Agents',
+							items: [
+								{ label: 'Overview', link: '/send-data/ai-agents/' },
+								{ label: 'Python SDK', link: '/send-data/ai-agents/python/' },
+								{ label: 'Integrations', link: '/send-data/ai-agents/integrations/' },
+								{ label: 'TypeScript SDK', link: '/send-data/ai-agents/typescript/' },
+							],
+						},
+						{
 							label: 'OpenTelemetry',
 							autogenerate: { directory: 'send-data/opentelemetry' },
 						},
@@ -97,7 +113,13 @@ export default defineConfig({
 				{
 					label: 'AI Observability',
 					collapsed: true,
-					autogenerate: { directory: 'ai-observability' },
+					items: [
+						{ label: 'Overview', link: '/ai-observability/' },
+						{ label: 'Getting Started', link: '/ai-observability/getting-started/' },
+						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
+						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
+						{ label: 'Evaluation & Scoring', link: '/ai-observability/evaluation/' },
+					],
 				},
 				{
 					label: 'Agent Health',
@@ -123,11 +145,6 @@ export default defineConfig({
 					label: 'Forecasting',
 					collapsed: true,
 					autogenerate: { directory: 'forecasting' },
-				},
-				{
-					label: 'SDKs & API',
-					collapsed: true,
-					autogenerate: { directory: 'sdks' },
 				},
 			],
 		}),
