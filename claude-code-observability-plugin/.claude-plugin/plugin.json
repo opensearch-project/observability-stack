@@ -1,0 +1,13 @@
+{
+  "name": "observability",
+  "version": "1.0.0",
+  "description": "Query and investigate traces, logs, and metrics from an OpenSearch-based observability stack using PPL and PromQL",
+  "author": {
+    "name": "OpenSearch Project",
+    "url": "https://github.com/opensearch-project/observability-stack"
+  },
+  "homepage": "https://observability.opensearch.org/docs/claude-code/",
+  "repository": "https://github.com/opensearch-project/observability-stack",
+  "license": "Apache-2.0",
+  "keywords": ["observability", "opensearch", "traces", "logs", "metrics", "ppl", "promql", "opentelemetry"]
+}

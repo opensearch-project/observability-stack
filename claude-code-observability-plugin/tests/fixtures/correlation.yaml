@@ -1,0 +1,55 @@
+- name: trace_to_log_correlation
+  description: Find logs with trace context by querying the Log_Index for entries with non-empty traceId
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where traceId != '\'''\'' | fields traceId, spanId, severityText, body, serviceName, `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: log_to_trace_correlation
+  description: Find spans from log entries by querying the Trace_Index for spans with non-empty spanId
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | where spanId != '\'''\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: exemplar_query
+  description: Query Prometheus exemplars API for trace context attached to http_server_duration_seconds_bucket metric samples
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query_exemplars'
+    --data-urlencode 'query=http_server_duration_seconds_bucket'
+    --data-urlencode 'start=2024-01-01T00:00:00Z'
+    --data-urlencode 'end=2030-01-01T00:00:00Z'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - correlation
+
+- name: resource_correlation_by_service
+  description: Correlate spans and logs for a specific service using serviceName as the shared resource attribute
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as span_count, avg(durationInNanos) as avg_duration by serviceName | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation

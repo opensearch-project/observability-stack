@@ -1,0 +1,21 @@
+- name: opensearch_cluster_health
+  description: Check OpenSearch cluster health status returns valid JSON with cluster_name and status fields
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    https://localhost:9200/_cluster/health?pretty
+  expected_status_code: 200
+  expected_fields:
+    - cluster_name
+    - status
+  tags:
+    - stack-health
+
+- name: opensearch_cat_indices
+  description: List OpenSearch indices in JSON format to verify data ingestion created expected trace and log indices
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    https://localhost:9200/_cat/indices?format=json&v
+  expected_status_code: 200
+  expected_fields: []
+  tags:
+    - stack-health

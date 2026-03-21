@@ -1,0 +1,26 @@
+- name: ppl_describe
+  description: Use PPL describe command to inspect the trace index mapping and field types
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "describe otel-v1-apm-span-000001"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_explain
+  description: Use PPL _explain endpoint to retrieve the query execution plan for a simple query
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl/_explain
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | head 5"}'
+  expected_status_code: 200
+  expected_fields:
+    - root
+  tags:
+    - ppl

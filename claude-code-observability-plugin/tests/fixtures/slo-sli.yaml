@@ -1,0 +1,47 @@
+- name: sli_availability
+  description: "Availability SLI: ratio of non-5xx requests to total requests over 30m window"
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=1 - (sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[30m])) / sum(rate(http_server_duration_seconds_count[30m])))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - slo_sli
+
+- name: sli_latency
+  description: "Latency SLI: ratio of requests completing within 500ms to total requests over 30m window"
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_seconds_bucket{le="0.5"}[30m])) / sum(rate(http_server_duration_seconds_count[30m]))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - slo_sli
+
+- name: error_budget_remaining
+  description: "Error budget remaining for 99.9% SLO target using 30m availability SLI"
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=1 - ((1 - (sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[30m])) / sum(rate(http_server_duration_seconds_count[30m])))) / 0.999)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - slo_sli
+
+- name: burn_rate_fast
+  description: "Fast burn rate over 1h window for 99.9% SLO target"
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[1h])) / sum(rate(http_server_duration_seconds_count[1h])) / (1 - 0.999)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - slo_sli

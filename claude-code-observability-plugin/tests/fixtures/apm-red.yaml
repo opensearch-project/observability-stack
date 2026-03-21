@@ -1,0 +1,77 @@
+- name: red_rate_promql
+  description: PromQL per-service HTTP request rate over a 5-minute window
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_error_promql
+  description: PromQL error rate ratio of 5xx responses to total requests by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_duration_promql
+  description: PromQL p95 latency by service using histogram_quantile
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_seconds_bucket[5m])) by (le, service_name))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_rate_ppl
+  description: PPL request count from trace spans grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as request_count by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - apm_red
+
+- name: red_error_ppl
+  description: PPL error count from trace spans where status.code is 2 (OTel ERROR) grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() as error_count by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - apm_red
+
+- name: red_duration_ppl
+  description: PPL p95 duration percentile from trace span durations grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats percentile(durationInNanos, 95) as p95 by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - apm_red

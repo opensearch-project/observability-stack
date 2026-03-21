@@ -1,0 +1,125 @@
+- name: error_logs
+  description: Query all error-level logs filtered by severityText
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where severityText = '\''ERROR'\'' | fields traceId, spanId, serviceName, body, `@timestamp` | sort - `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: warn_logs
+  description: Query all warn-level logs filtered by severityText
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where severityText = '\''WARN'\'' | fields traceId, spanId, serviceName, body, `@timestamp` | sort - `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: severity_number_filter
+  description: Filter logs at WARN level or above using severityNumber >= 13
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where severityNumber >= 13 | fields severityText, severityNumber, serviceName, body, `@timestamp` | sort - `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: trace_correlation
+  description: Find all logs associated with a specific trace by traceId
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where traceId != '\'''\'' | fields traceId, spanId, severityText, body, serviceName, `@timestamp` | sort `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: error_patterns_by_severity_service
+  description: Aggregate log counts grouped by severity level and service name
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | stats count() by severityText, serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: error_count_by_service
+  description: Count error logs grouped by service name sorted by error count
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where severityText = '\''ERROR'\'' | stats count() as error_count by serviceName | sort - error_count"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: log_volume_hourly
+  description: Analyze log volume over time using hourly time buckets
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | stats count() as log_count by span(`@timestamp`, 1h)"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: body_search_like
+  description: Search log body content for a specific string using where with like
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where body like '\''%timeout%'\'' | fields traceId, spanId, severityText, body, serviceName, `@timestamp` | sort - `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
+
+- name: body_search_match
+  description: Full-text relevance search on log body using match function
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-log-* | where match(body, '\''connection refused'\'') | fields traceId, spanId, severityText, body, serviceName, `@timestamp` | sort - `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - logs
