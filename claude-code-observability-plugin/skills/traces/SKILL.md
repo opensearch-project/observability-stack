@@ -125,6 +125,16 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 ## Service Map Queries
 
+> **Important:** The `sourceNode`, `targetNode`, `sourceOperation`, and `targetOperation` fields in the `otel-v2-apm-service-map-*` index are **nested struct objects**, not flat strings. Each node has the structure:
+> ```json
+> {
+>   "keyAttributes": { "name": "frontend", "environment": "generic:default" },
+>   "groupByAttributes": { "telemetry": { "sdk": { "language": "python" } } },
+>   "type": "service"
+> }
+> ```
+> PPL returns these as JSON objects. When aggregating by node (e.g., `stats ... by sourceNode`), PPL groups by the full struct which may produce null aggregations. To extract the service name, read the `sourceNode` field and parse the `keyAttributes.name` from the returned JSON.
+
 ### Service Topology (Node Connections)
 
 Query the service dependency map to explore service-to-service connections. Use `dedup nodeConnectionHash` to get unique connections:
@@ -205,6 +215,8 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -d '{"query": "source=otel-v1-apm-span-* | where traceId = '\''<TRACE_ID>'\'' | join left=s right=l ON s.traceId = l.traceId logs-otel-v1-* | fields s.spanId, s.name, l.severityText, l.body"}'
 ```
 
+> **Caveat:** Cross-index PPL `join` may return 0 rows on OpenSearch 3.x due to engine limitations. If you get empty results, run two separate queries (one against `otel-v1-apm-span-*` and one against `logs-otel-v1-*`) filtered by the same `traceId`, then correlate the results at the application level.
+
 ### Trace Tree Reconstruction
 
 Reconstruct the full trace tree by querying all spans for a traceId, sorted by startTime with parentSpanId for hierarchy:
@@ -272,7 +284,7 @@ The OpenTelemetry GenAI semantic conventions define the following operation type
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### execute_tool
@@ -281,7 +293,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### chat
@@ -290,7 +302,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''chat'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, `attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''chat'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, `attributes.gen_ai.usage.input_tokens`, `attributes.gen_ai.usage.output_tokens`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### embeddings
@@ -299,7 +311,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''embeddings'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''embeddings'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### retrieval
@@ -308,7 +320,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''retrieval'\'' | fields traceId, spanId, serviceName, name, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''retrieval'\'' | fields traceId, spanId, serviceName, name, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### create_agent
@@ -317,7 +329,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''create_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, `attributes.gen_ai.agent.id` | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''create_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, `attributes.gen_ai.agent.id`, startTime | sort - startTime | head 20"}'
 ```
 
 #### text_completion
@@ -326,7 +338,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''text_completion'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''text_completion'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 #### generate_content
@@ -335,7 +347,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''generate_content'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''generate_content'\'' | fields traceId, spanId, `attributes.gen_ai.request.model`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 ## Extended GenAI Attributes
@@ -368,7 +380,7 @@ Find spans that contain exception events with type, message, and stacktrace:
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `events.attributes.exception.type` != '\'''\'' | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message` | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `events.attributes.exception.type` != '\'''\'' | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message`, startTime | sort - startTime | head 20"}'
 ```
 
 ### Query Exception Stacktraces
@@ -380,7 +392,9 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -d '{"query": "source=otel-v1-apm-span-* | where `events.attributes.exception.stacktrace` != '\'''\'' | fields traceId, spanId, `events.attributes.exception.type`, `events.attributes.exception.message`, `events.attributes.exception.stacktrace` | head 10"}'
 ```
 
-### Query Spans by error.type Attribute
+> **Note:** This query may fail with "insufficient resources" on large indices because the `where` filter on `events.attributes.exception.stacktrace` must scan all documents. If this happens, add `| head 1000` before the `where` filter to limit the scan scope: `source=otel-v1-apm-span-* | head 1000 | where ...`
+
+### Query Spans by error_type Attribute
 
 Find spans with a specific error type category:
 
@@ -388,7 +402,7 @@ Find spans with a specific error type category:
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.error.type` != '\'''\'' | fields traceId, spanId, serviceName, `attributes.error.type`, `status.code` | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.error_type` != '\'''\'' | fields traceId, spanId, serviceName, `attributes.error_type`, `status.code`, startTime | sort - startTime | head 20"}'
 ```
 
 ### Error Spans with Exception Details
@@ -399,7 +413,7 @@ Combine error status with exception information for a complete error view:
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message`, `attributes.error.type` | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | fields traceId, spanId, serviceName, name, `events.attributes.exception.type`, `events.attributes.exception.message`, `attributes.error_type`, startTime | sort - startTime | head 20"}'
 ```
 
 ## Conversation Tracking
@@ -430,7 +444,7 @@ Inspect tool call arguments and results for debugging agent behavior:
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, `attributes.gen_ai.tool.call.id`, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' | fields traceId, spanId, `attributes.gen_ai.tool.name`, `attributes.gen_ai.tool.call.id`, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 Inspect tool calls for a specific tool:
@@ -439,7 +453,7 @@ Inspect tool calls for a specific tool:
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' AND `attributes.gen_ai.tool.name` = '\''<TOOL_NAME>'\'' | fields traceId, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos | sort - startTime"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''execute_tool'\'' AND `attributes.gen_ai.tool.name` = '\''<TOOL_NAME>'\'' | fields traceId, `attributes.gen_ai.tool.call.arguments`, `attributes.gen_ai.tool.call.result`, durationInNanos, startTime | sort - startTime"}'
 ```
 
 ## PPL Commands for Trace Analysis
@@ -494,7 +508,7 @@ Key fields available in the `otel-v1-apm-span-*` index:
 | `attributes.gen_ai.tool.type` | keyword | Tool type |
 | `attributes.gen_ai.tool.call.arguments` | text | Tool call arguments (JSON) |
 | `attributes.gen_ai.tool.call.result` | text | Tool call result (JSON) |
-| `attributes.error.type` | keyword | Error type category |
+| `attributes.error_type` | keyword | Error type category |
 | `events.attributes.exception.type` | keyword | Exception class/type |
 | `events.attributes.exception.message` | text | Exception message |
 | `events.attributes.exception.stacktrace` | text | Exception stacktrace |
@@ -513,7 +527,7 @@ curl -s --aws-sigv4 "aws:amz:REGION:es" \
   --user "$AWS_ACCESS_KEY_ID:$AWS_SECRET_ACCESS_KEY" \
   -X POST https://DOMAIN-ID.REGION.es.amazonaws.com/_plugins/_ppl \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos | sort - startTime | head 20"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` = '\''invoke_agent'\'' | fields traceId, spanId, `attributes.gen_ai.agent.name`, durationInNanos, startTime | sort - startTime | head 20"}'
 ```
 
 - Endpoint format: `https://DOMAIN-ID.REGION.es.amazonaws.com`

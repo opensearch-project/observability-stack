@@ -20,6 +20,28 @@ Prometheus runs on port 9090 using HTTP (not HTTPS).
 |---|---|---|
 | `PROMETHEUS_ENDPOINT` | `http://localhost:9090` | Prometheus base URL |
 
+## Metric Discovery
+
+Different OTel SDK versions and languages emit HTTP metrics under different names. Before querying, discover which metric names are active in your stack:
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/label/__name__/values" | python3 -c "
+import json, sys
+for m in json.load(sys.stdin).get('data', []):
+    if any(k in m for k in ['http_server', 'gen_ai', 'db_client']):
+        print(m)"
+```
+
+**Common HTTP metric name variants:**
+
+| Metric Name | Unit | Emitted By |
+|---|---|---|
+| `http_server_duration_milliseconds` | milliseconds | Python OTel SDK (older semconv) |
+| `http_server_duration_seconds` | seconds | .NET, Java OTel SDKs |
+| `http_server_request_duration_seconds` | seconds | Stable HTTP semconv (newer SDKs) |
+
+> **Important:** Replace the metric name in the queries below with whichever variant is active in your stack. The query patterns (rate, histogram_quantile, etc.) are identical — only the metric name changes. For histogram bucket queries, replace `_seconds_bucket` with `_milliseconds_bucket` as appropriate, and adjust latency thresholds accordingly (e.g., `le="0.25"` for seconds vs `le="250"` for milliseconds).
+
 ## HTTP Request Rate by Service
 
 Calculate the per-second HTTP request rate over a 5-minute window, grouped by service:
@@ -57,6 +79,11 @@ Calculate the ratio of 5xx error responses to total requests by service:
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_seconds_count[5m])) by (service_name)'
 ```
+
+> **Note on status code labels:** The label name varies by OTel SDK version. Older semconv uses `http_status_code`; newer stable semconv uses `http_response_status_code`. Use the Metric Discovery section to check which label is present, or query both:
+> ```
+> sum(rate(http_server_duration_seconds_count{http_status_code=~"5.."}[5m])) by (service_name)
+> ```
 
 ## Active Connections
 
@@ -102,27 +129,27 @@ Query GenAI operation duration histograms grouped by operation and model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model)'
 ```
 
 Operation duration p95 by operation and model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
+  --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 ## Available Metric Names and Label Dimensions
 
 | Metric | Type | Labels |
 |---|---|---|
+| `http_server_duration_milliseconds` | histogram | `service_name`, `http_response_status_code` |
 | `http_server_duration_seconds` | histogram | `service_name`, `http_response_status_code` |
+| `http_server_request_duration_seconds` | histogram | `service_name`, `http_response_status_code` |
 | `http_server_active_requests` | gauge | `service_name` |
 | `db_client_operation_duration_seconds` | histogram | `service_name` |
 | `gen_ai_client_token_usage` | histogram | `gen_ai.operation.name`, `gen_ai.request.model` |
-| `gen_ai_client_operation_duration` | histogram | `gen_ai.operation.name`, `gen_ai.request.model` |
-| `app_frontend_requests_total` | counter | — |
-| `app_payment_transactions_total` | counter | — |
+| `gen_ai_client_operation_duration_seconds` | histogram | `gen_ai.operation.name`, `gen_ai.request.model` |
 
 > **Note on Prometheus label names:** Prometheus replaces dots in label names with underscores. The OTel attribute `gen_ai.operation.name` becomes the Prometheus label `gen_ai_operation_name` in PromQL queries. The table above shows the original OTel attribute names for reference.
 

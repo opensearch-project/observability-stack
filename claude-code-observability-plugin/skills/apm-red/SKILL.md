@@ -32,6 +32,28 @@ All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`.
 | `PROMETHEUS_ENDPOINT` | `http://localhost:9090` | Prometheus base URL |
 
 
+## Metric Discovery
+
+Different OTel SDK versions and languages emit HTTP metrics under different names. Before querying, discover which metric names are active in your stack:
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/label/__name__/values" | python3 -c "
+import json, sys
+for m in json.load(sys.stdin).get('data', []):
+    if any(k in m for k in ['http_server', 'gen_ai', 'db_client']):
+        print(m)"
+```
+
+**Common HTTP metric name variants:**
+
+| Metric Name | Unit | Emitted By |
+|---|---|---|
+| `http_server_duration_milliseconds` | milliseconds | Python OTel SDK (older semconv) |
+| `http_server_duration_seconds` | seconds | .NET, Java OTel SDKs |
+| `http_server_request_duration_seconds` | seconds | Stable HTTP semconv (newer SDKs) |
+
+> **Important:** Replace the metric name in the PromQL queries below with whichever variant is active in your stack. For millisecond-unit metrics, adjust latency thresholds accordingly (e.g., `le="250"` instead of `le="0.25"`).
+
 ## Rate Queries
 
 ### Per-Service Request Rate (PromQL)
@@ -172,13 +194,13 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 ## GenAI-Specific RED Metrics
 
-Apply the RED methodology to GenAI operations using the `gen_ai_client_operation_duration` histogram.
+Apply the RED methodology to GenAI operations using the `gen_ai_client_operation_duration_seconds` histogram.
 
 ### GenAI Rate — Operations per second by operation and model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_operation_name, gen_ai_request_model)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_count[5m])) by (gen_ai_operation_name, gen_ai_request_model)'
 ```
 
 ### GenAI Errors — Error ratio by operation and model:
@@ -189,24 +211,24 @@ GenAI operations that result in errors (e.g., model timeouts, rate limits) are t
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.operation.name` is not null | stats count() as total, sum(case(`status.code` = 2, 1 else 0)) as errors by `attributes.gen_ai.operation.name`, `attributes.gen_ai.request.model`"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where isnotnull(`attributes.gen_ai.operation.name`) | stats count() as total, sum(case(`status.code` = 2, 1 else 0)) as errors by `attributes.gen_ai.operation.name`, `attributes.gen_ai.request.model`"}'
 ```
 
 ### GenAI Duration — p50/p95/p99 by operation and model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=histogram_quantile(0.50, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
+  --data-urlencode 'query=histogram_quantile(0.50, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
+  --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=histogram_quantile(0.99, sum(rate(gen_ai_client_operation_duration_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
+  --data-urlencode 'query=histogram_quantile(0.99, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
 ```
 
 
@@ -214,12 +236,14 @@ curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
 
 The RED queries in this skill use metrics defined by the [OpenTelemetry HTTP semantic conventions](https://opentelemetry.io/docs/specs/semconv/http/http-metrics/). The OTel SDK instruments HTTP servers and clients using these standard metric names, which Prometheus exports with underscores replacing dots.
 
-| OTel Metric Name | Prometheus Metric Name | Type | Description |
+| OTel Metric Name | Prometheus Metric Name(s) | Type | Description |
 |---|---|---|---|
-| `http.server.request.duration` | `http_server_duration_seconds` | histogram | Duration of HTTP server requests (seconds) |
+| `http.server.request.duration` | `http_server_duration_seconds`, `http_server_duration_milliseconds`, `http_server_request_duration_seconds` | histogram | Duration of HTTP server requests (unit varies by SDK) |
 | `http.server.active_requests` | `http_server_active_requests` | gauge | Number of active HTTP server requests |
 
-Common labels on `http_server_duration_seconds`:
+> **Note:** The exact Prometheus metric name depends on the OTel SDK version and language. Python SDKs with older semconv emit `http_server_duration_milliseconds`; .NET/Java SDKs emit `http_server_duration_seconds`; newer stable semconv uses `http_server_request_duration_seconds`. Use the [Metric Discovery](#metric-discovery) section to check which name is active.
+
+Common labels on HTTP server duration metrics:
 
 | Label | Description |
 |---|---|
@@ -228,7 +252,9 @@ Common labels on `http_server_duration_seconds`:
 | `http_route` | HTTP route pattern (e.g., `/api/v1/users`) |
 | `http_request_method` | HTTP method (GET, POST, PUT, DELETE) |
 
-> **Note:** Prometheus replaces dots in OTel metric and label names with underscores. The OTel metric `http.server.request.duration` becomes `http_server_duration_seconds` in Prometheus (with the `_seconds` unit suffix added by the OTel exporter).
+> **Note on status code labels:** The label name varies by OTel SDK version. Older semconv uses `http_status_code`; newer stable semconv uses `http_response_status_code`. Use the [Metric Discovery](#metric-discovery) section to check which label is present, or query both variants.
+
+> **Note:** Prometheus replaces dots in OTel metric and label names with underscores. The OTel metric `http.server.request.duration` becomes a Prometheus metric with a unit suffix added by the OTel exporter. The exact name varies by SDK — see the table above.
 
 
 ## OTel Collector `spanmetrics` Connector

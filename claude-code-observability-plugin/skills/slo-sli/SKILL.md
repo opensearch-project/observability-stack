@@ -30,6 +30,8 @@ All Prometheus queries use the HTTP API at `http://localhost:9090/api/v1/query`.
 
 The availability SLI measures the ratio of successful requests (non-5xx) to total requests. A value of 1.0 means all requests succeeded; 0.99 means 1% failed.
 
+> **Note on status code labels:** The label name varies by OTel SDK version. Older semconv uses `http_status_code`; newer stable semconv uses `http_response_status_code`. Use the Metric Discovery section in the metrics skill to check which label is present, and replace `http_response_status_code` in the queries below with the variant active in your stack.
+
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_count{http_response_status_code!~"5.."}[5m])) / sum(rate(http_server_duration_seconds_count[5m]))'
@@ -46,6 +48,8 @@ curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
 
 The latency SLI measures the ratio of requests completing within a threshold (e.g., 250ms) to total requests. A value of 0.95 means 95% of requests finished within the threshold.
 
+> **Note on latency thresholds:** The `le` bucket boundary depends on the metric's unit. For `_seconds` metrics, use `le="0.25"` for 250ms. For `_milliseconds` metrics, use `le="250"`. Use the Metric Discovery section in the metrics skill to check which metric name is active.
+
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
   --data-urlencode 'query=sum(rate(http_server_duration_seconds_bucket{le="0.25"}[5m])) / sum(rate(http_server_duration_seconds_count[5m]))'
@@ -60,18 +64,18 @@ curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
 
 ### GenAI-Specific SLI
 
-The GenAI SLI measures agent response time objectives using the `gen_ai_client_operation_duration` histogram. For example, the ratio of GenAI operations completing within 5 seconds:
+The GenAI SLI measures agent response time objectives using the `gen_ai_client_operation_duration_seconds` histogram. For example, the ratio of GenAI operations completing within 5 seconds:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_bucket{le="5.0"}[5m])) by (gen_ai_operation_name) / sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_operation_name)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_bucket{le="5.0"}[5m])) by (gen_ai_operation_name) / sum(rate(gen_ai_client_operation_duration_seconds_count[5m])) by (gen_ai_operation_name)'
 ```
 
 Per-model GenAI availability (non-error operations):
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count{gen_ai_operation_name!="error"}[5m])) by (gen_ai_request_model) / sum(rate(gen_ai_client_operation_duration_count[5m])) by (gen_ai_request_model)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name!="error"}[5m])) by (gen_ai_request_model) / sum(rate(gen_ai_client_operation_duration_seconds_count[5m])) by (gen_ai_request_model)'
 ```
 
 

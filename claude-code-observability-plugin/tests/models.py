@@ -14,3 +14,4 @@ class TestFixture(BaseModel):
     tags: List[str]
     before_test: Optional[str] = None
     after_test: Optional[str] = None
+    expected_min_results: Optional[int] = None

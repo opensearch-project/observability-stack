@@ -72,7 +72,7 @@ The following GenAI resource attributes are promoted to Prometheus metric labels
 | Resource Attribute | Prometheus Label | Description |
 |---|---|---|
 | `gen_ai.agent.id` | `gen_ai_agent_id` | Agent identifier |
-| `gen_ai.agent.name` | `gen_ai_agent_name` | Human-readable agent name |
+| `gen_ai.agent.name` | `gen_ai_agent_name` | Human-readable agent name (only available if SDK sets this as a resource attribute; most SDKs set it as a span attribute instead) |
 | `gen_ai.provider.name` | `gen_ai_provider_name` | LLM provider (e.g., bedrock, openai) |
 | `gen_ai.request.model` | `gen_ai_request_model` | Model requested for the operation |
 | `gen_ai.response.model` | `gen_ai_response_model` | Model that actually served the response |
@@ -213,7 +213,7 @@ Query exemplars for GenAI operation duration, filtered by agent name:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query_exemplars" \
-  --data-urlencode 'query=gen_ai_client_operation_duration_bucket{gen_ai_agent_name="my-agent"}' \
+  --data-urlencode 'query=gen_ai_client_operation_duration_seconds_bucket{gen_ai_operation_name="invoke_agent"}' \
   --data-urlencode 'start=2024-01-01T00:00:00Z' \
   --data-urlencode 'end=2024-01-02T00:00:00Z'
 ```
@@ -237,14 +237,14 @@ By agent name:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=rate(gen_ai_client_operation_duration_count{gen_ai_agent_name="my-agent"}[5m])'
+  --data-urlencode 'query=rate(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name="invoke_agent"}[5m])'
 ```
 
 By model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=rate(gen_ai_client_token_usage_count{gen_ai_request_model="anthropic.claude-v3"}[5m])'
+  --data-urlencode 'query=rate(gen_ai_client_token_usage_count[5m])'
 ```
 
 Then query exemplars for the filtered metric to get trace IDs for correlation.
@@ -289,14 +289,14 @@ By agent:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_count{gen_ai_agent_name="my-agent"}[5m])) by (gen_ai_agent_name)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_count{gen_ai_operation_name="invoke_agent"}[5m])) by (gen_ai_operation_name)'
 ```
 
 By provider and model:
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count[5m])) by (gen_ai_provider_name, gen_ai_request_model)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count[5m])) by (gen_ai_request_model)'
 ```
 
 ### How Resource Attributes Flow Through the Stack
@@ -439,7 +439,7 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 ```bash
 curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
-  --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count{gen_ai_agent_name="<AGENT_NAME>"}[5m])) by (gen_ai_agent_name, gen_ai_request_model)'
+  --data-urlencode 'query=sum(rate(gen_ai_client_token_usage_count[5m])) by (gen_ai_operation_name, gen_ai_request_model)'
 ```
 
 Check if the agent is consuming unusually high token counts, which may explain slow response times.
