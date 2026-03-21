@@ -1,6 +1,6 @@
 ---
-title: "JavaScript / TypeScript SDK"
-description: "Instrument JavaScript AI agent applications with the GenAI Observability SDK"
+title: "TypeScript SDK"
+description: "Instrument TypeScript AI agent applications with the GenAI Observability SDK"
 sidebar:
   badge:
     text: Coming Soon

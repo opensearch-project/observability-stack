@@ -54,7 +54,7 @@ Start here for a hands-on walkthrough from `pip install` to seeing traces and sc
 Send agent trace data to the observability stack:
 
 - [Python SDK](/docs/send-data/ai-agents/python/) — `@observe`, `enrich()`, auto-instrumentation, AWS SigV4
-- [JavaScript SDK](/docs/send-data/ai-agents/javascript/) — coming soon
+- [TypeScript SDK](/docs/send-data/ai-agents/typescript/) — coming soon
 - [AI Agents overview](/docs/send-data/ai-agents/) — why use the SDK vs manual OTel
 
 ## Analyze

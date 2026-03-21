@@ -44,7 +44,7 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 | `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
 | `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evaluate--run-experiments) |
 | `Experiment` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#experiment--upload-pre-computed-results) |
-| `Score` | Scorer return type | [Evaluation & Scoring](/docs/ai-observability/evaluation/#score-dataclass) |
+| `EvalScore` | Scorer return type | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evalscore-dataclass) |
 | `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/ai-observability/evaluation/#opensearchtraceretriever--query-stored-traces) |
 
 ## Quick start
@@ -346,19 +346,6 @@ SigV4 + gRPC is not supported. Use `https://` for AWS endpoints.
 | `OTEL_SERVICE_NAME` | Service name | `"default"` |
 | `OPENSEARCH_PROJECT` | Project name (fallback) | `"default"` |
 | `OTEL_SERVICE_VERSION` | Service version | |
-
----
-
-## Migration from `opensearch-genai-sdk-py`
-
-| Old API | New API |
-|---|---|
-| `from opensearch_genai_sdk_py import ...` | `from opensearch_genai_observability_sdk_py import ...` |
-| `@workflow(name="x")` | `@observe(name="x", op=Op.INVOKE_AGENT)` |
-| `@task(name="x")` | `@observe(name="x")` |
-| `@agent(name="x")` | `@observe(name="x", op=Op.INVOKE_AGENT)` |
-| `@tool(name="x")` | `@observe(name="x", op=Op.EXECUTE_TOOL)` |
-| `span.set_attribute("gen_ai.request.model", ...)` | `enrich(model=...)` |
 
 ---
 

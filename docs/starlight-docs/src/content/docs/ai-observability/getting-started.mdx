@@ -9,6 +9,37 @@ import { Aside, Steps } from '@astrojs/starlight/components';
 
 This guide walks you through instrumenting an AI agent with the Python SDK, viewing traces in OpenSearch Dashboards, and scoring agent quality. By the end you'll have a working observability pipeline for your AI application.
 
+## End-to-end platform
+
+From code to insight — the platform covers the full AI observability lifecycle:
+
+```mermaid
+flowchart LR
+    subgraph instrument["1 &nbsp; Instrument"]
+        direction TB
+        A1["<b>GenAI SDK</b><br/>In-code instrumentation,<br/>agents, tools, one-line OTEL,<br/>SigV4 auto-detect"]
+    end
+    subgraph normalize["2 &nbsp; Normalize"]
+        direction TB
+        B1["<b>OTEL Collector</b><br/>Standardize spans &<br/>attributes, semantic<br/>conventions, enrichment"]
+    end
+    subgraph local["3 &nbsp; Local Tooling"]
+        direction TB
+        C1["<b>Agent Health & Evals</b><br/>Local debugging, scoring,<br/>evaluations, trace inspection"]
+    end
+    subgraph process["4 &nbsp; Process"]
+        direction TB
+        D1["<b>OTEL Middleware</b><br/>Metrics, topology map,<br/>service maps, trace<br/>correlation & aggregation"]
+    end
+    subgraph analyze["5 &nbsp; Analyze"]
+        direction TB
+        E1["<b>OpenSearch Analytics<br/>& Dashboards</b><br/>Logs, metrics, traces,<br/>agent traces, evals,<br/>APM, correlations"]
+    end
+    instrument --> normalize --> process --> analyze
+    normalize --> local
+    local --> process
+```
+
 ## What the SDK gives you
 
 The GenAI Observability SDK handles the full lifecycle of agent observability:
@@ -142,11 +173,11 @@ flowchart LR
     Test your agent against a dataset with automated scoring:
 
     ```python
-    from opensearch_genai_observability_sdk_py import evaluate, Score
+    from opensearch_genai_observability_sdk_py import evaluate, EvalScore
 
-    def relevance_scorer(input, output, expected) -> Score:
+    def relevance_scorer(input, output, expected) -> EvalScore:
         is_match = expected.lower() in output.lower()
-        return Score(name="relevance", value=1.0 if is_match else 0.0)
+        return EvalScore(name="relevance", value=1.0 if is_match else 0.0)
 
     result = evaluate(
         name="my_agent_v1",
