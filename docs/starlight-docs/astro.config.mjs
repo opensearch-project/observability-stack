@@ -64,19 +64,28 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Agent Observability',
+					collapsed: true,
+					items: [
+						{ label: 'Overview', link: '/ai-observability/' },
+						{ label: 'Getting Started', link: '/ai-observability/getting-started/' },
+						{ label: 'Framework Integrations', link: '/send-data/ai-agents/integrations/' },
+						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
+						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
+						{ label: 'Evaluation & Scoring', link: '/ai-observability/evaluation/' },
+						{ label: 'Evaluation Integrations', link: '/ai-observability/evaluation-integrations/' },
+					],
+				},
+				{
+					label: 'Agent Health',
+					collapsed: true,
+					autogenerate: { directory: 'agent-health' },
+				},
+				{
 					label: 'Send Data',
 					collapsed: true,
 					items: [
 						{ label: 'Overview', link: '/send-data/' },
-						{
-							label: 'AI Agents',
-							items: [
-								{ label: 'Overview', link: '/send-data/ai-agents/' },
-								{ label: 'Python SDK', link: '/send-data/ai-agents/python/' },
-								{ label: 'Integrations', link: '/send-data/ai-agents/integrations/' },
-								{ label: 'TypeScript SDK', link: '/send-data/ai-agents/typescript/' },
-							],
-						},
 						{
 							label: 'OpenTelemetry',
 							autogenerate: { directory: 'send-data/opentelemetry' },
@@ -111,40 +120,22 @@ export default defineConfig({
 					autogenerate: { directory: 'dashboards' },
 				},
 				{
-					label: 'AI Observability',
+					label: 'Alerting & Detection',
 					collapsed: true,
 					items: [
-						{ label: 'Overview', link: '/ai-observability/' },
-						{ label: 'Getting Started', link: '/ai-observability/getting-started/' },
-						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
-						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
-						{ label: 'Evaluation & Scoring', link: '/ai-observability/evaluation/' },
+						{ label: 'Alerting', link: '/alerting/' },
+						{ label: 'Anomaly Detection', link: '/anomaly-detection/' },
+						{ label: 'Forecasting', link: '/forecasting/' },
 					],
 				},
 				{
-					label: 'Agent Health',
+					label: 'Reference',
 					collapsed: true,
-					autogenerate: { directory: 'agent-health' },
-				},
-				{
-					label: 'MCP Server',
-					collapsed: true,
-					autogenerate: { directory: 'mcp' },
-				},
-				{
-					label: 'Alerting',
-					collapsed: true,
-					autogenerate: { directory: 'alerting' },
-				},
-				{
-					label: 'Anomaly Detection',
-					collapsed: true,
-					autogenerate: { directory: 'anomaly-detection' },
-				},
-				{
-					label: 'Forecasting',
-					collapsed: true,
-					autogenerate: { directory: 'forecasting' },
+					items: [
+						{ label: 'Python SDK', link: '/send-data/ai-agents/python/' },
+						{ label: 'TypeScript SDK', link: '/send-data/ai-agents/typescript/' },
+						{ label: 'MCP Server', link: '/mcp/' },
+					],
 				},
 			],
 		}),

@@ -349,19 +349,6 @@ SigV4 + gRPC is not supported. Use `https://` for AWS endpoints.
 
 ---
 
-## Migration from `opensearch-genai-sdk-py`
-
-| Old API | New API |
-|---|---|
-| `from opensearch_genai_sdk_py import ...` | `from opensearch_genai_observability_sdk_py import ...` |
-| `@workflow(name="x")` | `@observe(name="x", op=Op.INVOKE_AGENT)` |
-| `@task(name="x")` | `@observe(name="x")` |
-| `@agent(name="x")` | `@observe(name="x", op=Op.INVOKE_AGENT)` |
-| `@tool(name="x")` | `@observe(name="x", op=Op.EXECUTE_TOOL)` |
-| `span.set_attribute("gen_ai.request.model", ...)` | `enrich(model=...)` |
-
----
-
 ## Related links
 
 - [AI Observability — Getting Started](/docs/ai-observability/getting-started/) — end-to-end walkthrough
