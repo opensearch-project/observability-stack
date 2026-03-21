@@ -63,15 +63,6 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() by serviceName"}'
 ```
 
-### Grammar Endpoint
-
-Retrieve PPL grammar metadata:
-
-```bash
-curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
-  -X GET "$OPENSEARCH_ENDPOINT/_plugins/_ppl/_grammar"
-```
-
 ---
 
 ## Commands
@@ -183,6 +174,8 @@ Remove duplicate results based on field values.
 
 **Syntax**: `dedup [N] <field-list> [keepempty=<bool>] [consecutive=<bool>]`
 
+> **Caveat:** `dedup` may throw a ClassCastException on fields with mixed types (e.g., a field that contains both strings and numbers across documents). Ensure the dedup field has a consistent type.
+
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
@@ -248,13 +241,13 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 Aggregate data into time buckets for time-series visualization.
 
-**Syntax**: `timechart span(<time-field>, <interval>) <aggregation>... [by <field>]`
+**Syntax**: `timechart span=<interval> <aggregation>... [by <field>]`
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 5m) count() as span_count by serviceName"}'
+  -d '{"query": "source=otel-v1-apm-span-* | timechart span=5m count() as span_count by serviceName"}'
 ```
 
 Rate functions for timechart: `per_second()`, `per_minute()`, `per_hour()`, `per_day()` — compute rate of an aggregation per time unit.
@@ -263,7 +256,7 @@ Rate functions for timechart: `per_second()`, `per_minute()`, `per_hour()`, `per
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 1h) per_minute(count()) as spans_per_min by serviceName"}'
+  -d '{"query": "source=otel-v1-apm-span-* | timechart span=1h per_minute(count()) as spans_per_min by serviceName"}'
 ```
 
 #### chart
@@ -313,6 +306,8 @@ Compute running (cumulative) statistics over ordered results.
 
 **Syntax**: `streamstats <aggregation>... [by <field>]`
 
+> **Caveat:** `streamstats` processes all matching rows in memory. On large indices, this will fail with "insufficient resources" errors. Always add `| head N` before `streamstats` to limit data volume.
+
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
@@ -325,6 +320,8 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 Add aggregation results as new fields to each row without collapsing rows (unlike `stats`).
 
 **Syntax**: `eventstats <aggregation>... [by <field>]`
+
+> **Caveat:** `eventstats` processes all matching rows in memory. On large indices, this will fail with "insufficient resources" errors. Always add `| head N` before `eventstats` to limit data volume.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
@@ -341,6 +338,8 @@ Extract fields from text using a regular expression with named groups.
 
 **Syntax**: `parse <field> '<regex-with-named-groups>'`
 
+> **Caveat:** `parse` may silently drop extracted fields on some OpenSearch versions. If extracted fields are missing from results, use `grok` or `rex` as more reliable alternatives.
+
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
@@ -353,6 +352,8 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 Extract fields using Grok patterns (predefined regex patterns).
 
 **Syntax**: `grok <field> '<grok-pattern>'`
+
+> **Caveat:** `grok` processes all matching rows in memory. On large indices, this will fail with "insufficient resources" errors. Always add `| head N` before `grok` to limit data volume.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
@@ -371,7 +372,7 @@ Extract fields using named capture groups (similar to parse but with Splunk-comp
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=logs-otel-v1-* | rex field=body '\''(?<status_code>\\d{3})'\'' | fields status_code, body | head 10"}'
+  -d '{"query": "source=logs-otel-v1-* | rex field=body '\''(?<statuscode>\\d{3})'\'' | fields statuscode, body | head 10"}'
 ```
 
 #### regex
@@ -406,11 +407,13 @@ Extract values from structured data (JSON, XML) using path expressions.
 
 **Syntax**: `spath input=<field> [path=<path>] [output=<field>]`
 
+> **Note:** Verify the target field exists in your index before using `spath`. Run `describe <index-pattern>` first to confirm the field name. The example below uses a representative field; adjust to match your actual schema.
+
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.tool.call.arguments` != '\'''\'' | spath input=`attributes.gen_ai.tool.call.arguments` | head 10"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where isnotnull(`attributes.gen_ai.tool.name`) | spath input=`attributes.gen_ai.tool.name` | head 10"}'
 ```
 
 ### Join/Lookup Commands
@@ -440,14 +443,18 @@ Enrich results by looking up values from another index.
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | lookup otel-v2-apm-service-map serviceName | fields serviceName, `destination.domain`, durationInNanos | head 10"}'
+  -d '{"query": "source=otel-v1-apm-span-* | lookup otel-v2-apm-service-map serviceName AS `sourceNode` | fields serviceName, `targetNode`, durationInNanos | head 10"}'
 ```
+
+> **Note:** The service map index (`otel-v2-apm-service-map`) uses nested fields `sourceNode` and `targetNode`, not `serviceName`. Match accordingly when joining or looking up against this index.
 
 #### graphlookup
 
 Perform graph traversal lookups for hierarchical or connected data.
 
 **Syntax**: `graphlookup <index> connectFromField=<field> connectToField=<field> [maxDepth=<N>] [as <alias>]`
+
+> **Caveat:** `graphlookup` has limited support in OpenSearch 3.x PPL and may not work as expected. Test carefully against your OpenSearch version before relying on this command in production queries.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
@@ -486,7 +493,9 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 Append columns from another query to the current result set.
 
-**Syntax**: `appendcol [ source=<index> | ... ]`
+**Syntax**: `appendcol [ <commands> ]`
+
+> **Caveat:** `source=` is not valid inside `appendcol []` subqueries. The subquery inside `appendcol` operates on the current result set, not a new index. Use `append` followed by reshaping if you need to bring in data from another index.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
@@ -515,6 +524,8 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 Replace null values with a specified value.
 
 **Syntax**: `fillnull [with <value>] [<field-list>]`
+
+> **Caveat:** Backtick-quoted field names are not supported in the `fillnull` field list. Use `eval` to rename dotted fields to simple names before applying `fillnull`, or apply `fillnull` without a field list to fill all null fields.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
@@ -579,15 +590,15 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 #### replace
 
-Replace values in a field using a regex or literal match.
+Replace values in a field using the `replace()` string function inside `eval`.
 
-**Syntax**: `replace <field> '<old>' WITH '<new>'`
+**Syntax**: `eval <field> = replace(<field>, '<old>', '<new>')`
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=logs-otel-v1-* | replace severityText '\''ERROR'\'' WITH '\''ERR'\'' | fields severityText, body | head 10"}'
+  -d '{"query": "source=logs-otel-v1-* | eval severityText = replace(severityText, '\''ERROR'\'', '\''ERR'\'') | fields severityText, body | head 10"}'
 ```
 
 #### reverse
@@ -637,6 +648,8 @@ Convert a multi-value field to a single-value field (takes the first value or jo
 
 **Syntax**: `nomv <field>`
 
+> **Caveat:** `nomv` only works on string arrays, not nested object arrays. If the field contains nested objects (e.g., `events` with sub-fields), `nomv` will fail or produce unexpected results. Use `flatten` or `expand` for nested object arrays instead.
+
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
@@ -676,28 +689,32 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 #### ad
 
-Anomaly detection — identify anomalous values in a numeric field using built-in ML algorithms.
+Anomaly detection — identify anomalous values in numeric fields using built-in ML algorithms.
 
-**Syntax**: `ad <field> [shingle_size=<N>] [time_decay=<float>] [time_field=<field>]`
+**Syntax**: `ad [time_field=<field>] [number_of_trees=<N>] [shingle_size=<N>] [time_zone=<tz>]`
+
+> **Note:** The `ad` command does not take a positional field argument. It auto-detects the input field(s) from the preceding `stats` or `eval` output in the pipeline.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ad durationInNanos time_field=startTime | head 50"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ad time_field=startTime number_of_trees=100 time_zone=\"UTC\" | head 50"}'
 ```
 
 #### kmeans
 
 Cluster data points using the k-means algorithm.
 
-**Syntax**: `kmeans <field-list> [centroids=<N>] [iterations=<N>] [distance_type=<type>]`
+**Syntax**: `kmeans [centroids=<N>] [iterations=<N>] [distance_type=<type>]`
+
+> **Note:** The `kmeans` command does not take positional field arguments. It operates on all numeric fields from the preceding pipeline output. Use `fields` or `eval` before `kmeans` to control which numeric fields are used for clustering.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | kmeans durationInNanos centroids=3 | fields traceId, serviceName, durationInNanos, ClusterID | head 30"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | fields traceId, serviceName, durationInNanos | kmeans centroids=3 | fields traceId, serviceName, durationInNanos, ClusterID | head 30"}'
 ```
 
 #### ml
@@ -706,13 +723,15 @@ General ML command for running machine learning algorithms on query results.
 
 **Syntax**: `ml action=<algorithm> [parameters...]`
 
-Supported algorithms include: `kmeans`, `ad` (anomaly detection), `rcf` (Random Cut Forest).
+Supported algorithms include: `kmeans`, `ad` (anomaly detection).
+
+> **Note:** `ml action=rcf` is not a valid action in OpenSearch 3.x PPL. Random Cut Forest anomaly detection is accessed via the `ad` command directly (see the `ad` section above), not through `ml action=rcf`.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ml action=rcf durationInNanos time_field=startTime | head 50"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where durationInNanos > 0 | ml action=kmeans centroids=3 | head 50"}'
 ```
 
 ### System Commands
@@ -847,7 +866,7 @@ Rate functions normalize aggregation values to a per-time-unit rate within `time
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | timechart span(startTime, 5m) per_second(count()) as requests_per_sec"}'
+  -d '{"query": "source=otel-v1-apm-span-* | timechart span=5m per_second(count()) as requests_per_sec"}'
 ```
 
 ---
@@ -1172,15 +1191,16 @@ Functions for computing statistical correlations and covariances.
 
 | Function | Syntax | Description |
 |----------|--------|-------------|
-| `CORR` | `corr(field1, field2)` | Pearson correlation coefficient between two fields |
 | `COVAR_POP` | `covar_pop(field1, field2)` | Population covariance |
 | `COVAR_SAMP` | `covar_samp(field1, field2)` | Sample covariance |
+
+> **Note:** `corr()` is not a recognized stats aggregation function in OpenSearch 3.x PPL. To approximate Pearson correlation, use `eval` with manual calculation or compute covariance and standard deviations separately. The `covar_samp` and `covar_pop` functions are supported.
 
 ```bash
 curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -X POST "$OPENSEARCH_ENDPOINT/_plugins/_ppl" \
   -H 'Content-Type: application/json' \
-  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.usage.input_tokens` > 0 | stats corr(`attributes.gen_ai.usage.input_tokens`, durationInNanos) as token_duration_corr"}'
+  -d '{"query": "source=otel-v1-apm-span-* | where `attributes.gen_ai.usage.input_tokens` > 0 | stats covar_samp(`attributes.gen_ai.usage.input_tokens`, durationInNanos) as token_duration_covar"}'
 ```
 
 ### String Functions

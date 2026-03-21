@@ -35,6 +35,8 @@ TAG_MARKER_MAP = {
     "apm_red": "apm_red",
     "slo_sli": "slo_sli",
     "topology": "topology",
+    "osd_config": "osd_config",
+    "osd_dashboards": "osd_dashboards",
 }
 
 # ---------------------------------------------------------------------------
@@ -177,6 +179,33 @@ def test_fixture(fixture: TestFixture) -> None:
         f"Missing expected fields in response: {missing}\n"
         f"Response keys: {list(response.keys()) if isinstance(response, dict) else type(response)}"
     )
+
+    # --- Assert minimum result count (if specified) -------------------------
+    if fixture.expected_min_results is not None:
+        # Generic list-type responses (e.g., _cat/indices JSON array)
+        if isinstance(response, list):
+            actual = len(response)
+            assert actual >= fixture.expected_min_results, (
+                f"Expected at least {fixture.expected_min_results} items in "
+                f"response array, got {actual}"
+            )
+        # PPL responses: {"schema": [...], "datarows": [[...], ...], "total": N}
+        elif "datarows" in response:
+            actual = len(response["datarows"])
+            assert actual >= fixture.expected_min_results, (
+                f"Expected at least {fixture.expected_min_results} datarows, "
+                f"got {actual}"
+            )
+        # Prometheus responses: {"status": "success", "data": {"result": [...]}}
+        elif (
+            isinstance(response.get("data"), dict)
+            and "result" in response["data"]
+        ):
+            actual = len(response["data"]["result"])
+            assert actual >= fixture.expected_min_results, (
+                f"Expected at least {fixture.expected_min_results} results in "
+                f"data.result, got {actual}"
+            )
 
 
 # ---------------------------------------------------------------------------

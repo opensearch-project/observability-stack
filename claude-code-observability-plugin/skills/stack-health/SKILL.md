@@ -52,7 +52,7 @@ Check the OpenTelemetry Collector's internal metrics to verify it is receiving a
 curl -s http://localhost:8888/metrics
 ```
 
-Look for `otelcol_receiver_accepted_spans`, `otelcol_exporter_sent_spans`, and `otelcol_exporter_send_failed_spans` in the output to confirm data flow.
+Look for `otelcol_receiver_accepted_spans_total`, `otelcol_exporter_sent_spans_total`, and `otelcol_exporter_send_failed_spans_total` in the output to confirm data flow. (OTel Collector metrics use the `_total` suffix for counters.)
 
 ### OpenSearch Index Listing
 
@@ -160,7 +160,7 @@ docker compose logs otel-collector
 
 1. Verify the OTel Collector is receiving data — check its metrics:
    ```bash
-   curl -s http://localhost:8888/metrics | grep otelcol_receiver_accepted_spans
+   curl -s http://localhost:8888/metrics | grep otelcol_receiver_accepted_spans_total
    ```
 2. Check the Data Prepper pipeline for errors:
    ```bash

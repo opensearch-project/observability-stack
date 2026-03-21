@@ -97,6 +97,8 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line("markers", "apm_red: APM RED metrics tests")
     config.addinivalue_line("markers", "slo_sli: SLO/SLI query tests")
     config.addinivalue_line("markers", "topology: service topology discovery tests")
+    config.addinivalue_line("markers", "osd_config: OSD config and index discovery tests")
+    config.addinivalue_line("markers", "osd_dashboards: OSD Dashboards API tests (require OSD running)")
 
 
 # --------------------------------------------------------------------------- #

@@ -82,13 +82,17 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 ## Saved Objects
 
-### List All Saved Object Types
+### Count Saved Objects by Type
+
+The `_find` API requires a `type` parameter. To get a count without loading objects, use `per_page=0`:
 
 ```bash
 curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
-  "$OSD_ENDPOINT/api/saved_objects/_find?per_page=0" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=index-pattern&per_page=0" \
   -H 'osd-xsrf: true'
 ```
+
+Common saved object types: `index-pattern`, `query`, `dashboard`, `visualization`, `config`, `observability-visualization`.
 
 ### Find Saved Queries
 
