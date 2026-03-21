@@ -1,0 +1,11 @@
+{
+  "name": "opensearch-project/observability-stack",
+  "description": "Plugin marketplace for the OpenSearch Observability Stack",
+  "plugins": [
+    {
+      "name": "observability",
+      "path": "claude-code-observability-plugin",
+      "description": "Query and investigate traces, logs, and metrics from an OpenSearch-based observability stack using PPL and PromQL"
+    }
+  ]
+}
