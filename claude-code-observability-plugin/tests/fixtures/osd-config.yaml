@@ -1,0 +1,162 @@
+## OSD Config skill integration tests
+## Tests both OpenSearch-direct APIs (always available) and OSD Dashboards APIs (require OSD running)
+
+# --- OpenSearch-direct APIs (no OSD dependency) ---
+
+- name: osd_index_discovery
+  description: Discover observability indices via _cat/indices API filtered to otel/logs patterns
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/_cat/indices/otel-*,logs-otel-*?format=json'
+  expected_status_code: 200
+  expected_fields: []
+  expected_min_results: 1
+  tags:
+    - osd_config
+
+- name: osd_trace_index_mapping
+  description: Get trace index field mappings for dynamic field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/otel-v1-apm-span-000001/_mapping?pretty'
+  expected_status_code: 200
+  expected_fields:
+    - otel-v1-apm-span-000001
+  tags:
+    - osd_config
+
+- name: osd_log_index_mapping
+  description: Get log index field mappings for dynamic field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/logs-otel-v1-000001/_mapping?pretty'
+  expected_status_code: 200
+  expected_fields:
+    - logs-otel-v1-000001
+  tags:
+    - osd_config
+
+- name: osd_service_map_index_mapping
+  description: Get service map index field mappings for dynamic field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/otel-v2-apm-service-map-000001/_mapping?pretty'
+  expected_status_code: 200
+  expected_fields:
+    - otel-v2-apm-service-map-000001
+  tags:
+    - osd_config
+
+- name: osd_ppl_describe_traces
+  description: PPL describe command for trace index field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "describe otel-v1-apm-span-000001"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  expected_min_results: 1
+  tags:
+    - osd_config
+
+- name: osd_ppl_describe_logs
+  description: PPL describe command for log index field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "describe logs-otel-v1-000001"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  expected_min_results: 1
+  tags:
+    - osd_config
+
+# --- OSD Dashboards APIs (require OSD running on port 5601) ---
+
+- name: osd_workspace_list
+  description: List all OSD workspaces via the workspaces API
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/workspaces/_list'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - success
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_saved_objects_count
+  description: Get saved object count for a specific type (type param is required by _find API)
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=config&per_page=0'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_index_patterns
+  description: List all index patterns registered in OSD
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=index-pattern&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_saved_queries
+  description: Find saved queries registered in OSD
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=query&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_dashboards_list
+  description: Find dashboards registered in OSD
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=dashboard&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_visualizations_list
+  description: Find visualizations registered in OSD
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=visualization&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
