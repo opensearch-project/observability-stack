@@ -1,5 +1,5 @@
 {
-  "name": "observability",
+  "name": "opensearch@observability",
   "version": "1.0.0",
   "description": "Query and investigate traces, logs, and metrics from an OpenSearch-based observability stack using PPL and PromQL",
   "author": {

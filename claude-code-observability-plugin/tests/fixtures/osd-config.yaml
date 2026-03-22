@@ -160,3 +160,72 @@
   tags:
     - osd_config
     - osd_dashboards
+
+- name: osd_correlations_list
+  description: Find APM correlation saved objects (trace-to-logs and APM-Config types)
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=correlations&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_data_sources_list
+  description: Find OpenSearch data source saved objects
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=data-source&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_data_connections_list
+  description: Find data connection saved objects (Prometheus datasources)
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=data-connection&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_explore_list
+  description: Find PromQL explore panels registered in OSD
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/saved_objects/_find?type=explore&per_page=100'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - total
+    - saved_objects
+  tags:
+    - osd_config
+    - osd_dashboards
+
+- name: osd_settings
+  description: Get OSD settings including default workspace and index
+  command: >-
+    curl -s -u admin:'My_password_123!@#'
+    'http://localhost:5601/api/opensearch-dashboards/settings'
+    -H 'osd-xsrf: true'
+  expected_status_code: 200
+  expected_fields:
+    - settings
+  tags:
+    - osd_config
+    - osd_dashboards

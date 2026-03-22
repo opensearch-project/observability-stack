@@ -84,6 +84,56 @@
   tags:
     - apm_red
 
+- name: red_dp_request_gauge
+  description: Data Prepper APM request gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(request{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_dp_error_gauge
+  description: Data Prepper APM error gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(error{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_dp_fault_gauge
+  description: Data Prepper APM fault gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(fault{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_dp_latency_histogram
+  description: Data Prepper APM p95 latency histogram per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(latency_seconds_seconds_bucket{namespace="span_derived"}) by (le, service))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
 - name: red_genai_rate_promql
   description: PromQL GenAI operation rate by operation name and model
   command: >-

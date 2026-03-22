@@ -192,6 +192,109 @@ curl -sk -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 ```
 
 
+## Data Prepper APM Metrics
+
+Data Prepper's APM service map processor generates its own RED metrics from trace spans and writes them to Prometheus. These are the metrics that power the OpenSearch Dashboards APM UI. Unlike OTel SDK histogram metrics (which use `rate()` on counters), Data Prepper APM metrics are **gauges** — instantaneous snapshot values that should be queried directly without `rate()`.
+
+### Data Prepper APM Metric Reference
+
+| Metric | Type | Description |
+|---|---|---|
+| `request` | gauge | Total request count per service/operation edge |
+| `error` | gauge | Error count (server-side errors, status code 2) |
+| `fault` | gauge | Fault count (client-side errors) |
+| `latency_seconds_seconds_bucket` | histogram | Latency distribution with `le` buckets (note: double `_seconds` suffix from unit handling) |
+
+Common labels on all Data Prepper APM metrics:
+
+| Label | Description |
+|---|---|
+| `service` | Source service name |
+| `operation` | Source operation (e.g., `GET /api/cart`) |
+| `remoteService` | Destination service name |
+| `remoteOperation` | Destination operation |
+| `environment` | Deployment environment (e.g., `generic:default`) |
+| `namespace` | Always `span_derived` for Data Prepper APM metrics |
+
+> **Important:** These metrics use `service` (not `service_name`) as the label for service names, unlike OTel SDK metrics which use `service_name`.
+
+### Request Count by Service (Data Prepper)
+
+Query total request count per service. This is a gauge — no `rate()` needed:
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=sum(request{namespace="span_derived"}) by (service)'
+```
+
+### Request Count by Service and Operation (Data Prepper)
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=request{namespace="span_derived", service="frontend"}'
+```
+
+### Error Count by Service (Data Prepper)
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=sum(error{namespace="span_derived"}) by (service)'
+```
+
+### Fault Count by Service (Data Prepper)
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=sum(fault{namespace="span_derived"}) by (service)'
+```
+
+### Error Rate by Service (Data Prepper)
+
+Calculate the error ratio using safe division to avoid NaN when request count is zero:
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=sum(error{namespace="span_derived"}) by (service) / (sum(request{namespace="span_derived"}) by (service) > 0)'
+```
+
+### Latency Percentiles (Data Prepper)
+
+#### p50 (Median) Latency by Service
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=histogram_quantile(0.50, sum(latency_seconds_seconds_bucket{namespace="span_derived"}) by (le, service))'
+```
+
+#### p95 Latency by Service
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=histogram_quantile(0.95, sum(latency_seconds_seconds_bucket{namespace="span_derived"}) by (le, service))'
+```
+
+#### p99 Latency by Service
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=histogram_quantile(0.99, sum(latency_seconds_seconds_bucket{namespace="span_derived"}) by (le, service))'
+```
+
+### p99 Latency for a Specific Service (Data Prepper)
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=histogram_quantile(0.99, sum(latency_seconds_seconds_bucket{namespace="span_derived", service="frontend"}) by (le))'
+```
+
+### Top-K Services by Error Rate (Data Prepper)
+
+```bash
+curl -s "$PROMETHEUS_ENDPOINT/api/v1/query" \
+  --data-urlencode 'query=topk(5, sum(error{namespace="span_derived"}) by (service) / (sum(request{namespace="span_derived"}) by (service) > 0))'
+```
+
+
 ## GenAI-Specific RED Metrics
 
 Apply the RED methodology to GenAI operations using the `gen_ai_client_operation_duration_seconds` histogram.

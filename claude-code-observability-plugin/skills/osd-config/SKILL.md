@@ -34,6 +34,26 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -H 'osd-xsrf: true'
 ```
 
+### Associate Datasource with Workspace
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OSD_ENDPOINT/api/workspaces/_associate" \
+  -H 'osd-xsrf: true' \
+  -H 'Content-Type: application/json' \
+  -d '{"workspaceId": "<WORKSPACE_ID>", "savedObjects": [{"type": "data-source", "id": "<DATASOURCE_ID>"}]}'
+```
+
+## Dashboards Settings
+
+### Get Default Workspace
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/opensearch-dashboards/settings" \
+  -H 'osd-xsrf: true'
+```
+
 ## Index Pattern Discovery
 
 ### List All Index Patterns
@@ -60,15 +80,32 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -H 'osd-xsrf: true'
 ```
 
+## Dataset Discovery
+
+Datasets are an evolution of index patterns that classify indices by signal type (logs, traces, metrics). Users define which indices are logs vs traces through the Dashboards UI. See [Dataset Discovery documentation](https://docs.opensearch.org/latest/observing-your-data/exploring-observability-data/datasets/) for details.
+
+To discover datasets programmatically, query the index patterns and check their `dataSourceType` or use the saved objects API to find index patterns with observability schema mappings:
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=index-pattern&per_page=100&fields=title&fields=dataSourceType" \
+  -H 'osd-xsrf: true'
+```
+
+Index patterns created by the observability stack init script include schema mappings that identify their signal type (e.g., `otelLogs` for log indices, trace-specific time fields for trace indices). These mappings are visible in the index pattern's `attributes.fields` property.
+
 ## APM Configuration
 
 ### Get APM Correlation Config
 
-The APM plugin stores correlation saved objects that define how traces, logs, and metrics are linked:
+The APM plugin stores `correlations` saved objects that define how traces, logs, and metrics are linked. Two correlation types are created by the init script:
+
+- **`trace-to-logs-*`** — Links a trace index pattern to a log index pattern for cross-signal navigation
+- **`APM-Config-*`** — Ties together the traces index, service map index, and Prometheus datasource for the APM UI
 
 ```bash
 curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
-  "$OSD_ENDPOINT/api/saved_objects/_find?type=observability-visualization&per_page=100" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=correlations&per_page=100" \
   -H 'osd-xsrf: true'
 ```
 
@@ -76,7 +113,7 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 
 ```bash
 curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
-  "$OSD_ENDPOINT/w/<WORKSPACE_ID>/api/saved_objects/_find?type=observability-visualization&per_page=100" \
+  "$OSD_ENDPOINT/w/<WORKSPACE_ID>/api/saved_objects/_find?type=correlations&per_page=100" \
   -H 'osd-xsrf: true'
 ```
 
@@ -92,7 +129,39 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   -H 'osd-xsrf: true'
 ```
 
-Common saved object types: `index-pattern`, `query`, `dashboard`, `visualization`, `config`, `observability-visualization`.
+Common saved object types: `index-pattern`, `query`, `dashboard`, `visualization`, `config`, `correlations`, `data-source`, `data-connection`, `explore`.
+
+### Find Correlations
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=correlations&per_page=100" \
+  -H 'osd-xsrf: true'
+```
+
+### Find Data Sources (OpenSearch)
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=data-source&per_page=100" \
+  -H 'osd-xsrf: true'
+```
+
+### Find Data Connections (Prometheus)
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=data-connection&per_page=100" \
+  -H 'osd-xsrf: true'
+```
+
+### Find Explore Panels
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=explore&per_page=100" \
+  -H 'osd-xsrf: true'
+```
 
 ### Find Saved Queries
 
@@ -116,6 +185,30 @@ curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
 curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
   "$OSD_ENDPOINT/api/saved_objects/_find?type=visualization&per_page=100" \
   -H 'osd-xsrf: true'
+```
+
+## Data Connections
+
+### List Prometheus Data Connections
+
+To discover existing Prometheus data connections, use the saved objects API (the `data-connection` type):
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  "$OSD_ENDPOINT/api/saved_objects/_find?type=data-connection&per_page=100" \
+  -H 'osd-xsrf: true'
+```
+
+### Create Prometheus Data Connection
+
+The init script creates Prometheus data connections via the direct query API:
+
+```bash
+curl -s -u "$OPENSEARCH_USER:$OPENSEARCH_PASSWORD" \
+  -X POST "$OSD_ENDPOINT/api/directquery/dataconnections" \
+  -H 'osd-xsrf: true' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "MyPrometheus", "connector": "prometheus", "allowedRoles": ["all_access"], "properties": {"prometheus.uri": "http://prometheus:9090", "prometheus.auth.type": "basicauth", "prometheus.auth.username": "", "prometheus.auth.password": ""}}'
 ```
 
 ## Dynamic Index Discovery via OpenSearch API
@@ -184,4 +277,5 @@ When dynamic discovery is not possible, these are the default index patterns use
 ## References
 
 - [OpenSearch Dashboards Saved Objects API](https://opensearch.org/docs/latest/dashboards/management/saved-objects-api/) — API reference for saved objects
+- [Dataset Discovery](https://docs.opensearch.org/latest/observing-your-data/exploring-observability-data/datasets/) — Datasets for classifying indices by signal type
 - [PPL Language Reference](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md) — PPL syntax for describe and other commands
