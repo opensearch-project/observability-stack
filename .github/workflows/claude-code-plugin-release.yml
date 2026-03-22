@@ -1,0 +1,47 @@
+name: Claude Code Plugin Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-plugin-zips:
+    name: Build Plugin ZIPs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build skill ZIP files
+        run: |
+          PLUGIN_DIR=claude-code-observability-plugin
+          DIST_DIR=$PLUGIN_DIR/dist
+          mkdir -p "$DIST_DIR"
+
+          for skill_dir in "$PLUGIN_DIR"/skills/*/; do
+            skill_name=$(basename "$skill_dir")
+            if [ -f "$skill_dir/SKILL.md" ]; then
+              zip -j "$DIST_DIR/${skill_name}.zip" "$skill_dir/SKILL.md"
+              echo "Built $DIST_DIR/${skill_name}.zip"
+            fi
+          done
+
+          ls -la "$DIST_DIR"
+
+      - name: Upload ZIPs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-code-plugin-skills
+          path: claude-code-observability-plugin/dist/*.zip
+
+      - name: Attach ZIPs to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for zip in claude-code-observability-plugin/dist/*.zip; do
+            gh release upload "${{ github.event.release.tag_name }}" "$zip" --clobber
+            echo "Uploaded $(basename $zip) to release ${{ github.event.release.tag_name }}"
+          done

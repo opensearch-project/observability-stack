@@ -137,6 +137,11 @@ export default defineConfig({
 						{ label: 'MCP Server', link: '/mcp/' },
 					],
 				},
+				{
+					label: 'Claude Code',
+					collapsed: true,
+					autogenerate: { directory: 'claude-code' },
+				},
 			],
 		}),
 	],

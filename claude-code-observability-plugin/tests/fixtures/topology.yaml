@@ -1,0 +1,78 @@
+## Service topology discovery tests against the service map index
+
+- name: topology_list_services
+  description: List all unique services from the service map using dedup nodeConnectionHash
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v2-apm-service-map-* | dedup nodeConnectionHash | fields sourceNode, targetNode | head 50"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - topology
+
+- name: topology_service_operations
+  description: List operations per service using dedup operationConnectionHash
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v2-apm-service-map-* | dedup operationConnectionHash | fields sourceNode, sourceOperation, targetNode, targetOperation | head 50"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - topology
+
+- name: topology_dependency_count
+  description: Count downstream dependencies per service
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v2-apm-service-map-* | dedup nodeConnectionHash | stats count() as connections by sourceNode | sort - connections"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - topology
+
+- name: topology_service_attributes
+  description: Get service attributes (most recent) from service map
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v2-apm-service-map-* | fields sourceNode, timestamp | sort - timestamp | head 10"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - topology
+
+- name: topology_index_discovery
+  description: Discover observability indices via _cat/indices API
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/_cat/indices/otel-*?format=json'
+  expected_status_code: 200
+  expected_fields: []
+  tags:
+    - topology
+
+- name: topology_trace_field_mapping
+  description: Get trace index field mappings for dynamic field discovery
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/otel-v1-apm-span-000001/_mapping?pretty'
+  expected_status_code: 200
+  expected_fields:
+    - otel-v1-apm-span-000001
+  tags:
+    - topology

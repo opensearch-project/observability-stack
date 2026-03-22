@@ -1,0 +1,161 @@
+## APM RED metrics integration tests
+## Uses http_server_duration_milliseconds (the active HTTP metric in this stack).
+
+- name: red_rate_promql
+  description: PromQL per-service HTTP request rate over a 5-minute window
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_error_promql
+  description: PromQL error rate ratio of 5xx responses to total requests by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_milliseconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_duration_promql
+  description: PromQL p95 latency by service using histogram_quantile
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket[5m])) by (le, service_name))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_rate_ppl
+  description: PPL request count from trace spans grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as request_count by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_error_ppl
+  description: PPL error count from trace spans where status.code is 2 (OTel ERROR) grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | where `status.code` = 2 | stats count() as error_count by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_duration_ppl
+  description: PPL p95 duration percentile from trace span durations grouped by serviceName
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats percentile(durationInNanos, 95) as p95 by serviceName"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_dp_request_gauge
+  description: Data Prepper APM request gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(request{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_dp_error_gauge
+  description: Data Prepper APM error gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(error{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_dp_fault_gauge
+  description: Data Prepper APM fault gauge metric per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(fault{namespace="span_derived"}) by (service)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - apm_red
+
+- name: red_dp_latency_histogram
+  description: Data Prepper APM p95 latency histogram per service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(latency_seconds_seconds_bucket{namespace="span_derived"}) by (le, service))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_genai_rate_promql
+  description: PromQL GenAI operation rate by operation name and model
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(gen_ai_client_operation_duration_seconds_count[5m])) by (gen_ai_operation_name, gen_ai_request_model)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red
+
+- name: red_genai_duration_promql
+  description: PromQL GenAI operation p95 latency by operation name and model
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(rate(gen_ai_client_operation_duration_seconds_bucket[5m])) by (le, gen_ai_operation_name, gen_ai_request_model))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - apm_red

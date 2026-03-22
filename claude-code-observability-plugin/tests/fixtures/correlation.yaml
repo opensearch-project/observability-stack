@@ -1,0 +1,85 @@
+## Cross-signal correlation integration tests
+
+- name: trace_to_log_correlation
+  description: Find logs with trace context by querying the log index for entries with non-empty traceId
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=logs-otel-v1-* | where traceId != '\'''\'' | fields traceId, spanId, severityText, body, `resource.attributes.service.name`, `@timestamp` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: log_to_trace_correlation
+  description: Find spans from log entries by querying the trace index for spans with non-empty spanId
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | where spanId != '\'''\'' | fields traceId, spanId, parentSpanId, serviceName, name, startTime, endTime, durationInNanos, `status.code` | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: exemplar_query
+  description: Query Prometheus exemplars API for trace context attached to http_server_duration_seconds_bucket metric samples
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query_exemplars'
+    --data-urlencode 'query=http_server_duration_seconds_bucket'
+    --data-urlencode 'start=2024-01-01T00:00:00Z'
+    --data-urlencode 'end=2030-01-01T00:00:00Z'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - correlation
+
+- name: resource_correlation_by_service
+  description: Correlate spans for each service with per-service span counts and average duration
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as span_count, avg(durationInNanos) as avg_duration by serviceName | sort - span_count | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: error_log_to_error_span_correlation
+  description: Find ERROR logs and verify spans exist for the same services
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=logs-otel-v1-* | where severityText = '\''ERROR'\'' AND traceId != '\'''\'' | fields traceId, spanId, body, `resource.attributes.service.name`, `@timestamp` | head 10"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation
+
+- name: log_volume_vs_span_volume_by_service
+  description: Compare log volume against span volume per service using separate queries
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=logs-otel-v1-* | stats count() as log_count by `resource.attributes.service.name` | sort - log_count | head 15"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - correlation

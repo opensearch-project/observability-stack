@@ -1,0 +1,92 @@
+## Metrics query integration tests
+## Uses http_server_duration_milliseconds (the active HTTP metric in this stack).
+## If your stack uses http_server_duration_seconds, replace the metric name accordingly.
+
+- name: http_request_rate
+  description: Query per-second HTTP request rate over 5m window grouped by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - metrics
+
+- name: http_latency_p95
+  description: Query 95th percentile HTTP request latency by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket[5m])) by (le, service_name))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - metrics
+
+- name: http_latency_p99
+  description: Query 99th percentile HTTP request latency by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=histogram_quantile(0.99, sum(rate(http_server_duration_milliseconds_bucket[5m])) by (le, service_name))'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - metrics
+
+- name: http_error_rate
+  description: Query ratio of 5xx error responses to total requests by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(rate(http_server_duration_milliseconds_count{http_response_status_code=~"5.."}[5m])) by (service_name) / sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - metrics
+
+- name: active_connections
+  description: Query current number of active HTTP connections by service
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=sum(http_server_active_requests) by (service_name)'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - metrics
+
+- name: genai_token_usage
+  description: Query GenAI token usage total by operation and model
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=gen_ai_client_token_usage_total'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - metrics
+
+- name: genai_operation_duration
+  description: Query GenAI operation duration (seconds) by operation and model
+  command: >-
+    curl -s 'http://localhost:9090/api/v1/query'
+    --data-urlencode 'query=gen_ai_client_operation_duration_seconds_count'
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  expected_min_results: 1
+  tags:
+    - metrics

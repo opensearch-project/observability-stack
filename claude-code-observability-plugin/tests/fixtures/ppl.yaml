@@ -1,0 +1,112 @@
+## PPL system command and query integration tests
+
+- name: ppl_describe
+  description: Use PPL describe command to inspect the trace index mapping and field types
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "describe otel-v1-apm-span-000001"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_explain
+  description: Use PPL _explain endpoint to retrieve the query execution plan for a simple query
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl/_explain
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | head 5"}'
+  expected_status_code: 200
+  expected_fields:
+    - calcite
+  tags:
+    - ppl
+
+- name: ppl_stats_aggregation
+  description: Test PPL stats command with multiple aggregation functions
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as total, avg(durationInNanos) as avg_ns, max(durationInNanos) as max_ns, min(durationInNanos) as min_ns by serviceName | sort - total | head 10"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_distinct_count
+  description: Test PPL distinct_count to find unique operation names per service
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats distinct_count(name) as unique_ops by serviceName | sort - unique_ops | head 20"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_top_operations
+  description: Test PPL top command to find the most frequent span names
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | top 10 name"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_rare_operations
+  description: Test PPL rare command to find the least frequent span names
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | rare name"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_eval_duration_ms
+  description: Test PPL eval command to compute derived duration in milliseconds
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | eval duration_ms = durationInNanos / 1000000 | fields serviceName, name, duration_ms | sort - duration_ms | head 10"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl
+
+- name: ppl_describe_log_index
+  description: Use PPL describe to inspect the log index field mappings
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "describe logs-otel-v1-000001"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - ppl

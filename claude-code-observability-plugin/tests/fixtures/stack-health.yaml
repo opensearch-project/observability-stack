@@ -1,0 +1,63 @@
+## Stack health check integration tests
+
+- name: opensearch_cluster_health
+  description: Check OpenSearch cluster health status returns valid JSON with cluster_name and status fields
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    https://localhost:9200/_cluster/health?pretty
+  expected_status_code: 200
+  expected_fields:
+    - cluster_name
+    - status
+  tags:
+    - stack-health
+
+- name: opensearch_cat_indices
+  description: List OpenSearch indices in JSON format to verify data ingestion created expected trace and log indices
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    'https://localhost:9200/_cat/indices?format=json&v'
+  expected_status_code: 200
+  expected_fields: []
+  tags:
+    - stack-health
+
+- name: prometheus_targets
+  description: Query Prometheus targets API to verify scrape targets are configured
+  command: >-
+    curl -s http://localhost:9090/api/v1/targets
+  expected_status_code: 200
+  expected_fields:
+    - status
+    - data
+  tags:
+    - stack-health
+
+- name: trace_data_exists
+  description: Verify trace data exists by counting spans
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=otel-v1-apm-span-* | stats count() as total"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - stack-health
+
+- name: log_data_exists
+  description: Verify log data exists by counting log entries
+  command: >-
+    curl -sk -u admin:'My_password_123!@#'
+    -X POST https://localhost:9200/_plugins/_ppl
+    -H 'Content-Type: application/json'
+    -d '{"query": "source=logs-otel-v1-* | stats count() as total"}'
+  expected_status_code: 200
+  expected_fields:
+    - schema
+    - datarows
+  tags:
+    - stack-health
+

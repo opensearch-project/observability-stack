@@ -1,0 +1,21 @@
+{
+  "name": "observability-stack",
+  "owner": {
+    "name": "OpenSearch Project",
+    "email": "anirudha@nyu.edu"
+  },
+  "metadata": {
+    "description": "Observability plugins for the OpenSearch stack"
+  },
+  "plugins": [
+    {
+      "name": "observability",
+      "source": "./claude-code-observability-plugin",
+      "description": "Query and investigate traces, logs, and metrics from an OpenSearch-based observability stack using PPL and PromQL",
+      "version": "1.0.0",
+      "author": {
+        "name": "OpenSearch Project"
+      }
+    }
+  ]
+}
