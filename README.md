@@ -310,42 +310,6 @@ The interactive installer prompts "Customize OpenSearch credentials?" — enter 
 
 **How it works:** `.env` is the single source of truth for credentials. OpenSearch, Dashboards, and the init script read from `.env` via environment variables. Data Prepper uses a [template](docker-compose/data-prepper/pipelines.template.yaml) with `OPENSEARCH_USER`/`OPENSEARCH_PASSWORD` placeholders that are injected via `sed` at container startup — no manual config edits needed. OpenSearch uses HTTPS with self-signed certificates, so use `-k` flag with curl commands.
 
-### Anonymous Authentication
-
-By default, OpenSearch Dashboards requires login with credentials. You can enable anonymous authentication to allow users to access Dashboards without a login prompt — useful for demos, workshops, or shared development environments.
-
-**To enable anonymous access**, set in `.env`:
-```env
-OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true
-```
-
-Then restart the stack:
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-> **Warning:** The `-v` flag removes all stored data (traces, logs, saved dashboards). This is required because OpenSearch applies security configuration (roles, role mappings) to an internal index on first startup — restarting without `-v` won't update the security settings.
-
-**What anonymous users can do:**
-- Browse and search all data (traces, logs, metrics)
-- View existing dashboards, visualizations, and saved queries
-- Create and modify visualizations, dashboards, saved queries, and index patterns
-- Explore trace analytics and service maps
-- Run PPL and SQL queries
-- Access the OpenSearch REST API without credentials (e.g., `curl -k https://localhost:9200/_cat/indices`)
-
-**What anonymous users cannot do:**
-- Delete existing dashboards, visualizations, or saved objects
-- Write data to OpenSearch indices
-- Perform admin operations (cluster settings, security configuration, user management)
-
-> **Why modify is allowed:** OpenSearch Dashboards requires `update` and `bulk` write permissions on its system indices to persist UI settings (theme, date format, default index) on every page load. Without these permissions the page fails with 403 "Unable to update UI setting" errors. Because UI settings and saved objects share the same system indices, granting the permissions Dashboards needs to function also allows modification of existing saved objects. Deletion is still blocked.
-
-Admin operations still require full credentials. When disabled (the default), all users must authenticate via the login page.
-
-**Toggling back to require login:** Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=false` in `.env` and restart with `docker compose down -v && docker compose up -d`. Note that the `-v` flag removes all stored data (traces, logs, saved dashboards) — this is required because OpenSearch applies security configuration to an internal index on first startup.
-
 ## Resource Requirements
 
 | Configuration | Memory Usage | Recommended Minimum |

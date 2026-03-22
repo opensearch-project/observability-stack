@@ -299,30 +299,6 @@ Then access your cloud Dashboards URL directly — no local container needed.
 
   For production environments with valid certificates, enable verification in each of these places.
 
-## Anonymous Authentication
-
-By default, users must log in to access OpenSearch Dashboards. To skip the login page (useful for demos or workshops), enable anonymous authentication in `.env`:
-
-```env
-OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true
-```
-
-Then restart:
-```bash
-docker compose down -v
-docker compose up -d
-```
-
-> **Warning:** The `-v` flag removes all stored data (traces, logs, saved dashboards). This is required because OpenSearch applies security configuration (roles, role mappings) to an internal index on first startup. Without `-v`, the security settings are not reinitialized and the change won't take effect.
-
-Anonymous users can browse all data, view, create, and modify saved objects (visualizations, dashboards, saved queries, index patterns), explore traces and service maps, run queries, and access the OpenSearch REST API without credentials. They cannot delete existing saved objects or perform admin operations — those still require credentials.
-
-> **Note:** Modify access is required because OpenSearch Dashboards persists UI settings (theme, date format, default index) on every page load via `update` and `bulk` writes to its system indices. Without these permissions the page fails with 403 errors. Since UI settings and saved objects share the same indices, this also allows modification of existing saved objects. Deletion is still blocked.
-
-Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=false` (the default) to require login for all users. Restart with `docker compose down -v && docker compose up -d` to apply. Note that the `-v` flag removes all stored data (traces, logs, saved dashboards) — this is required because OpenSearch applies security configuration to an internal index on first startup.
-
-**Troubleshooting:** If toggling `OPENSEARCH_ANONYMOUS_AUTH_ENABLED` doesn't take effect, make sure you used `docker compose down -v` (not just `docker compose restart` or `docker compose down` without `-v`). The `-v` flag is required to reinitialize OpenSearch's security configuration.
-
 ## Security Warning
 
 ⚠️ **This configuration is for development only!**
@@ -332,7 +308,6 @@ Security considerations:
 - SSL certificate verification is disabled for development ease
 - Permissive CORS settings
 - No network isolation between services
-- Anonymous authentication is disabled by default (enable via `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true` in `.env`)
 
 For production use:
 - Change default passwords
@@ -340,7 +315,6 @@ For production use:
 - Configure proper authentication and authorization
 - Implement network policies
 - Review and harden all security settings
-- Keep anonymous authentication disabled
 
 Never use this configuration in production without proper hardening.
 

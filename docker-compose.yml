@@ -181,7 +181,6 @@ services:
       - OPENSEARCH_DASHBOARDS_PROTOCOL=${OPENSEARCH_DASHBOARDS_PROTOCOL}
       - PROMETHEUS_HOST=${PROMETHEUS_HOST}
       - PROMETHEUS_PORT=${PROMETHEUS_PORT}
-      - OPENSEARCH_ANONYMOUS_AUTH_ENABLED=${OPENSEARCH_ANONYMOUS_AUTH_ENABLED}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
       - ./docker-compose/opensearch-dashboards/saved-queries-traces.yaml:/config/saved-queries-traces.yaml

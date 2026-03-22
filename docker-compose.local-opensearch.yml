@@ -30,20 +30,9 @@ services:
       # Initial admin password (required for OpenSearch 2.12+)
       - "OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD}"
       - plugins.query.datasources.encryption.masterkey=BTqK4Ytdz67La1kShIKV3Pu9
-    command: >
-      /bin/bash -c "
-      ANON_AUTH='${OPENSEARCH_ANONYMOUS_AUTH_ENABLED}';
-      if [ \"$$ANON_AUTH\" != 'true' ]; then ANON_AUTH='false'; fi;
-      cp /tmp/opensearch-security/config.template.yml /usr/share/opensearch/config/opensearch-security/config.yml &&
-      sed -i 's|OPENSEARCH_ANONYMOUS_AUTH_ENABLED|'$$ANON_AUTH'|g' /usr/share/opensearch/config/opensearch-security/config.yml &&
-      exec ./opensearch-docker-entrypoint.sh"
     volumes:
       # Persist data across container restarts
       - opensearch-data:/usr/share/opensearch/data
-      # Custom security config for anonymous authentication (template processed at startup)
-      - ./docker-compose/opensearch/opensearch-security/config.template.yml:/tmp/opensearch-security/config.template.yml
-      - ./docker-compose/opensearch/opensearch-security/roles.yml:/usr/share/opensearch/config/opensearch-security/roles.yml
-      - ./docker-compose/opensearch/opensearch-security/roles_mapping.yml:/usr/share/opensearch/config/opensearch-security/roles_mapping.yml
     ports:
       # REST API endpoint
       - "${OPENSEARCH_PORT}:9200"

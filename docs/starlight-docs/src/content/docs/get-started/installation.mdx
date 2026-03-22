@@ -44,16 +44,6 @@ cd observability-stack
 grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
 ```
 
-:::tip[Skip the login page]
-For demos or workshops, enable anonymous authentication so users can access Dashboards without logging in. Set `OPENSEARCH_ANONYMOUS_AUTH_ENABLED=true` in `.env` and restart:
-```bash
-docker compose down -v && docker compose up -d
-```
-The `-v` flag is required (it removes stored data) because OpenSearch security configuration is applied on first startup.
-
-Anonymous users can browse data, view, create, and modify saved objects (visualizations, dashboards, saved queries), explore traces and service maps, run queries, and access the REST API without credentials — but cannot delete saved objects or perform admin operations.
-:::
-
 ## What gets installed
 
 | Component | Purpose |
