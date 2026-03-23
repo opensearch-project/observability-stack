@@ -45,6 +45,49 @@ def run_agent(query: str) -> str:
 run_agent("What's the weather in Seattle?")
 ```
 
+### Using Strands built-in telemetry
+
+Strands Agents has native OpenTelemetry support via `StrandsTelemetry`. It automatically emits spans for agent invocations, tool executions, and LLM calls following GenAI semantic conventions. Point it at the OTel collector, then use `@observe` from the SDK to add spans for any custom logic that Strands doesn't instrument automatically.
+
+```bash
+pip install opensearch-genai-observability-sdk-py strands-agents strands-agents-bedrock
+```
+
+```python
+from opensearch_genai_observability_sdk_py import observe, Op
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from strands import Agent
+from strands.models.bedrock import BedrockModel
+from strands.telemetry import StrandsTelemetry
+
+# Initialize Strands' built-in telemetry — automatically creates spans for:
+#   invoke_agent, execute_tool, chat (LLM calls)
+telemetry = StrandsTelemetry()
+
+# Point the exporter at the OTel collector (gRPC on port 4317)
+exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
+telemetry.tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
+
+# Use @observe for custom logic that Strands doesn't auto-instrument
+@observe(op=Op.EXECUTE_TOOL)
+def fetch_hotel_ratings(city: str) -> str:
+    """Fetch hotel ratings from an external API."""
+    # Custom API call — not covered by Strands auto-instrumentation
+    return f"4.5 stars average in {city}"
+
+model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
+agent = Agent(
+    model=model,
+    tools=[fetch_hotel_ratings],
+    system_prompt="You are a helpful travel assistant.",
+)
+
+agent("Find top-rated hotels in Seattle")
+```
+
+> **Tip:** `StrandsTelemetry` handles agent, tool, and LLM spans automatically. Use `@observe` only for custom functions (API calls, database queries, post-processing) where you need visibility that Strands doesn't provide out of the box.
+
 ## LangGraph
 
 [LangGraph](https://langchain-ai.github.io/langgraph/) builds stateful, multi-step agent workflows. Install the LangChain auto-instrumentor for automatic LLM tracing.
