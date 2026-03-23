@@ -16,6 +16,10 @@ npx @opensearch-project/agent-health@latest
 
 Opens http://localhost:4001 with pre-loaded sample data for exploration.
 
+## See it in action
+
+<video src="https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/agent-health-demo.mp4" controls></video>
+
 ## Who uses Agent Health
 
 - **AI teams** building autonomous agents (RCA, customer support, data analysis)
