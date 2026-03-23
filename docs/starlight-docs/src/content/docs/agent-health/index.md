@@ -36,6 +36,12 @@ Opens http://localhost:4001 with pre-loaded sample data for exploration.
 
 Agent Health uses a client-server architecture where all clients (UI, CLI) access storage through a unified HTTP API. The server handles agent communication via pluggable connectors and proxies LLM judge calls to AWS Bedrock.
 
+## Agent Health and the Observability Stack
+
+Agent Health is a UI and CLI-based evaluation tool for scoring agent quality through LLM judge comparison, running experiments, and generating reports. By default it stores test cases, experiments, runs, and evaluation results as local files.
+
+When pointed at an OpenSearch cluster, including the one running in the [Observability Stack](/docs/get-started/overview/), Agent Health stores test cases, experiments, runs, and evaluation results in OpenSearch indices instead of local files. If the same cluster is receiving OpenTelemetry traces through the stack pipeline, Agent Health can also read those traces and display them alongside evaluation results, connecting what the agent did with how well it performed.
+
 ## Supported connectors
 
 | Connector | Protocol | Description |

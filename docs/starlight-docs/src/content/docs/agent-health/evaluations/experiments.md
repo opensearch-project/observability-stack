@@ -54,7 +54,7 @@ Create experiments with multiple runs using different agents or models. The UI p
 
 ## Generating reports
 
-Generate downloadable reports from experiment results:
+Generate downloadable reports from experiment results for sharing or tracking progress over time.
 
 ```bash
 # HTML report (default)
@@ -67,4 +67,6 @@ npx @opensearch-project/agent-health report -b "My Benchmark" -f pdf -o report.p
 npx @opensearch-project/agent-health report -b "My Benchmark" -f json --stdout
 ```
 
-Reports include judge reasoning, accuracy scores, and improvement suggestions for each test case.
+Reports include a summary of each run (agent, model, pass rate, average accuracy), a per-test-case comparison table across runs, the judge's reasoning and improvement suggestions for each evaluation, and full trajectory steps showing what the agent did.
+
+Use `--runs` to include specific runs, or omit it to include all runs in the experiment.
