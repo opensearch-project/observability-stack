@@ -23,6 +23,19 @@ export default defineConfig({
 		}),
 		starlight({
 			title: 'OpenSearch - Observability Stack',
+			head: [
+				{
+					tag: 'script',
+					attrs: {
+						src: 'https://www.googletagmanager.com/gtag/js?id=G-BQV14XK08F',
+						async: true,
+					},
+				},
+				{
+					tag: 'script',
+					content: "window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-BQV14XK08F');",
+				},
+			],
 			plugins: [starlightLinksValidator({
 				errorOnLocalLinks: false,
 			})],
