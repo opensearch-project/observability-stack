@@ -96,98 +96,101 @@ async function stepOpenSearch(cfg) {
   printStep('OpenSearch');
   console.error();
 
-  const osChoice = await eSelect({
-    message: 'Create new or reuse existing?',
-    choices: [
-      { name: 'Create new', value: 'create' },
-      { name: 'Reuse existing', value: 'reuse' },
-    ],
-    default: cfg.osAction || 'create',
-  });
-  if (osChoice === GoBack) return GoBack;
+  while (true) {
+    const osChoice = await eSelect({
+      message: 'Create new or reuse existing?',
+      choices: [
+        { name: 'Create new', value: 'create' },
+        { name: 'Reuse existing', value: 'reuse' },
+      ],
+      default: cfg.osAction || 'create',
+    });
+    if (osChoice === GoBack) return GoBack;
 
-  if (osChoice === 'reuse') {
-    cfg.osAction = 'reuse';
+    if (osChoice === 'reuse') {
+      cfg.osAction = 'reuse';
 
-    const domains = await fetchWithSpinner(
-      'Loading OpenSearch domains & collections',
-      () => listDomains(cfg.region),
-    );
+      const domains = await fetchWithSpinner(
+        'Loading OpenSearch domains & collections',
+        () => listDomains(cfg.region),
+      );
 
-    if (domains.length > 0) {
-      const choices = domains.map((d) => ({
-        name: d.endpoint
-          ? `${d.name} ${theme.muted(`\u2014 ${d.endpoint} (${d.engineVersion})`)}`
-          : `${d.name} ${theme.muted(`\u2014 provisioning... (${d.engineVersion})`)}`,
-        value: { endpoint: d.endpoint, serverless: d.serverless },
-        disabled: !d.endpoint ? '(no endpoint yet)' : false,
-      }));
-      choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
+      if (domains.length > 0) {
+        const choices = domains.map((d) => ({
+          name: d.endpoint
+            ? `${d.name} ${theme.muted(`\u2014 ${d.endpoint} (${d.engineVersion})`)}`
+            : `${d.name} ${theme.muted(`\u2014 provisioning... (${d.engineVersion})`)}`,
+          value: { endpoint: d.endpoint, serverless: d.serverless },
+          disabled: !d.endpoint ? '(no endpoint yet)' : false,
+        }));
+        choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
 
-      const selected = await eSelect({ message: 'Select domain or collection', choices });
-      if (selected === GoBack) return GoBack;
-      if (selected === CUSTOM_INPUT) {
+        const selected = await eSelect({ message: 'Select domain or collection', choices });
+        if (selected === GoBack) continue;
+        if (selected === CUSTOM_INPUT) {
+          const ep = await promptEndpoint();
+          if (ep === GoBack) continue;
+          cfg.opensearchEndpoint = ep;
+          cfg.serverless = isServerlessEndpoint(ep);
+        } else {
+          cfg.opensearchEndpoint = selected.endpoint;
+          cfg.serverless = selected.serverless;
+        }
+      } else {
+        printInfo('No domains or collections found \u2014 enter endpoint manually');
         const ep = await promptEndpoint();
-        if (ep === GoBack) return GoBack;
+        if (ep === GoBack) continue;
         cfg.opensearchEndpoint = ep;
         cfg.serverless = isServerlessEndpoint(ep);
-      } else {
-        cfg.opensearchEndpoint = selected.endpoint;
-        cfg.serverless = selected.serverless;
       }
+
+      printSubStep(`Detected type: ${cfg.serverless ? theme.accent('OpenSearch Serverless') : theme.accent('Managed OpenSearch domain')}`);
     } else {
-      printInfo('No domains or collections found \u2014 enter endpoint manually');
-      const ep = await promptEndpoint();
-      if (ep === GoBack) return GoBack;
-      cfg.opensearchEndpoint = ep;
-      cfg.serverless = isServerlessEndpoint(ep);
-    }
+      cfg.osAction = 'create';
 
-    printSubStep(`Detected type: ${cfg.serverless ? theme.accent('OpenSearch Serverless') : theme.accent('Managed OpenSearch domain')}`);
-  } else {
-    cfg.osAction = 'create';
-
-    const osType = await eSelect({
-      message: 'OpenSearch type',
-      choices: [
-        { name: `Serverless ${theme.muted('\u2014 fully managed, auto-scales')}`, value: 'serverless' },
-        { name: `Managed domain ${theme.muted('\u2014 configure instance type, count, and storage')}`, value: 'managed' },
-      ],
-      default: cfg.serverless === true ? 'serverless' : cfg.serverless === false ? 'managed' : 'serverless',
-    });
-    if (osType === GoBack) return GoBack;
-    cfg.serverless = osType === 'serverless';
-
-    const nameMsg = cfg.serverless ? 'Collection name' : 'Domain name';
-    const domainName = await eInput({ message: nameMsg, default: cfg.osDomainName || cfg.pipelineName });
-    if (domainName === GoBack) return GoBack;
-    cfg.osDomainName = domainName;
-
-    if (!cfg.serverless) {
-      const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
-      if (instType === GoBack) return GoBack;
-      cfg.osInstanceType = instType;
-
-      const instCount = await eInput({
-        message: 'Instance count',
-        default: String(cfg.osInstanceCount || DEFAULTS.osInstanceCount),
-        validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 1 || 'Must be a positive integer',
+      const osType = await eSelect({
+        message: 'OpenSearch type',
+        choices: [
+          { name: `Serverless ${theme.muted('\u2014 fully managed, auto-scales')}`, value: 'serverless' },
+          { name: `Managed domain ${theme.muted('\u2014 configure instance type, count, and storage')}`, value: 'managed' },
+        ],
+        default: cfg.serverless === true ? 'serverless' : cfg.serverless === false ? 'managed' : 'serverless',
       });
-      if (instCount === GoBack) return GoBack;
-      cfg.osInstanceCount = Number(instCount);
+      if (osType === GoBack) continue;
+      cfg.serverless = osType === 'serverless';
 
-      const volSize = await eInput({
-        message: 'EBS volume size (GB)',
-        default: String(cfg.osVolumeSize || DEFAULTS.osVolumeSize),
-        validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 10 || 'Must be at least 10 GB',
-      });
-      if (volSize === GoBack) return GoBack;
-      cfg.osVolumeSize = Number(volSize);
+      const nameMsg = cfg.serverless ? 'Collection name' : 'Domain name';
+      const domainName = await eInput({ message: nameMsg, default: cfg.osDomainName || cfg.pipelineName });
+      if (domainName === GoBack) continue;
+      cfg.osDomainName = domainName;
 
-      const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
-      if (engineVer === GoBack) return GoBack;
-      cfg.osEngineVersion = engineVer;
+      if (!cfg.serverless) {
+        const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
+        if (instType === GoBack) continue;
+        cfg.osInstanceType = instType;
+
+        const instCount = await eInput({
+          message: 'Instance count',
+          default: String(cfg.osInstanceCount || DEFAULTS.osInstanceCount),
+          validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 1 || 'Must be a positive integer',
+        });
+        if (instCount === GoBack) continue;
+        cfg.osInstanceCount = Number(instCount);
+
+        const volSize = await eInput({
+          message: 'EBS volume size (GB)',
+          default: String(cfg.osVolumeSize || DEFAULTS.osVolumeSize),
+          validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 10 || 'Must be at least 10 GB',
+        });
+        if (volSize === GoBack) continue;
+        cfg.osVolumeSize = Number(volSize);
+
+        const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
+        if (engineVer === GoBack) continue;
+        cfg.osEngineVersion = engineVer;
+      }
     }
+    return;
   }
 }
 
@@ -198,26 +201,29 @@ async function stepIam(cfg) {
   printInfo('This role allows the ingestion pipeline to write to OpenSearch and Prometheus');
   console.error();
 
-  const iamChoice = await eSelect({
-    message: 'Create new or reuse existing?',
-    choices: [
-      { name: 'Create new', value: 'create' },
-      { name: 'Reuse existing', value: 'reuse' },
-    ],
-    default: cfg.iamAction || 'create',
-  });
-  if (iamChoice === GoBack) return GoBack;
+  while (true) {
+    const iamChoice = await eSelect({
+      message: 'Create new or reuse existing?',
+      choices: [
+        { name: 'Create new', value: 'create' },
+        { name: 'Reuse existing', value: 'reuse' },
+      ],
+      default: cfg.iamAction || 'create',
+    });
+    if (iamChoice === GoBack) return GoBack;
 
-  if (iamChoice === 'reuse') {
-    cfg.iamAction = 'reuse';
-    const arn = await promptArn('IAM role ARN');
-    if (arn === GoBack) return GoBack;
-    cfg.iamRoleArn = arn;
-  } else {
-    cfg.iamAction = 'create';
-    const roleName = await eInput({ message: 'Role name', default: cfg.iamRoleName || `${cfg.pipelineName}-osi-role` });
-    if (roleName === GoBack) return GoBack;
-    cfg.iamRoleName = roleName;
+    if (iamChoice === 'reuse') {
+      cfg.iamAction = 'reuse';
+      const arn = await promptArn('IAM role ARN');
+      if (arn === GoBack) continue;
+      cfg.iamRoleArn = arn;
+    } else {
+      cfg.iamAction = 'create';
+      const roleName = await eInput({ message: 'Role name', default: cfg.iamRoleName || `${cfg.pipelineName}-osi-role` });
+      if (roleName === GoBack) continue;
+      cfg.iamRoleName = roleName;
+    }
+    return;
   }
 }
 
@@ -227,53 +233,56 @@ async function stepAps(cfg) {
   printStep('Amazon Managed Prometheus (APS) workspace');
   console.error();
 
-  const apsChoice = await eSelect({
-    message: 'Create new or reuse existing?',
-    choices: [
-      { name: 'Create new', value: 'create' },
-      { name: 'Reuse existing', value: 'reuse' },
-    ],
-    default: cfg.apsAction || 'create',
-  });
-  if (apsChoice === GoBack) return GoBack;
+  while (true) {
+    const apsChoice = await eSelect({
+      message: 'Create new or reuse existing?',
+      choices: [
+        { name: 'Create new', value: 'create' },
+        { name: 'Reuse existing', value: 'reuse' },
+      ],
+      default: cfg.apsAction || 'create',
+    });
+    if (apsChoice === GoBack) return GoBack;
 
-  if (apsChoice === 'reuse') {
-    cfg.apsAction = 'reuse';
+    if (apsChoice === 'reuse') {
+      cfg.apsAction = 'reuse';
 
-    const workspaces = await fetchWithSpinner(
-      'Loading APS workspaces',
-      () => listWorkspaces(cfg.region),
-    );
+      const workspaces = await fetchWithSpinner(
+        'Loading APS workspaces',
+        () => listWorkspaces(cfg.region),
+      );
 
-    if (workspaces.length > 0) {
-      const choices = workspaces.map((w) => ({
-        name: w.alias
-          ? `${w.alias} ${theme.muted(`\u2014 ${w.id}`)}`
-          : `${w.id} ${theme.muted('(no alias)')}`,
-        value: w.url,
-      }));
-      choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
+      if (workspaces.length > 0) {
+        const choices = workspaces.map((w) => ({
+          name: w.alias
+            ? `${w.alias} ${theme.muted(`\u2014 ${w.id}`)}`
+            : `${w.id} ${theme.muted('(no alias)')}`,
+          value: w.url,
+        }));
+        choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
 
-      const selected = await eSelect({ message: 'Select workspace', choices });
-      if (selected === GoBack) return GoBack;
-      if (selected === CUSTOM_INPUT) {
-        const url = await promptUrl('Prometheus remote-write URL');
-        if (url === GoBack) return GoBack;
-        cfg.prometheusUrl = url;
+        const selected = await eSelect({ message: 'Select workspace', choices });
+        if (selected === GoBack) continue;
+        if (selected === CUSTOM_INPUT) {
+          const url = await promptUrl('Prometheus remote-write URL');
+          if (url === GoBack) continue;
+          cfg.prometheusUrl = url;
+        } else {
+          cfg.prometheusUrl = selected;
+        }
       } else {
-        cfg.prometheusUrl = selected;
+        printInfo('No workspaces found \u2014 enter URL manually');
+        const url = await promptUrl('Prometheus remote-write URL');
+        if (url === GoBack) continue;
+        cfg.prometheusUrl = url;
       }
     } else {
-      printInfo('No workspaces found \u2014 enter URL manually');
-      const url = await promptUrl('Prometheus remote-write URL');
-      if (url === GoBack) return GoBack;
-      cfg.prometheusUrl = url;
+      cfg.apsAction = 'create';
+      const alias = await eInput({ message: 'Workspace alias', default: cfg.apsWorkspaceAlias || cfg.pipelineName });
+      if (alias === GoBack) continue;
+      cfg.apsWorkspaceAlias = alias;
     }
-  } else {
-    cfg.apsAction = 'create';
-    const alias = await eInput({ message: 'Workspace alias', default: cfg.apsWorkspaceAlias || cfg.pipelineName });
-    if (alias === GoBack) return GoBack;
-    cfg.apsWorkspaceAlias = alias;
+    return;
   }
 }
 
@@ -284,36 +293,39 @@ async function stepDqsRole(cfg) {
   printInfo('This role allows OpenSearch to query Prometheus metrics via Direct Query Service');
   console.error();
 
-  const choice = await eSelect({
-    message: 'Create new or reuse existing?',
-    choices: [
-      { name: 'Create new', value: 'create' },
-      { name: 'Reuse existing', value: 'reuse' },
-      { name: `Skip ${theme.muted('\u2014 no Prometheus integration')}`, value: 'skip' },
-    ],
-    default: cfg.dqsRoleName ? 'create' : 'create',
-  });
-  if (choice === GoBack) return GoBack;
-
-  if (choice === 'skip') {
-    cfg.dqsRoleName = '';
-    cfg.dqsDataSourceName = '';
-    cfg.appName = '';
-    return;
-  }
-
-  if (choice === 'reuse') {
-    const arn = await promptArn('DQS role ARN');
-    if (arn === GoBack) return GoBack;
-    cfg.dqsRoleArn = arn;
-    cfg.dqsRoleName = '';
-  } else {
-    const roleName = await eInput({
-      message: 'DQS role name',
-      default: cfg.dqsRoleName || `${cfg.pipelineName}-dqs-prometheus-role`,
+  while (true) {
+    const choice = await eSelect({
+      message: 'Create new or reuse existing?',
+      choices: [
+        { name: 'Create new', value: 'create' },
+        { name: 'Reuse existing', value: 'reuse' },
+        { name: `Skip ${theme.muted('\u2014 no Prometheus integration')}`, value: 'skip' },
+      ],
+      default: cfg.dqsRoleName ? 'create' : 'create',
     });
-    if (roleName === GoBack) return GoBack;
-    cfg.dqsRoleName = roleName;
+    if (choice === GoBack) return GoBack;
+
+    if (choice === 'skip') {
+      cfg.dqsRoleName = '';
+      cfg.dqsDataSourceName = '';
+      cfg.appName = '';
+      return;
+    }
+
+    if (choice === 'reuse') {
+      const arn = await promptArn('DQS role ARN');
+      if (arn === GoBack) continue;
+      cfg.dqsRoleArn = arn;
+      cfg.dqsRoleName = '';
+    } else {
+      const roleName = await eInput({
+        message: 'DQS role name',
+        default: cfg.dqsRoleName || `${cfg.pipelineName}-dqs-prometheus-role`,
+      });
+      if (roleName === GoBack) continue;
+      cfg.dqsRoleName = roleName;
+    }
+    return;
   }
 }
 
@@ -342,57 +354,60 @@ async function stepApp(cfg) {
   printInfo('The OpenSearch Application provides a unified dashboard for your observability data');
   console.error();
 
-  const choice = await eSelect({
-    message: 'Create new or reuse existing?',
-    choices: [
-      { name: `Create new ${theme.muted('\u2014 creates an OpenSearch Application with data sources')}`, value: 'create' },
-      { name: 'Reuse existing', value: 'reuse' },
-    ],
-    default: cfg.dashboardsAction || 'create',
-  });
-  if (choice === GoBack) return GoBack;
-
-  if (choice === 'reuse') {
-    cfg.dashboardsAction = 'reuse';
-
-    const apps = await fetchWithSpinner(
-      'Loading OpenSearch Applications',
-      () => listApplications(cfg.region),
-    );
-
-    if (apps.length > 0) {
-      const choices = apps.map((a) => ({
-        name: a.endpoint
-          ? `${a.name} ${theme.muted(`\u2014 ${a.endpoint}`)}`
-          : `${a.name} ${theme.muted(`(${a.id})`)}`,
-        value: a.endpoint || a.id,
-      }));
-      choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
-
-      const selected = await eSelect({ message: 'Select application', choices });
-      if (selected === GoBack) return GoBack;
-      if (selected === CUSTOM_INPUT) {
-        const url = await promptUrl('OpenSearch UI URL');
-        if (url === GoBack) return GoBack;
-        cfg.dashboardsUrl = url;
-      } else {
-        cfg.dashboardsUrl = selected.startsWith('http') ? `${selected}/_dashboards` : selected;
-      }
-    } else {
-      printInfo('No applications found \u2014 enter URL manually');
-      const url = await promptUrl('OpenSearch UI URL');
-      if (url === GoBack) return GoBack;
-      cfg.dashboardsUrl = url;
-    }
-    cfg.appName = '';
-  } else {
-    cfg.dashboardsAction = 'create';
-    const appName = await eInput({
-      message: 'Application name',
-      default: cfg.appName || cfg.pipelineName,
+  while (true) {
+    const choice = await eSelect({
+      message: 'Create new or reuse existing?',
+      choices: [
+        { name: `Create new ${theme.muted('\u2014 creates an OpenSearch Application with data sources')}`, value: 'create' },
+        { name: 'Reuse existing', value: 'reuse' },
+      ],
+      default: cfg.dashboardsAction || 'create',
     });
-    if (appName === GoBack) return GoBack;
-    cfg.appName = appName;
+    if (choice === GoBack) return GoBack;
+
+    if (choice === 'reuse') {
+      cfg.dashboardsAction = 'reuse';
+
+      const apps = await fetchWithSpinner(
+        'Loading OpenSearch Applications',
+        () => listApplications(cfg.region),
+      );
+
+      if (apps.length > 0) {
+        const choices = apps.map((a) => ({
+          name: a.endpoint
+            ? `${a.name} ${theme.muted(`\u2014 ${a.endpoint}`)}`
+            : `${a.name} ${theme.muted(`(${a.id})`)}`,
+          value: a.endpoint || a.id,
+        }));
+        choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
+
+        const selected = await eSelect({ message: 'Select application', choices });
+        if (selected === GoBack) continue;
+        if (selected === CUSTOM_INPUT) {
+          const url = await promptUrl('OpenSearch UI URL');
+          if (url === GoBack) continue;
+          cfg.dashboardsUrl = url;
+        } else {
+          cfg.dashboardsUrl = selected.startsWith('http') ? `${selected}/_dashboards` : selected;
+        }
+      } else {
+        printInfo('No applications found \u2014 enter URL manually');
+        const url = await promptUrl('OpenSearch UI URL');
+        if (url === GoBack) continue;
+        cfg.dashboardsUrl = url;
+      }
+      cfg.appName = '';
+    } else {
+      cfg.dashboardsAction = 'create';
+      const appName = await eInput({
+        message: 'Application name',
+        default: cfg.appName || cfg.pipelineName,
+      });
+      if (appName === GoBack) continue;
+      cfg.appName = appName;
+    }
+    return;
   }
 }
 

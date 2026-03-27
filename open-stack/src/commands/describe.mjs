@@ -1,5 +1,5 @@
-import { getStackResources, arnToName } from '../aws.mjs';
-import { printInfo, printPanel, createSpinner, theme, GoBack, eSelect } from '../ui.mjs';
+import { getStackResources, arnToName, describeResource, enrichResourceNames } from '../aws.mjs';
+import { printInfo, createSpinner, printPanel, theme, GoBack, eSelect } from '../ui.mjs';
 import { loadStacks } from './index.mjs';
 
 export async function runDescribe(session) {
@@ -32,30 +32,51 @@ export async function runDescribe(session) {
   let resources;
   try {
     resources = await getStackResources(session.region, stackName);
+    await enrichResourceNames(session.region, resources);
     detailSpinner.succeed(`Stack: ${stackName} (${resources.length} resources)`);
   } catch (err) {
     detailSpinner.fail('Failed to get stack details');
     throw err;
   }
 
-  // Group resources by type
-  const grouped = new Map();
-  for (const r of resources) {
-    if (!grouped.has(r.type)) grouped.set(r.type, []);
-    grouped.get(r.type).push(r);
-  }
+  const resName = (r) => r.displayName || arnToName(r.arn);
 
-  // Display resources
-  console.error();
-  const entries = [];
-  for (const [type, items] of grouped) {
-    entries.push(['', theme.accentBold(type)]);
-    for (const item of items) {
-      entries.push([arnToName(item.arn), theme.muted(item.arn)]);
+  // Resource selection loop
+  while (true) {
+    console.error();
+    const resourceChoices = resources.map((r) => ({
+      name: `${theme.accentBold(r.type)}  ${theme.muted(resName(r))}`,
+      value: r,
+    }));
+
+    const selected = await eSelect({
+      message: 'Select resource',
+      choices: resourceChoices,
+    });
+    if (selected === GoBack) break;
+
+    // Fetch and display resource details
+    const resSpinner = createSpinner(`Loading ${selected.type}...`);
+    resSpinner.start();
+
+    let result;
+    try {
+      result = await describeResource(session.region, selected);
+      resSpinner.succeed(`${selected.type}: ${resName(selected)}`);
+    } catch (err) {
+      resSpinner.fail(`Failed to describe ${selected.type}`);
+      continue;
     }
-    entries.push(['', '']);
+
+    console.error();
+    const panelEntries = result.entries.map(([label, value]) => [label, theme.muted(value)]);
+    printPanel(resName(selected), panelEntries);
+
+    if (result.rawConfig) {
+      console.error();
+      console.error(theme.muted(result.rawConfig));
+    }
   }
 
-  printPanel(`${stackName}`, entries);
   console.error();
 }

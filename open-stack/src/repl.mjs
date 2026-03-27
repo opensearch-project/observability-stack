@@ -23,9 +23,8 @@ async function initSession() {
     identity = await sts.send(new GetCallerIdentityCommand({}));
   } catch (err) {
     printError('AWS credentials are not configured or have expired');
-    printInfo(err.message);
     printInfo('Run "aws configure" or "aws sso login" to set up credentials, then restart.');
-    printInfo('Docs: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html#getting-started-quickstart-new-command');
+    printInfo('See documentation: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-quickstart.html#getting-started-quickstart-new-command.');
     throw err;
   }
 

@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import readline from 'node:readline';
-import { select, input, confirm } from '@inquirer/prompts';
+import { search, input, confirm } from '@inquirer/prompts';
 
 // ── Theme colors ─────────────────────────────────────────────────────────────
 
@@ -194,8 +194,7 @@ const _promptPrefix = { idle: '  ?', done: '  ✔', canceled: '  ✖' };
 
 const _selectKeyTheme = {
   prefix: _promptPrefix,
-  style: { keysHelpTip: formatKeysHelpTip([['/', 'search'], ['Esc', 'back']]) },
-  keybindings: ['vim'],
+  style: { keysHelpTip: formatKeysHelpTip([['Esc', 'back']]) },
 };
 
 export const eInput = withEscape(input);
@@ -203,39 +202,58 @@ export const eConfirm = withEscape(confirm);
 
 // ── Searchable select ───────────────────────────────────────────────────────
 
-const _SearchMode = Symbol('SearchMode');
-
 /**
- * Wrap select so Escape → GoBack and '/' → SearchMode.
+ * Select prompt with built-in incremental search and Escape-to-go-back.
+ * Type to filter, arrow keys to navigate, Enter to select, Esc to go back.
  */
-function _selectWithEscapeAndSearch(opts) {
+export function eSelect(opts) {
   if (!_keypressInit && process.stdin.isTTY) {
     readline.emitKeypressEvents(process.stdin);
     _keypressInit = true;
   }
 
-  const promise = select(opts);
-  let escaped = false;
-  let search = false;
+  const searchableChoices = (opts.choices || []).filter((c) => c.type !== 'separator' && !c.disabled);
 
+  const promise = search({
+    message: opts.message || 'Select',
+    theme: _selectKeyTheme,
+    source: (term) => {
+      if (!term) return searchableChoices;
+      const lower = term.toLowerCase();
+      return searchableChoices.filter((c) => {
+        const name = (c.name || String(c.value || '')).toLowerCase();
+        return name.includes(lower);
+      });
+    },
+  });
+
+  // Intercept tab at emit level to prevent search prompt's autocomplete
+  const origEmit = process.stdin.emit;
+  process.stdin.emit = function (event, ...args) {
+    if (event === 'keypress' && args[1]?.name === 'tab') return true;
+    return origEmit.apply(this, [event, ...args]);
+  };
+
+  let escaped = false;
   const onKeypress = (_ch, key) => {
     if (key?.name === 'escape') {
       escaped = true;
-      promise.cancel();
-    } else if (key?.sequence === '/') {
-      search = true;
       promise.cancel();
     }
   };
 
   process.stdin.on('keypress', onKeypress);
 
+  const cleanup = () => {
+    process.stdin.removeListener('keypress', onKeypress);
+    process.stdin.emit = origEmit;
+  };
+
   return promise.then(
-    (val) => { process.stdin.removeListener('keypress', onKeypress); return val; },
+    (val) => { cleanup(); return val; },
     (err) => {
-      process.stdin.removeListener('keypress', onKeypress);
+      cleanup();
       if (escaped) return GoBack;
-      if (search) return _SearchMode;
       if (err.name === 'ExitPromptError') {
         console.error();
         console.error(`  ${theme.muted('Goodbye.')}`);
@@ -245,41 +263,6 @@ function _selectWithEscapeAndSearch(opts) {
       throw err;
     },
   );
-}
-
-/**
- * Select prompt with vim navigation, Escape-to-go-back, and '/' search.
- * Pressing '/' opens a search input; the matching choice becomes pre-selected.
- */
-export async function eSelect(opts) {
-  const fullOpts = { loop: false, theme: _selectKeyTheme, ...opts };
-  let defaultValue = fullOpts.default;
-
-  while (true) {
-    const result = await _selectWithEscapeAndSearch({ ...fullOpts, default: defaultValue });
-
-    if (result === GoBack) return GoBack;
-
-    if (result === _SearchMode) {
-      const term = await eInput({
-        message: theme.accent('/'),
-        theme: { prefix: _promptPrefix },
-      });
-      if (term === GoBack || !term) continue;
-
-      const lower = term.toLowerCase();
-      const match = fullOpts.choices.find((c) => {
-        if (c.type === 'separator' || c.disabled) return false;
-        const name = (c.name || String(c.value || '')).toLowerCase();
-        return name.includes(lower);
-      });
-
-      if (match) defaultValue = match.value;
-      continue;
-    }
-
-    return result;
-  }
 }
 
 // ── Pipeline status colorizer ────────────────────────────────────────────────

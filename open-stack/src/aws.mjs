@@ -6,6 +6,7 @@ import {
   ListDomainNamesCommand,
   DescribeDomainsCommand,
   AddDirectQueryDataSourceCommand,
+  GetDirectQueryDataSourceCommand,
   CreateApplicationCommand,
   GetApplicationCommand,
   UpdateApplicationCommand,
@@ -30,6 +31,7 @@ import {
   AmpClient,
   ListWorkspacesCommand,
   CreateWorkspaceCommand,
+  DescribeWorkspaceCommand,
 } from '@aws-sdk/client-amp';
 import {
   OSISClient,
@@ -1156,6 +1158,9 @@ export async function listStacks(region) {
     paginationToken = resp.PaginationToken;
   } while (paginationToken);
 
+  // Supplement with OpenSearch Applications (may not appear in tagging API)
+  await supplementApplications(region, stacks);
+
   return [...stacks.entries()].map(([name, resources]) => ({ name, resources }));
 }
 
@@ -1183,6 +1188,10 @@ export async function getStackResources(region, stackName) {
 
     paginationToken = resp.PaginationToken;
   } while (paginationToken);
+
+  // Supplement with OpenSearch Application if not already present
+  const stacks = new Map([[stackName, resources]]);
+  await supplementApplications(region, stacks);
 
   return resources;
 }
@@ -1214,6 +1223,158 @@ export function arnToName(arn) {
   const lastColon = arn.lastIndexOf(':');
   if (lastColon !== -1) return arn.slice(lastColon + 1);
   return arn;
+}
+
+/**
+ * Enrich resource objects with display names where the ARN-derived name is not
+ * human-friendly (e.g. APS workspace IDs → aliases, application IDs → names).
+ */
+export async function enrichResourceNames(region, resources) {
+  // APS workspaces: resolve alias
+  const apsResources = resources.filter((r) => r.type === 'APS Workspace');
+  if (apsResources.length) {
+    const client = new AmpClient({ region });
+    for (const r of apsResources) {
+      try {
+        const wsId = arnToName(r.arn);
+        const resp = await client.send(new DescribeWorkspaceCommand({ workspaceId: wsId }));
+        if (resp.workspace?.alias) r.displayName = resp.workspace.alias;
+      } catch { /* keep default */ }
+    }
+  }
+  // OpenSearch Applications: resolve name from ID
+  const appResources = resources.filter((r) => r.type === 'OpenSearch Application');
+  if (appResources.length) {
+    try {
+      const client = new OpenSearchClient({ region });
+      const list = await client.send(new ListApplicationsCommand({}));
+      for (const r of appResources) {
+        const appId = arnToName(r.arn);
+        const app = (list.ApplicationSummaries || []).find((a) => a.id === appId);
+        if (app?.name) r.displayName = app.name;
+      }
+    } catch { /* keep default */ }
+  }
+}
+
+/**
+ * Find OpenSearch Applications whose name matches a stack name and add them
+ * to the resource list if not already present (tagging API may not return them).
+ */
+async function supplementApplications(region, stacks) {
+  if (stacks.size === 0) return;
+  try {
+    const client = new OpenSearchClient({ region });
+    const list = await client.send(new ListApplicationsCommand({}));
+    for (const app of list.ApplicationSummaries || []) {
+      if (!app.name || !app.arn) continue;
+      const resources = stacks.get(app.name);
+      if (!resources) continue;
+      const alreadyPresent = resources.some((r) => r.type === 'OpenSearch Application');
+      if (!alreadyPresent) {
+        resources.push({ arn: app.arn, type: 'OpenSearch Application' });
+      }
+    }
+  } catch { /* best effort */ }
+}
+
+/**
+ * Fetch detailed information for a single resource by ARN.
+ * Returns { entries: [[label, value], ...], rawConfig?: string }.
+ */
+export async function describeResource(region, resource) {
+  const { arn, type } = resource;
+  const name = arnToName(arn);
+  const entries = [['ARN', arn]];
+  let rawConfig;
+
+  try {
+    if (type === 'OSI Pipeline') {
+      const client = new OSISClient({ region });
+      const resp = await client.send(new GetPipelineCommand({ PipelineName: name }));
+      const p = resp.Pipeline || {};
+      entries.push(['Status', p.Status || 'Unknown']);
+      if (p.StatusReason?.Message) entries.push(['Status Reason', p.StatusReason.Message]);
+      entries.push(['Min Units', String(p.MinUnits ?? '')]);
+      entries.push(['Max Units', String(p.MaxUnits ?? '')]);
+      if (p.IngestEndpointUrls?.length) {
+        for (const url of p.IngestEndpointUrls) entries.push(['Ingest Endpoint', url]);
+      }
+      if (p.PipelineRoleArn) entries.push(['Role ARN', p.PipelineRoleArn]);
+      if (p.CreatedAt) entries.push(['Created', p.CreatedAt.toISOString()]);
+      if (p.LastUpdatedAt) entries.push(['Last Updated', p.LastUpdatedAt.toISOString()]);
+      if (p.PipelineConfigurationBody) rawConfig = p.PipelineConfigurationBody;
+    } else if (type === 'OpenSearch Serverless') {
+      const client = new OpenSearchServerlessClient({ region });
+      const resp = await client.send(new BatchGetCollectionCommand({ ids: [name] }));
+      const c = (resp.collectionDetails || [])[0] || {};
+      if (c.status) entries.push(['Status', c.status]);
+      if (c.type) entries.push(['Type', c.type]);
+      if (c.collectionEndpoint) entries.push(['Collection Endpoint', c.collectionEndpoint]);
+      if (c.dashboardEndpoint) entries.push(['Dashboard Endpoint', c.dashboardEndpoint]);
+      if (c.description) entries.push(['Description', c.description]);
+      if (c.createdDate) entries.push(['Created', new Date(c.createdDate).toISOString()]);
+      if (c.lastModifiedDate) entries.push(['Last Modified', new Date(c.lastModifiedDate).toISOString()]);
+    } else if (type === 'OpenSearch Domain') {
+      const client = new OpenSearchClient({ region });
+      const resp = await client.send(new DescribeDomainCommand({ DomainName: name }));
+      const d = resp.DomainStatus || {};
+      if (d.EngineVersion) entries.push(['Engine Version', d.EngineVersion]);
+      if (d.Endpoint) entries.push(['Endpoint', `https://${d.Endpoint}`]);
+      if (d.ClusterConfig) {
+        const cc = d.ClusterConfig;
+        if (cc.InstanceType) entries.push(['Instance Type', cc.InstanceType]);
+        entries.push(['Instance Count', String(cc.InstanceCount ?? 1)]);
+      }
+      entries.push(['Processing', String(d.Processing ?? false)]);
+      if (d.Created !== undefined) entries.push(['Created', String(d.Created)]);
+    } else if (type === 'APS Workspace') {
+      const wsId = name;
+      const client = new AmpClient({ region });
+      const resp = await client.send(new DescribeWorkspaceCommand({ workspaceId: wsId }));
+      const w = resp.workspace || {};
+      if (w.status?.statusCode) entries.push(['Status', w.status.statusCode]);
+      if (w.alias) entries.push(['Alias', w.alias]);
+      if (w.prometheusEndpoint) entries.push(['Prometheus Endpoint', w.prometheusEndpoint]);
+      if (w.createdAt) entries.push(['Created', w.createdAt.toISOString()]);
+    } else if (type === 'IAM Role') {
+      const client = new IAMClient({ region });
+      const resp = await client.send(new GetRoleCommand({ RoleName: name }));
+      const r = resp.Role || {};
+      if (r.Description) entries.push(['Description', r.Description]);
+      if (r.Path) entries.push(['Path', r.Path]);
+      if (r.CreateDate) entries.push(['Created', r.CreateDate.toISOString()]);
+      if (r.MaxSessionDuration) entries.push(['Max Session Duration', `${r.MaxSessionDuration}s`]);
+    } else if (type === 'DQ Data Source') {
+      const client = new OpenSearchClient({ region });
+      const resp = await client.send(new GetDirectQueryDataSourceCommand({ DataSourceName: name }));
+      if (resp.DataSourceType) {
+        const typeKey = Object.keys(resp.DataSourceType)[0];
+        if (typeKey) entries.push(['Data Source Type', typeKey]);
+      }
+      if (resp.Description) entries.push(['Description', resp.Description]);
+      if (resp.OpenSearchArns?.length) {
+        for (const a of resp.OpenSearchArns) entries.push(['OpenSearch ARN', a]);
+      }
+    } else if (type === 'OpenSearch Application') {
+      const client = new OpenSearchClient({ region });
+      const appId = name;
+      const resp = await client.send(new GetApplicationCommand({ id: appId }));
+      if (resp.status) entries.push(['Status', resp.status]);
+      if (resp.endpoint) entries.push(['Endpoint', `${resp.endpoint}/_dashboards`]);
+      if (resp.dataSources?.length) {
+        for (const ds of resp.dataSources) {
+          if (ds.dataSourceArn) entries.push(['Data Source', ds.dataSourceArn]);
+        }
+      }
+      if (resp.createdAt) entries.push(['Created', resp.createdAt.toISOString()]);
+      if (resp.lastUpdatedAt) entries.push(['Last Updated', resp.lastUpdatedAt.toISOString()]);
+    }
+  } catch (err) {
+    entries.push(['Error', err.message]);
+  }
+
+  return { entries, rawConfig };
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
