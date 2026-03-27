@@ -44,6 +44,6 @@ For other languages, see [Send Data](/docs/send-data/).
 
 ## Next steps
 
-- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/) — build custom visualizations
-- [Agent Tracing](/docs/ai-observability/agent-tracing/) — trace AI agent workflows with GenAI semantic conventions
-- [Send Data](/docs/send-data/) — more instrumentation options
+- [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/) - build custom visualizations
+- [Agent Tracing](/docs/ai-observability/agent-tracing/) - trace AI agent workflows with GenAI semantic conventions
+- [Send Data](/docs/send-data/) - more instrumentation options

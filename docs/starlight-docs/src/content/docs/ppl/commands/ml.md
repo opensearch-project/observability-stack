@@ -1,11 +1,11 @@
 ---
 title: "ml"
-description: "Apply machine learning algorithms in your query pipeline — anomaly detection and clustering without external tools."
+description: "Apply machine learning algorithms in your query pipeline - anomaly detection and clustering without external tools."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="tip" title="Stable — since 2.5">
+<Aside type="tip" title="Stable - since 2.5">
 This command has a fixed API.
 </Aside>
 

@@ -1,6 +1,6 @@
 ---
 title: "PPL Command Reference"
-description: "Complete reference for all PPL commands — syntax, parameters, and examples with live playground links for OpenTelemetry observability data."
+description: "Complete reference for all PPL commands - syntax, parameters, and examples with live playground links for OpenTelemetry observability data."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
@@ -48,12 +48,12 @@ source=<index> [<boolean-expression>]
 | `<index>` | Yes | Index name or pattern to query |
 | `<boolean-expression>` | No | Initial filter condition |
 
-**Example — Get all logs:**
+**Example - Get all logs:**
 ```sql
 source = logs-otel-v1*
 ```
 
-**Example — Search with inline filter:**
+**Example - Search with inline filter:**
 ```sql
 source = logs-otel-v1* severityText = 'ERROR'
 ```
@@ -77,12 +77,12 @@ where <boolean-expression>
 
 Supports operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `AND`, `OR`, `NOT`, `LIKE`, `IN`, `BETWEEN`, `IS NULL`, `IS NOT NULL`.
 
-**Example — Filter error logs:**
+**Example - Filter error logs:**
 ```sql
 | where severityText = 'ERROR' or severityText = 'FATAL'
 ```
 
-**Example — Compound conditions:**
+**Example - Compound conditions:**
 ```sql
 | where severityNumber >= 17 AND `resource.attributes.service.name` = 'travel-planner'
 ```
@@ -108,7 +108,7 @@ regex <field> != <pattern>
 | `<field>` | Yes | Field to match against |
 | `<pattern>` | Yes | Java regex pattern |
 
-**Example — Filter services matching a pattern:**
+**Example - Filter services matching a pattern:**
 ```sql
 | regex `resource.attributes.service.name` = ".*agent.*"
 ```
@@ -127,7 +127,7 @@ where <field> [not] in [ source=<index> | ... ]
 where [not] exists [ source=<index> | ... ]
 ```
 
-**Example — Find logs from services that have errors in traces:**
+**Example - Find logs from services that have errors in traces:**
 ```sql
 source = logs-otel-v1*
 | where `resource.attributes.service.name` in [
@@ -155,12 +155,12 @@ fields [+|-] <field-list>
 | `<field-list>` | Yes | Comma-delimited list of fields |
 | `+` or `-` | No | `+` includes (default), `-` excludes |
 
-**Example — Select specific fields:**
+**Example - Select specific fields:**
 ```sql
 | fields time, body, severityText, `resource.attributes.service.name`
 ```
 
-**Example — Exclude fields:**
+**Example - Exclude fields:**
 ```sql
 | fields - traceId, spanId
 ```
@@ -213,7 +213,7 @@ Evaluate an expression and append (or overwrite) the result as a new field.
 eval <field> = <expression> [, <field> = <expression>]...
 ```
 
-**Example — Calculate duration in milliseconds:**
+**Example - Calculate duration in milliseconds:**
 ```sql
 source = otel-v1-apm-span-*
 | eval duration_ms = durationInNanos / 1000000
@@ -222,7 +222,7 @@ source = otel-v1-apm-span-*
 | head 10
 ```
 
-**Example — Concatenate fields:**
+**Example - Concatenate fields:**
 ```sql
 | eval service_operation = concat(`resource.attributes.service.name`, '/', body)
 ```
@@ -323,14 +323,14 @@ stats <aggregation>... [by span(<field>, <interval>) [as <alias>], <field-list>]
 | `by <field-list>` | No | Group results by one or more fields |
 | `span(<field>, <interval>)` | No | Create time or numeric buckets |
 
-**Example — Count logs by service:**
+**Example - Count logs by service:**
 ```sql
 | stats count() as log_count by `resource.attributes.service.name`
 ```
 
 <a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count()%20as%20log_count%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-**Example — Error rate by service:**
+**Example - Error rate by service:**
 ```sql
 | stats count() as total,
         sum(case(severityText = 'ERROR', 1 else 0)) as errors
@@ -339,7 +339,7 @@ stats <aggregation>... [by span(<field>, <interval>) [as <alias>], <field-list>]
 | sort - error_rate
 ```
 
-**Example — Time-bucketed log volume:**
+**Example - Time-bucketed log volume:**
 ```sql
 | stats count() as volume by span(time, 5m) as time_bucket
 ```
@@ -359,7 +359,7 @@ Like `stats`, but appends the aggregation result as a new field to **every event
 eventstats <function>... [by <field-list>]
 ```
 
-**Example — Add service-level average alongside each log:**
+**Example - Add service-level average alongside each log:**
 ```sql
 source = otel-v1-apm-span-*
 | eventstats avg(durationInNanos) as avg_duration by serviceName
@@ -386,7 +386,7 @@ streamstats [current=<bool>] [window=<int>] <function>... [by <field-list>]
 | `current` | No | Include current event in calculation (default: true) |
 | `window` | No | Number of events for rolling window (default: 0 = all) |
 
-**Example — Rolling average latency over last 10 spans:**
+**Example - Rolling average latency over last 10 spans:**
 ```sql
 source = otel-v1-apm-span-*
 | sort startTime
@@ -420,7 +420,7 @@ source = otel-v1-apm-span-*
 
 *(experimental, since 3.3)*
 
-Create time-based aggregations — perfect for dashboards and trend analysis.
+Create time-based aggregations - perfect for dashboards and trend analysis.
 
 **Syntax:**
 ```
@@ -433,7 +433,7 @@ timechart [timefield=<field>] [span=<interval>] <aggregation> [by <field>]
 | `span` | No | Time interval (default: `1m`) |
 | `limit` | No | Max distinct values for `by` field (default: 10) |
 
-**Example — Log volume over time by service:**
+**Example - Log volume over time by service:**
 ```sql
 | timechart timefield=time span=5m count() by `resource.attributes.service.name`
 ```
@@ -463,7 +463,7 @@ chart <aggregation> [over <row-split>] [by <column-split>]
 
 *(experimental, since 3.0)*
 
-Calculate moving averages of fields — simple moving average (SMA) or weighted moving average (WMA).
+Calculate moving averages of fields - simple moving average (SMA) or weighted moving average (WMA).
 
 **Syntax:**
 ```
@@ -510,7 +510,7 @@ addcoltotals [labelfield=<field>] [label=<string>] [<field-list>]
 
 *(stable, since 3.5)*
 
-Transpose rows to columns — useful for pivoting aggregation results.
+Transpose rows to columns - useful for pivoting aggregation results.
 
 **Syntax:**
 ```
@@ -538,13 +538,13 @@ sort [<count>] <field> [asc|desc] [, <field> [asc|desc]]...
 | `-` or `desc` | No | Descending |
 | `<count>` | No | Number of results to return |
 
-**Example — Most recent logs first:**
+**Example - Most recent logs first:**
 ```sql
 | sort - time
 | head 20
 ```
 
-**Example — Slowest traces:**
+**Example - Slowest traces:**
 ```sql
 source = otel-v1-apm-span-*
 | sort - durationInNanos
@@ -607,7 +607,7 @@ dedup [<count>] <field-list> [keepempty=<bool>] [consecutive=<bool>]
 | `keepempty` | No | Keep documents with null values (default: false) |
 | `consecutive` | No | Only remove consecutive duplicates (default: false) |
 
-**Example — One log per unique service:**
+**Example - One log per unique service:**
 ```sql
 | dedup `resource.attributes.service.name`
 | fields `resource.attributes.service.name`, body
@@ -631,7 +631,7 @@ top [<N>] <field-list> [by <group-field>]
 | `<N>` | No | Number of top values (default: 10) |
 | `<field-list>` | Yes | Fields to find top values for |
 
-**Example — Top services by log volume:**
+**Example - Top services by log volume:**
 ```sql
 | top 5 `resource.attributes.service.name`
 ```
@@ -642,14 +642,14 @@ top [<N>] <field-list> [by <group-field>]
 
 ### rare
 
-Find the least common values of a field — useful for spotting anomalies.
+Find the least common values of a field - useful for spotting anomalies.
 
 **Syntax:**
 ```
 rare <field-list> [by <group-field>]
 ```
 
-**Example — Rarest severity levels:**
+**Example - Rarest severity levels:**
 ```sql
 | rare severityText
 ```
@@ -669,7 +669,7 @@ Extract fields from text using regular expressions with named capture groups.
 parse <field> <regex-pattern>
 ```
 
-**Example — Extract HTTP status codes from log bodies:**
+**Example - Extract HTTP status codes from log bodies:**
 ```sql
 | parse body 'HTTP/\d\.\d"\s+(?<statusCode>\d{3})'
 | stats count() as requests by statusCode
@@ -681,14 +681,14 @@ parse <field> <regex-pattern>
 
 *(stable, since 2.4)*
 
-Extract fields using grok patterns — a higher-level abstraction over regex using predefined patterns like `%{IP}`, `%{NUMBER}`, `%{GREEDYDATA}`.
+Extract fields using grok patterns - a higher-level abstraction over regex using predefined patterns like `%{IP}`, `%{NUMBER}`, `%{GREEDYDATA}`.
 
 **Syntax:**
 ```
 grok <field> <grok-pattern>
 ```
 
-**Example — Parse structured log lines:**
+**Example - Parse structured log lines:**
 ```sql
 | grok body '%{IP:client_ip} - %{DATA:user} \[%{HTTPDATE:timestamp}\] "%{WORD:method} %{DATA:url}"'
 | fields client_ip, method, url
@@ -714,7 +714,7 @@ rex [mode=<extract|sed>] field=<field> <pattern> [max_match=<int>]
 | `mode` | No | `extract` (default) or `sed` for substitution |
 | `max_match` | No | Max matches to extract (default: 1) |
 
-**Example — Extract key-value pairs from logs:**
+**Example - Extract key-value pairs from logs:**
 ```sql
 | rex field=body "status=(?<status>\w+)\s+latency=(?<latency>\d+)"
 | fields status, latency
@@ -745,7 +745,7 @@ spath input=<field> [output=<field>] [path=<json-path>]
 
 *(stable, since 2.4)*
 
-Automatically discover log patterns by extracting and clustering similar log lines. This is one of PPL's most powerful observability features — it replaces hours of manual regex work with a single command.
+Automatically discover log patterns by extracting and clustering similar log lines. This is one of PPL's most powerful observability features - it replaces hours of manual regex work with a single command.
 
 **Syntax:**
 ```
@@ -759,7 +759,7 @@ patterns <field> [method=simple_pattern|brain] [mode=label|aggregation] [max_sam
 | `mode` | No | `label` adds pattern field, `aggregation` groups by pattern |
 | `max_sample_count` | No | Sample logs per pattern (default: 10) |
 
-**Example — Discover log patterns:**
+**Example - Discover log patterns:**
 ```sql
 | patterns body method=simple_pattern mode=aggregation
 | fields patterns_field, pattern_count, sample_logs
@@ -786,7 +786,7 @@ Combine two datasets together. Supports inner, left, right, full, semi, anti, an
 | `on <condition>` | Yes | Join condition |
 | `<right-dataset>` | Yes | Index name or subsearch |
 
-**Example — Correlate logs with trace data:**
+**Example - Correlate logs with trace data:**
 ```sql
 source = logs-otel-v1*
 | left join on traceId = traceId [
@@ -828,7 +828,7 @@ Append results of a subsearch to the bottom of the main search results.
 append [<subsearch>]
 ```
 
-**Example — Combine log stats with trace stats:**
+**Example - Combine log stats with trace stats:**
 ```sql
 source = logs-otel-v1*
 | stats count() as log_count by `resource.attributes.service.name`
@@ -915,12 +915,12 @@ mvexpand <field> [limit=<int>]
 
 Apply machine learning algorithms directly in your query pipeline.
 
-**Syntax (Anomaly Detection — RCF):**
+**Syntax (Anomaly Detection - RCF):**
 ```
 ml action='train' algorithm='rcf' [time_field=<field>] [anomaly_rate=<float>]
 ```
 
-**Syntax (Clustering — K-Means):**
+**Syntax (Clustering - K-Means):**
 ```
 ml action='train' algorithm='kmeans' [centroids=<int>] [iterations=<int>] [distance_type=<type>]
 ```
@@ -932,7 +932,7 @@ ml action='train' algorithm='kmeans' [centroids=<int>] [iterations=<int>] [dista
 | `centroids` | No | Number of clusters for kmeans (default: 2) |
 | `anomaly_rate` | No | Expected anomaly rate for RCF (default: 0.005) |
 
-**Example — Anomaly detection on time-series data:**
+**Example - Anomaly detection on time-series data:**
 ```sql
 source = otel-v1-apm-span-*
 | stats avg(durationInNanos) as avg_latency by span(startTime, 1m) as minute
@@ -979,7 +979,7 @@ describe logs-otel-v1*
 
 *(stable, since 3.1)*
 
-Show the execution plan of a query — useful for debugging and optimization.
+Show the execution plan of a query - useful for debugging and optimization.
 
 **Syntax:**
 ```
@@ -1007,7 +1007,7 @@ show datasources
 
 *(experimental, since 3.6)*
 
-Perform recursive graph traversal on a collection using BFS — useful for tracing service dependency chains.
+Perform recursive graph traversal on a collection using BFS - useful for tracing service dependency chains.
 
 **Syntax:**
 ```
@@ -1081,6 +1081,6 @@ graphlookup source=<index> connectFromField=<field> connectToField=<field> as <a
 
 ## Further reading
 
-- **[Function Reference](/docs/ppl/functions/)** — 200+ built-in functions
-- **[Observability Examples](/docs/ppl/examples/)** — Real-world OTel queries
-- **[PPL source documentation](https://github.com/opensearch-project/sql/tree/main/docs/user/ppl)** — Upstream PPL docs in the OpenSearch SQL plugin
+- **[Function Reference](/docs/ppl/functions/)** - 200+ built-in functions
+- **[Observability Examples](/docs/ppl/examples/)** - Real-world OTel queries
+- **[PPL source documentation](https://github.com/opensearch-project/sql/tree/main/docs/user/ppl)** - Upstream PPL docs in the OpenSearch SQL plugin

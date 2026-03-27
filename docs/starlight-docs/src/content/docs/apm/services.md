@@ -39,11 +39,11 @@ The main table lists all instrumented services:
 
 Use the left-hand filters to narrow down the catalog:
 
-- **Environment** — filter by deployment environment
-- **Latency** — range slider to set minimum and maximum latency thresholds
-- **Throughput** — range slider to set minimum and maximum throughput thresholds
-- **Failure ratio** — bucket filters: < 1%, 1–5%, > 5%
-- **Attributes** — filter by resource attributes such as `telemetry.sdk.language`
+- **Environment** - filter by deployment environment
+- **Latency** - range slider to set minimum and maximum latency thresholds
+- **Throughput** - range slider to set minimum and maximum throughput thresholds
+- **Failure ratio** - bucket filters: < 1%, 1–5%, > 5%
+- **Attributes** - filter by resource attributes such as `telemetry.sdk.language`
 
 ## Service detail view
 
@@ -60,9 +60,9 @@ A panel showing which downstream dependencies have the highest fault rates for t
 
 **Correlated data**
 Quick links to related telemetry:
-- **View service attributes** — resource attributes attached to the service
-- **View correlated spans** — spans associated with this service
-- **View correlated logs** — logs correlated to this service's traces
+- **View service attributes** - resource attributes attached to the service
+- **View correlated spans** - spans associated with this service
+- **View correlated logs** - logs correlated to this service's traces
 
 **KPI cards**
 Five cards summarizing key performance indicators, each with a sparkline chart, the current value, the previous-period value, and a trend arrow:
@@ -104,24 +104,24 @@ The Operations tab lists every operation for the service.
 
 **Expandable rows**
 Click a row to expand it and see inline charts:
-- **Requests / Faults** — request volume and 5xx fault count over time
-- **Errors / Latency** — error count and latency (P50, P90, P99) over time
+- **Requests / Faults** - request volume and 5xx fault count over time
+- **Errors / Latency** - error count and latency (P50, P90, P99) over time
 
 **Filters sidebar**
 
-- **Availability** — bucket filters for availability ranges
-- **Operations** — search box to filter by operation name
-- **Error rate** — filter by error rate range
-- **Latency** — filter by latency range
-- **Requests** — filter by request count range
-- **Service operations** — filter to specific service-side operations
-- **Remote operations** — filter to specific remote (downstream) operations
+- **Availability** - bucket filters for availability ranges
+- **Operations** - search box to filter by operation name
+- **Error rate** - filter by error rate range
+- **Latency** - filter by latency range
+- **Requests** - filter by request count range
+- **Service operations** - filter to specific service-side operations
+- **Remote operations** - filter to specific remote (downstream) operations
 
 **Correlation flyout**
 Click a correlation icon on any operation row to open a flyout panel. The flyout header shows the service name, environment badge, and operation filter badge. It contains two tabs:
 
-- **Correlated spans** — a table of spans with columns for Time, Status (OK/ERROR badge), HTTP Status, Kind, Operation, and Span ID. The Span ID is a clickable link that navigates to the span in Explore Traces.
-- **Correlated logs** — a table of log entries correlated to the selected operation.
+- **Correlated spans** - a table of spans with columns for Time, Status (OK/ERROR badge), HTTP Status, Kind, Operation, and Span ID. The Span ID is a clickable link that navigates to the span in Explore Traces.
+- **Correlated logs** - a table of log entries correlated to the selected operation.
 
 ![Correlation flyout showing correlated spans for the frontend service GET operation](/docs/images/apm/service-span-correlations.png)
 
@@ -148,9 +148,9 @@ Click a row to expand it and see inline charts for request volume, errors, and l
 
 **Filters sidebar**
 
-- **Availability** — bucket filters for availability ranges
-- **Dependency service** — search box to filter by dependency name
-- **Error rate** — filter by error rate range
+- **Availability** - bucket filters for availability ranges
+- **Dependency service** - search box to filter by dependency name
+- **Error rate** - filter by error rate range
 
 ## How service data is generated
 

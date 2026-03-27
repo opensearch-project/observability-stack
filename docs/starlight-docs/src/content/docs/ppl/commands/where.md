@@ -1,6 +1,6 @@
 ---
 title: "where"
-description: "Filter search results using boolean expressions — the primary filtering command in PPL."
+description: "Filter search results using boolean expressions - the primary filtering command in PPL."
 ---
 
 ## Description
@@ -27,7 +27,7 @@ where <boolean-expression>
 |----------|-----------|
 | **Comparison** | `=`, `!=`, `<>`, `>`, `<`, `>=`, `<=` |
 | **Logical** | `AND`, `OR`, `NOT` |
-| **Pattern matching** | `LIKE(field, pattern)` — `%` matches zero or more characters, `_` matches exactly one character |
+| **Pattern matching** | `LIKE(field, pattern)` - `%` matches zero or more characters, `_` matches exactly one character |
 | **Set membership** | `IN (value1, value2, ...)` |
 | **Range** | `BETWEEN value1 AND value2` |
 | **Null testing** | `IS NULL`, `IS NOT NULL`, `ISNULL(field)`, `ISNOTNULL(field)` |
@@ -37,11 +37,11 @@ where <boolean-expression>
 
 - **Multiple where commands**: You can chain multiple `where` commands in a single pipeline. Each successive `where` further narrows the result set, equivalent to combining them with `AND`.
 - **Eval expressions inline**: You can use functions and expressions directly in the boolean condition (e.g., `where length(body) > 100` or `where LIKE(body, '%timeout%')`).
-- **Null handling**: Comparisons with `null` values follow SQL semantics — a comparison involving `null` evaluates to `null` (not `true` or `false`), so the row is excluded. Use `IS NULL` or `ISNULL()` to explicitly test for null values.
+- **Null handling**: Comparisons with `null` values follow SQL semantics - a comparison involving `null` evaluates to `null` (not `true` or `false`), so the row is excluded. Use `IS NULL` or `ISNULL()` to explicitly test for null values.
 - **String values**: Enclose string literals in single quotes (`'value'`). Double quotes are used for field names that contain special characters.
 - **Backtick field names**: OTel fields with dots in their names (e.g., `resource.attributes.service.name`) must be enclosed in backticks to prevent them from being interpreted as nested field access.
 - **Performance**: Filters applied earlier in the pipeline reduce the amount of data processed by subsequent commands. Place your most selective `where` conditions as early as possible.
-- **vs. search expression**: The `search` command also supports inline boolean expressions, but `where` is more flexible — it supports functions, `LIKE`, `BETWEEN`, and computed expressions that `search` does not.
+- **vs. search expression**: The `search` command also supports inline boolean expressions, but `where` is more flexible - it supports functions, `LIKE`, `BETWEEN`, and computed expressions that `search` does not.
 
 ## Basic examples
 
@@ -175,6 +175,6 @@ source=logs-otel-v1*
 
 ## See also
 
-- [`search`](/docs/ppl/commands/search/) — The starting point of every PPL query, also supports inline boolean expressions
-- [`fields`](/docs/ppl/commands/fields/) — Select or exclude specific fields from the output
-- [PPL Commands](/docs/ppl/commands/) — Full command reference
+- [`search`](/docs/ppl/commands/search/) - The starting point of every PPL query, also supports inline boolean expressions
+- [`fields`](/docs/ppl/commands/fields/) - Select or exclude specific fields from the output
+- [PPL Commands](/docs/ppl/commands/) - Full command reference

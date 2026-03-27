@@ -3,7 +3,7 @@ title: "Instrument Applications"
 description: "Add OpenTelemetry instrumentation to your application code to send traces, metrics, and logs to the observability stack"
 ---
 
-Application instrumentation is the process of adding observability signals — traces, metrics, and logs — to your application code. The OpenSearch Observability Stack uses OpenTelemetry (OTel) as its standard instrumentation framework, giving you a vendor-neutral way to collect telemetry from any language.
+Application instrumentation is the process of adding observability signals - traces, metrics, and logs - to your application code. The OpenSearch Observability Stack uses OpenTelemetry (OTel) as its standard instrumentation framework, giving you a vendor-neutral way to collect telemetry from any language.
 
 ## How it works
 
@@ -42,7 +42,7 @@ Manual instrumentation gives you full control over what gets traced and measured
 
 ### Combining both
 
-Most production applications use both approaches together — auto-instrumentation for framework-level coverage and manual instrumentation for business-specific observability.
+Most production applications use both approaches together - auto-instrumentation for framework-level coverage and manual instrumentation for business-specific observability.
 
 :::tip[Upstream documentation]
 For a complete list of supported languages and their instrumentation status, see the [OpenTelemetry language APIs & SDKs](https://opentelemetry.io/docs/languages/).
@@ -60,9 +60,9 @@ All OpenTelemetry SDKs respect a standard set of environment variables. You can 
 | `OTEL_TRACES_EXPORTER` | Traces exporter (`otlp`, `none`) | `otlp` |
 | `OTEL_METRICS_EXPORTER` | Metrics exporter (`otlp`, `none`) | `otlp` |
 | `OTEL_LOGS_EXPORTER` | Logs exporter (`otlp`, `none`) | `otlp` |
-| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated key=value resource attributes | — |
+| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated key=value resource attributes | - |
 | `OTEL_TRACES_SAMPLER` | Sampler type (`always_on`, `traceidratio`, `parentbased_traceidratio`) | `parentbased_always_on` |
-| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (e.g., ratio `0.1`) | — |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (e.g., ratio `0.1`) | - |
 | `OTEL_PROPAGATORS` | Context propagation formats | `tracecontext,baggage` |
 
 Example using environment variables:

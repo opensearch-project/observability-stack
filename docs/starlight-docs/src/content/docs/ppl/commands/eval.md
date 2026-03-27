@@ -1,6 +1,6 @@
 ---
 title: "eval"
-description: "Create computed fields by evaluating expressions — arithmetic, string operations, conditionals, and more."
+description: "Create computed fields by evaluating expressions - arithmetic, string operations, conditionals, and more."
 ---
 
 ## Description

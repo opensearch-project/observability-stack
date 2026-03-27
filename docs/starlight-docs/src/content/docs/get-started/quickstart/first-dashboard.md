@@ -38,5 +38,5 @@ Select **Save**, give your dashboard a name, and optionally add it to an Observa
 
 ## Next steps
 
-- [Dashboards](/docs/dashboards/) — advanced dashboard features
-- [Discover Metrics](/docs/investigate/discover-metrics/) — PromQL-based metric exploration
+- [Dashboards](/docs/dashboards/) - advanced dashboard features
+- [Discover Metrics](/docs/investigate/discover-metrics/) - PromQL-based metric exploration

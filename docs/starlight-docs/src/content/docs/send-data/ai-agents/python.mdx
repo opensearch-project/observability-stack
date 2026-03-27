@@ -1,6 +1,6 @@
 ---
 title: "Python SDK"
-description: "Reference for opensearch-genai-observability-sdk-py — instrument AI agent applications with OpenTelemetry"
+description: "Reference for opensearch-genai-observability-sdk-py - instrument AI agent applications with OpenTelemetry"
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -42,10 +42,10 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 | `enrich()` | Set GenAI attributes on active span | [This page](#enrich) |
 | `score()` | Attach evaluation scores to traces | [This page](#score) |
 | `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
-| `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evaluate--run-experiments) |
-| `Experiment` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#experiment--upload-pre-computed-results) |
+| `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evaluate---run-experiments) |
+| `Experiment` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#experiment---upload-pre-computed-results) |
 | `EvalScore` | Scorer return type | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evalscore-dataclass) |
-| `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/ai-observability/evaluation/#opensearchtraceretriever--query-stored-traces) |
+| `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/ai-observability/evaluation/#opensearchtraceretriever---query-stored-traces) |
 
 ## Quick start
 
@@ -135,17 +135,17 @@ The unified tracing primitive. Works as a **decorator** (sync, async, generator,
 ### Usage forms
 
 ```python
-# Bare decorator — span name = function qualname
+# Bare decorator - span name = function qualname
 @observe
 def my_function():
     ...
 
-# Parameterized — set operation type, name, span kind
+# Parameterized - set operation type, name, span kind
 @observe(name="weather_agent", op=Op.INVOKE_AGENT)
 def run_agent(query: str) -> str:
     ...
 
-# Context manager — for inline tracing blocks
+# Context manager - for inline tracing blocks
 with observe("llm_call", op=Op.CHAT) as span:
     response = llm.chat(messages)
 ```
@@ -181,7 +181,7 @@ In decorator mode, `observe()` automatically:
 - **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for tools). Skips `self`/`cls`.
 - **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools). Won't overwrite if already set.
 - **Records errors** as span status `ERROR` with an exception event.
-- **Sets entity attributes** — `gen_ai.agent.name` for agents, `gen_ai.tool.name` + `gen_ai.tool.type="function"` for tools.
+- **Sets entity attributes** - `gen_ai.agent.name` for agents, `gen_ai.tool.name` + `gen_ai.tool.type="function"` for tools.
 
 All values truncated at 10,000 characters.
 
@@ -189,8 +189,8 @@ All values truncated at 10,000 characters.
 
 ```mermaid
 flowchart TD
-    A["@observe op=INVOKE_AGENT"] --> B["@observe op=CHAT — LLM call"]
-    A --> C["@observe op=EXECUTE_TOOL — tool call"]
+    A["@observe op=INVOKE_AGENT"] --> B["@observe op=CHAT - LLM call"]
+    A --> C["@observe op=EXECUTE_TOOL - tool call"]
     C --> D["LLM call (auto-instrumented)"]
 ```
 
@@ -261,7 +261,7 @@ All parameters are optional. Only provided values are set.
 
 ## Auto-instrumentation
 
-`register()` discovers and activates installed instrumentor packages. Install the extra for your provider — no code changes needed.
+`register()` discovers and activates installed instrumentor packages. Install the extra for your provider - no code changes needed.
 
 | Provider / framework | Extra |
 |---|---|
@@ -285,7 +285,7 @@ register(auto_instrument=False)  # to disable
 
 ## `score()`
 
-Attaches an evaluation score to a trace or span. Scores are emitted as OTEL spans through the same OTLP pipeline — no separate client or index needed.
+Attaches an evaluation score to a trace or span. Scores are emitted as OTEL spans through the same OTLP pipeline - no separate client or index needed.
 
 ```python
 from opensearch_genai_observability_sdk_py import score
@@ -351,8 +351,8 @@ SigV4 + gRPC is not supported. Use `https://` for AWS endpoints.
 
 ## Related links
 
-- [AI Observability — Getting Started](/docs/ai-observability/getting-started/) — end-to-end walkthrough
-- [Evaluation & Scoring](/docs/ai-observability/evaluation/) — score traces, run experiments
-- [Trace Retrieval](/docs/ai-observability/evaluation/#opensearchtraceretriever--query-stored-traces) — query stored traces from OpenSearch
-- [Agent Traces](/docs/ai-observability/agent-tracing/) — viewing traces in OpenSearch Dashboards
-- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) — OTel spec reference
+- [AI Observability - Getting Started](/docs/ai-observability/getting-started/) - end-to-end walkthrough
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - score traces, run experiments
+- [Trace Retrieval](/docs/ai-observability/evaluation/#opensearchtraceretriever---query-stored-traces) - query stored traces from OpenSearch
+- [Agent Traces](/docs/ai-observability/agent-tracing/) - viewing traces in OpenSearch Dashboards
+- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) - OTel spec reference

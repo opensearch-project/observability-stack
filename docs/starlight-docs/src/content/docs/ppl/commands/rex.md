@@ -1,6 +1,6 @@
 ---
 title: "rex"
-description: "Extract or substitute fields using regex — with support for sed-mode text replacement and multiple matches."
+description: "Extract or substitute fields using regex - with support for sed-mode text replacement and multiple matches."
 ---
 
 import { Aside } from '@astrojs/starlight/components';

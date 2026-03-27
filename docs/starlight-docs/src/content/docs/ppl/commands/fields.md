@@ -1,14 +1,14 @@
 ---
 title: "fields"
-description: "Keep or remove fields from search results — control which columns appear in output."
+description: "Keep or remove fields from search results - control which columns appear in output."
 ---
 
 ## Description
 
 The `fields` command specifies which fields (columns) to include in or exclude from the search results. It operates in two modes:
 
-- **Include mode** (`+`, default) — keeps only the listed fields and drops everything else.
-- **Exclude mode** (`-`) — removes the listed fields and keeps everything else.
+- **Include mode** (`+`, default) - keeps only the listed fields and drops everything else.
+- **Exclude mode** (`-`) - removes the listed fields and keeps everything else.
 
 Use `fields` to reduce clutter, focus on relevant data, and improve query performance by limiting the amount of data transferred.
 
@@ -127,6 +127,6 @@ source=logs-otel-v1*
 
 ## See also
 
-- [`search`](/docs/ppl/commands/search/) — The starting point of every PPL query
-- [`where`](/docs/ppl/commands/where/) — Filter results using boolean expressions
-- [PPL Commands](/docs/ppl/commands/) — Full command reference
+- [`search`](/docs/ppl/commands/search/) - The starting point of every PPL query
+- [`where`](/docs/ppl/commands/where/) - Filter results using boolean expressions
+- [PPL Commands](/docs/ppl/commands/) - Full command reference

@@ -1,12 +1,12 @@
 ---
 title: "lookup"
-description: "Enrich events with data from a lookup index — add context like team names, environment labels, or cost data."
+description: "Enrich events with data from a lookup index - add context like team names, environment labels, or cost data."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution">
-**Experimental** since OpenSearch 3.0 — syntax may change based on community feedback.
+**Experimental** since OpenSearch 3.0 - syntax may change based on community feedback.
 </Aside>
 
 The `lookup` command enriches your search results by matching rows against a reference index (dimension table) and pulling in additional fields. It is the simplest way to add context -- team ownership, environment labels, cost centers, or any static metadata -- to streaming event data.
@@ -49,7 +49,7 @@ lookup <lookupIndex> (<lookupMappingField> [AS <sourceMappingField>])...
 
 ## Examples
 
-### Basic lookup — replace values
+### Basic lookup - replace values
 
 Enrich log events with team ownership from a `service_owners` reference index:
 
@@ -132,6 +132,6 @@ source = otel-v1-apm-span-*
 
 ## See also
 
-- [join](/docs/ppl/commands/join/) — full join for complex multi-field correlation
-- [eval](/docs/ppl/commands/) — compute new fields from expressions
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [join](/docs/ppl/commands/join/) - full join for complex multi-field correlation
+- [eval](/docs/ppl/commands/) - compute new fields from expressions
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

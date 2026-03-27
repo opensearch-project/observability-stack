@@ -1,11 +1,11 @@
 ---
 title: "timechart"
-description: "Create time-based aggregations and charts — the go-to command for time-series visualization."
+description: "Create time-based aggregations and charts - the go-to command for time-series visualization."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Experimental — since 3.3">
+<Aside type="caution" title="Experimental - since 3.3">
 This command is production-ready but its parameters may change based on community feedback.
 </Aside>
 

@@ -1,6 +1,6 @@
 ---
 title: "join"
-description: "Combine two datasets together — correlate logs with traces, enrich data from reference indices."
+description: "Combine two datasets together - correlate logs with traces, enrich data from reference indices."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
@@ -86,7 +86,7 @@ source = logs-otel-v1*
 
 ### Join with a subsearch
 
-Join logs with a filtered subset of trace spans — only slow spans above a latency threshold:
+Join logs with a filtered subset of trace spans - only slow spans above a latency threshold:
 
 ```sql
 source = logs-otel-v1* as l
@@ -118,7 +118,7 @@ source = logs-otel-v1*
 | fields time, body, severityText, serviceName, name, durationInNanos
 ```
 
-### Semi join — find logs with matching spans
+### Semi join - find logs with matching spans
 
 Return only log events that have at least one matching trace span:
 
@@ -127,9 +127,9 @@ source = logs-otel-v1*
 | left semi join left=l right=r on l.traceId = r.traceId otel-v1-apm-span-*
 ```
 
-### Anti join — find orphaned logs without spans
+### Anti join - find orphaned logs without spans
 
-Return log events that have no matching trace span — useful for finding gaps in instrumentation:
+Return log events that have no matching trace span - useful for finding gaps in instrumentation:
 
 ```sql
 source = logs-otel-v1*
@@ -170,7 +170,7 @@ source = otel-v1-apm-span-*
 
 ## See also
 
-- [lookup](/docs/ppl/commands/lookup/) — simpler enrichment from a reference index
-- [subquery](/docs/ppl/commands/) — filter using nested queries
-- [append](/docs/ppl/commands/) — stack results vertically instead of joining
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [lookup](/docs/ppl/commands/lookup/) - simpler enrichment from a reference index
+- [subquery](/docs/ppl/commands/) - filter using nested queries
+- [append](/docs/ppl/commands/) - stack results vertically instead of joining
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

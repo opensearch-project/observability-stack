@@ -1,13 +1,13 @@
 ---
 title: "search"
-description: "Retrieve documents from an index — the starting point of every PPL query."
+description: "Retrieve documents from an index - the starting point of every PPL query."
 ---
 
 ## Description
 
 The `search` command retrieves documents from an index. It is the **starting point of every PPL query** and must always be the first command in the pipeline. Every PPL query begins with `search` (or its shorthand `source=`) to specify which index to query.
 
-The `search` keyword itself can be omitted — `source=<index>` is equivalent to `search source=<index>`. An optional boolean expression filters results at the search level before any pipeline processing occurs.
+The `search` keyword itself can be omitted - `source=<index>` is equivalent to `search source=<index>`. An optional boolean expression filters results at the search level before any pipeline processing occurs.
 
 **In the Discover UI**, the dataset selector automatically sets the source index. Queries in the query bar start with a pipe character (`|`) and do not need a `source=` clause.
 
@@ -125,6 +125,6 @@ source=us-west:logs-otel-v1* severityText="ERROR"
 
 ## See also
 
-- [`where`](/docs/ppl/commands/where/) — Filter results using boolean expressions after the pipe
-- [`fields`](/docs/ppl/commands/fields/) — Select or exclude specific fields from the output
-- [PPL Commands](/docs/ppl/commands/) — Full command reference
+- [`where`](/docs/ppl/commands/where/) - Filter results using boolean expressions after the pipe
+- [`fields`](/docs/ppl/commands/fields/) - Select or exclude specific fields from the output
+- [PPL Commands](/docs/ppl/commands/) - Full command reference

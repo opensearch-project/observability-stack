@@ -1,12 +1,12 @@
 ---
 title: "streamstats"
-description: "Calculate cumulative and rolling window statistics — running totals, moving averages, and trend detection."
+description: "Calculate cumulative and rolling window statistics - running totals, moving averages, and trend detection."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution">
-**Experimental** since OpenSearch 3.4 — syntax may change based on community feedback.
+**Experimental** since OpenSearch 3.4 - syntax may change based on community feedback.
 </Aside>
 
 The `streamstats` command calculates cumulative or rolling statistics as events are processed in order. Unlike `stats` (which collapses to an aggregation table) or `eventstats` (which computes over the entire dataset at once), `streamstats` processes events incrementally -- each row's statistics reflect only the events seen so far.
@@ -150,7 +150,7 @@ source = logs-otel-v1*
 
 ## See also
 
-- [eventstats](/docs/ppl/commands/eventstats/) — add group-level statistics to every event
-- [trendline](/docs/ppl/commands/trendline/) — simple and weighted moving averages
-- [stats](/docs/ppl/commands/) — aggregate and collapse rows
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [eventstats](/docs/ppl/commands/eventstats/) - add group-level statistics to every event
+- [trendline](/docs/ppl/commands/trendline/) - simple and weighted moving averages
+- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

@@ -1,9 +1,9 @@
 ---
 title: "Piped Processing Language (PPL)"
-description: "PPL is the native query language for OpenSearch Observability — a pipe-based, human-readable language for exploring logs, traces, and telemetry at scale."
+description: "PPL is the native query language for OpenSearch Observability - a pipe-based, human-readable language for exploring logs, traces, and telemetry at scale."
 ---
 
-Piped Processing Language (PPL) is the **native query language** of the OpenSearch Observability Stack. Every log query, every trace investigation, and every pattern analysis flows through PPL — a pipe-delimited language designed for the way operators and engineers actually think about data.
+Piped Processing Language (PPL) is the **native query language** of the OpenSearch Observability Stack. Every log query, every trace investigation, and every pattern analysis flows through PPL - a pipe-delimited language designed for the way operators and engineers actually think about data.
 
 <a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">
 
@@ -18,7 +18,7 @@ source = logs-otel-v1*
 | sort - errors
 ```
 
-That query finds every error log, counts them by service, and sorts by severity — all in four lines you can read aloud. No JSON nesting, no callback syntax, no query DSL to memorize.
+That query finds every error log, counts them by service, and sorts by severity - all in four lines you can read aloud. No JSON nesting, no callback syntax, no query DSL to memorize.
 
 ## Why PPL?
 
@@ -37,7 +37,7 @@ source = otel-v1-apm-span-*
 
 ### One language across logs and traces
 
-Unlike platforms that require different query dialects for different signal types, PPL works across **both logs and traces** in the Observability Stack. The same syntax, the same commands, the same muscle memory — whether you are triaging an incident in logs or profiling latency in traces.
+Unlike platforms that require different query dialects for different signal types, PPL works across **both logs and traces** in the Observability Stack. The same syntax, the same commands, the same muscle memory - whether you are triaging an incident in logs or profiling latency in traces.
 
 | Signal  | Query Language | Index Pattern           |
 |---------|---------------|-------------------------|
@@ -49,12 +49,12 @@ Unlike platforms that require different query dialects for different signal type
 
 PPL is not a general-purpose query language bolted onto a search engine. It was designed from the ground up for the workflows observability engineers perform daily:
 
-- **Pattern discovery** — the `patterns` command automatically extracts log patterns and clusters similar entries, replacing hours of manual regex work
-- **Field extraction on the fly** — `parse`, `grok`, and `rex` let you extract structured fields from unstructured log text without re-indexing
-- **Statistical analysis** — `stats`, `eventstats`, `streamstats`, and `trendline` cover everything from simple counts to rolling window calculations
-- **Deduplication and ranking** — `dedup`, `top`, and `rare` surface the signal in noisy data
-- **Machine learning built in** — `ml` and `kmeans` run anomaly detection and clustering directly in your query pipeline
-- **Join and correlate** — `join`, `lookup`, `append`, and `subquery` combine data from multiple indices for cross-signal investigation
+- **Pattern discovery** - the `patterns` command automatically extracts log patterns and clusters similar entries, replacing hours of manual regex work
+- **Field extraction on the fly** - `parse`, `grok`, and `rex` let you extract structured fields from unstructured log text without re-indexing
+- **Statistical analysis** - `stats`, `eventstats`, `streamstats`, and `trendline` cover everything from simple counts to rolling window calculations
+- **Deduplication and ranking** - `dedup`, `top`, and `rare` surface the signal in noisy data
+- **Machine learning built in** - `ml` and `kmeans` run anomaly detection and clustering directly in your query pipeline
+- **Join and correlate** - `join`, `lookup`, `append`, and `subquery` combine data from multiple indices for cross-signal investigation
 
 ### 50+ commands, 200+ functions
 
@@ -85,7 +85,7 @@ The **Discover** interface for [Logs](/docs/investigate/discover-logs/) and [Tra
 
 ### Claude Code plugin
 
-The [Claude Code observability plugin](/docs/claude-code/) generates PPL queries from natural language. Ask "show me the slowest traces from the travel-planner service" and the plugin produces the PPL query, runs it, and returns results — all powered by PPL templates.
+The [Claude Code observability plugin](/docs/claude-code/) generates PPL queries from natural language. Ask "show me the slowest traces from the travel-planner service" and the plugin produces the PPL query, runs it, and returns results - all powered by PPL templates.
 
 ### Alerting and anomaly detection
 
@@ -93,7 +93,7 @@ PPL queries can drive [alerts](/docs/alerting/) and [anomaly detection](/docs/an
 
 ### Dashboards
 
-PPL query results can be [saved to dashboards](/docs/dashboards/) as live visualizations — line charts, bar charts, heatmaps, and more — all driven by PPL.
+PPL query results can be [saved to dashboards](/docs/dashboards/) as live visualizations - line charts, bar charts, heatmaps, and more - all driven by PPL.
 
 ## Getting started with PPL
 
@@ -120,7 +120,7 @@ The fastest way to learn PPL is to use it. Open the [live playground](https://ob
 
 ## How PPL compares
 
-PPL belongs to the family of pipe-based query languages used in modern observability platforms. If you have experience with Kusto Query Language (KQL) or Elastic Event Query Language (EQL), PPL will feel immediately familiar — with key advantages:
+PPL belongs to the family of pipe-based query languages used in modern observability platforms. If you have experience with Kusto Query Language (KQL) or Elastic Event Query Language (EQL), PPL will feel immediately familiar - with key advantages:
 
 | Capability | PPL | KQL (Kusto) | EQL (Elastic) |
 |-----------|-----|-------------|----------------|
@@ -135,8 +135,8 @@ PPL belongs to the family of pipe-based query languages used in modern observabi
 
 ## Next steps
 
-- **[Command Reference](/docs/ppl/commands/)** — Syntax and examples for all 50+ PPL commands
-- **[Function Reference](/docs/ppl/functions/)** — 200+ built-in functions across 13 categories
-- **[Observability Examples](/docs/ppl/examples/)** — Real-world PPL queries for OTel logs, traces, and AI agent data
-- **[Discover Logs](/docs/investigate/discover-logs/)** — Using PPL in the Logs Discover interface
-- **[Discover Traces](/docs/investigate/discover-traces/)** — Using PPL in the Traces Discover interface
+- **[Command Reference](/docs/ppl/commands/)** - Syntax and examples for all 50+ PPL commands
+- **[Function Reference](/docs/ppl/functions/)** - 200+ built-in functions across 13 categories
+- **[Observability Examples](/docs/ppl/examples/)** - Real-world PPL queries for OTel logs, traces, and AI agent data
+- **[Discover Logs](/docs/investigate/discover-logs/)** - Using PPL in the Logs Discover interface
+- **[Discover Traces](/docs/investigate/discover-traces/)** - Using PPL in the Traces Discover interface

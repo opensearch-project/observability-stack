@@ -18,19 +18,19 @@ The breadcrumb at the top reads **Application > Services**, reflecting the curre
 
 The Application Map toolbar provides:
 
-- **Search bar** — filter by service name or environment
-- **Time range selector** — choose a time window, with a Refresh button
-- **Zoom in / Zoom out** — adjust the map zoom level
-- **Fit to screen** — reset the view to fit all nodes
+- **Search bar** - filter by service name or environment
+- **Time range selector** - choose a time window, with a Refresh button
+- **Zoom in / Zoom out** - adjust the map zoom level
+- **Fit to screen** - reset the view to fit all nodes
 
 ## Filters panel
 
 A filters panel on the left side lets you narrow what the map displays:
 
-- **Group by** — select an attribute to group services (see [Group by view](#group-by-view) below)
-- **Fault Rate (5xx)** — filter by fault rate buckets: < 1%, 1–5%, > 5%
-- **Error Rate (4xx)** — filter by error rate buckets: < 1%, 1–5%, > 5%
-- **Environment** — filter to a specific deployment environment
+- **Group by** - select an attribute to group services (see [Group by view](#group-by-view) below)
+- **Fault Rate (5xx)** - filter by fault rate buckets: < 1%, 1–5%, > 5%
+- **Error Rate (4xx)** - filter by error rate buckets: < 1%, 1–5%, > 5%
+- **Environment** - filter to a specific deployment environment
 
 Applied filters appear as chips above the map (e.g., "Fault Rate (5xx): > 5% x"). Click the **x** on a chip to remove it, or click **Clear all** to reset all filters.
 
@@ -65,10 +65,10 @@ Click any service node to open a detail panel on the right side of the map. The 
 
 **Metrics**
 Four time-series charts for the selected time range:
-- **Requests** — request volume over time
-- **Latency** — P50, P90, and P99 latency lines
-- **Faults (5xx)** — 5xx fault count over time
-- **Errors (4xx)** — 4xx error count over time
+- **Requests** - request volume over time
+- **Latency** - P50, P90, and P99 latency lines
+- **Faults (5xx)** - 5xx fault count over time
+- **Errors (4xx)** - 4xx error count over time
 
 ## Group by view
 

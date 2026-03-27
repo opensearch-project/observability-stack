@@ -1,6 +1,6 @@
 ---
 title: "stats"
-description: "Calculate aggregate statistics over search results — counts, averages, percentiles, and more with grouping."
+description: "Calculate aggregate statistics over search results - counts, averages, percentiles, and more with grouping."
 ---
 
 ## Description

@@ -24,19 +24,19 @@ When a dashboard panel shows unexpected data, errors, or loads slowly, these tec
 
 ### Panel shows stale data
 
-- Check auto-refresh — if it's disabled, the dashboard only updates when you manually refresh or change the time range
-- Check the time range — "Last 1 hour" is relative and updates on refresh, but a custom absolute range (e.g., "March 4, 2pm–3pm") is fixed
-- Check data ingestion — if the pipeline is delayed, the data may not have arrived yet
+- Check auto-refresh - if it's disabled, the dashboard only updates when you manually refresh or change the time range
+- Check the time range - "Last 1 hour" is relative and updates on refresh, but a custom absolute range (e.g., "March 4, 2pm–3pm") is fixed
+- Check data ingestion - if the pipeline is delayed, the data may not have arrived yet
 
 ## Performance issues
 
 ### Dashboard loads slowly
 
 1. **Identify the slow panel:** Open browser developer tools → Network tab → refresh the dashboard. Sort requests by duration to find the slowest query.
-2. **Use panel inspect:** Open the slow panel's inspect view → Request tab. Look at the query — is it scanning too much data?
+2. **Use panel inspect:** Open the slow panel's inspect view → Request tab. Look at the query - is it scanning too much data?
 3. **Common fixes:**
    - Narrow the dashboard time range
-   - Reduce the number of panels — each panel fires a separate query
+   - Reduce the number of panels - each panel fires a separate query
    - Simplify expensive queries (remove joins, reduce distinct count operations)
    - Use `| head N` in PPL queries to limit result sets
    - For PromQL, use shorter range vectors (`[5m]` instead of `[1h]`)
@@ -54,9 +54,9 @@ The slow panel likely has an expensive query. Use inspect to see the query and r
 
 This is usually a rendering problem, not a query problem:
 
-- Too many data points in a single panel (e.g., a line chart with 100,000 points) — increase the `timechart span` to reduce granularity
-- Too many panels on one dashboard — split into multiple focused dashboards
-- Large data tables without pagination — add `| head 100` to limit rows
+- Too many data points in a single panel (e.g., a line chart with 100,000 points) - increase the `timechart span` to reduce granularity
+- Too many panels on one dashboard - split into multiple focused dashboards
+- Large data tables without pagination - add `| head 100` to limit rows
 
 ## Filter issues
 
@@ -80,9 +80,9 @@ Every dashboard panel has a built-in inspect tool that shows you exactly what's 
 2. Click the panel menu (three dots or gear icon)
 3. Select **Inspect**
 4. You'll see tabs for:
-   - **Data** — the raw data returned by the query, as a table. Check whether the values match what you expect.
-   - **Request** — the exact query sent to OpenSearch, including any filters and time ranges the dashboard applied
-   - **Response** — the raw JSON response from OpenSearch, including timing and metadata
+   - **Data** - the raw data returned by the query, as a table. Check whether the values match what you expect.
+   - **Request** - the exact query sent to OpenSearch, including any filters and time ranges the dashboard applied
+   - **Response** - the raw JSON response from OpenSearch, including timing and metadata
 
 ### What to look for
 
@@ -99,11 +99,11 @@ For deeper debugging, use your browser's developer tools alongside panel inspect
 1. Open developer tools (`Cmd+Option+I` on macOS)
 2. Switch to the **Network** tab
 3. Refresh the dashboard or change the time range
-4. Watch for requests to OpenSearch endpoints — each panel fires its own query
+4. Watch for requests to OpenSearch endpoints - each panel fires its own query
 5. Look for:
-   - **Failed requests** (red) — server errors, timeouts, or permission issues
-   - **Slow requests** — sort by duration to find the panel that's dragging down the whole dashboard
-   - **Response size** — very large responses can slow down rendering even if the query is fast
+   - **Failed requests** (red) - server errors, timeouts, or permission issues
+   - **Slow requests** - sort by duration to find the panel that's dragging down the whole dashboard
+   - **Response size** - very large responses can slow down rendering even if the query is fast
 
 ### Console tab
 
@@ -116,7 +116,7 @@ When reporting a dashboard issue:
 1. Use panel inspect to capture the request and response
 2. Note the dashboard time range and any active filters
 3. Check the browser console for errors
-4. Try the same query directly in Discover — if it works there but not on the dashboard, the issue is in the panel configuration
+4. Try the same query directly in Discover - if it works there but not on the dashboard, the issue is in the panel configuration
 5. Export the dashboard JSON (Share → Export) to preserve the exact configuration for debugging
-6. Ask in the [#observability channel](https://opensearch.org/slack) on the OpenSearch Slack workspace — the community is active and responsive
+6. Ask in the [#observability channel](https://opensearch.org/slack) on the OpenSearch Slack workspace - the community is active and responsive
 7. Search or file an issue on the [OpenSearch GitHub repo](https://github.com/opensearch-project/OpenSearch-Dashboards) for bugs or feature requests

@@ -1,11 +1,11 @@
 ---
 title: "spath"
-description: "Extract fields from structured JSON data — parse nested JSON within log bodies without re-indexing."
+description: "Extract fields from structured JSON data - parse nested JSON within log bodies without re-indexing."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Experimental — since 3.3">
+<Aside type="caution" title="Experimental - since 3.3">
 This command is production-ready but its parameters may change based on community feedback.
 </Aside>
 

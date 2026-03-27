@@ -1,6 +1,6 @@
 ---
 title: "grok"
-description: "Extract fields using grok patterns — a higher-level alternative to regex with 200+ predefined patterns."
+description: "Extract fields using grok patterns - a higher-level alternative to regex with 200+ predefined patterns."
 ---
 
 import { Aside } from '@astrojs/starlight/components';

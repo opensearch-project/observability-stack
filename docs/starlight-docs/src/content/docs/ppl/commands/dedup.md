@@ -1,6 +1,6 @@
 ---
 title: "dedup"
-description: "Remove duplicate documents based on field values — deduplicate results for unique combinations."
+description: "Remove duplicate documents based on field values - deduplicate results for unique combinations."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -117,8 +117,8 @@ source = otel-v1-apm-span-*
 
 ## See also
 
-- [top](/docs/ppl/commands/top/) — Find the most common values of a field
-- [rare](/docs/ppl/commands/rare/) — Find the least common values of a field
-- [stats](/docs/ppl/commands/) — Aggregate results when you need counts rather than sample documents
-- [head](/docs/ppl/commands/head/) — Limit the number of results returned
-- [PPL Command Reference](/docs/ppl/commands/) — All PPL commands
+- [top](/docs/ppl/commands/top/) - Find the most common values of a field
+- [rare](/docs/ppl/commands/rare/) - Find the least common values of a field
+- [stats](/docs/ppl/commands/) - Aggregate results when you need counts rather than sample documents
+- [head](/docs/ppl/commands/head/) - Limit the number of results returned
+- [PPL Command Reference](/docs/ppl/commands/) - All PPL commands

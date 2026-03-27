@@ -1,11 +1,11 @@
 ---
 title: "fillnull"
-description: "Replace null values with specified defaults — clean up missing data for analysis and visualization."
+description: "Replace null values with specified defaults - clean up missing data for analysis and visualization."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Experimental — since 3.0">
+<Aside type="caution" title="Experimental - since 3.0">
 This command is production-ready but its parameters may change based on community feedback.
 </Aside>
 

@@ -1,6 +1,6 @@
 ---
 title: "PPL Function Reference"
-description: "Complete reference for PPL built-in functions — aggregations, string manipulation, date/time, math, conditionals, JSON, IP, collections, and more."
+description: "Complete reference for PPL built-in functions - aggregations, string manipulation, date/time, math, conditionals, JSON, IP, collections, and more."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -33,7 +33,7 @@ Used with `stats`, `eventstats`, and `streamstats` to calculate summary values a
 | `list(<field>)` | Collect all values into array (with duplicates) |
 | `values(<field>)` | Collect all unique values into sorted array |
 
-**Example — Error rate with percentile latency:**
+**Example - Error rate with percentile latency:**
 ```sql
 source = otel-v1-apm-span-*
 | stats count() as total,
@@ -63,7 +63,7 @@ Conditional logic and null handling.
 | `contains(<field>, <substr>)` | True if field contains substring (case-insensitive) |
 | `regexp_match(<field>, <pattern>)` | True if regex matches |
 
-**Example — Categorize log severity:**
+**Example - Categorize log severity:**
 ```sql
 | eval severity_group = case(
     severityNumber >= 17, 'error',
@@ -73,7 +73,7 @@ Conditional logic and null handling.
 | stats count() as log_count by severity_group
 ```
 
-**Example — Safe division with null handling:**
+**Example - Safe division with null handling:**
 ```sql
 | stats count() as total, sum(case(severityText = 'ERROR', 1 else 0)) as errors
   by `resource.attributes.service.name`
@@ -106,7 +106,7 @@ Text manipulation and pattern matching.
 | `like(<str>, <pattern>)` | Wildcard pattern match (`%`, `_`) |
 | `ilike(<str>, <pattern>)` | Case-insensitive wildcard match |
 
-**Example — Extract service name prefix:**
+**Example - Extract service name prefix:**
 ```sql
 | eval service_prefix = substring(`resource.attributes.service.name`, 0, locate('-', `resource.attributes.service.name`))
 | stats count() by service_prefix
@@ -147,7 +147,7 @@ Date arithmetic, extraction, formatting, and conversion. All operations use UTC.
 | `last_day(<date>)` | Last day of month |
 | `extract(<part> FROM <date>)` | Extract date part |
 
-**Example — Log volume by hour of day:**
+**Example - Log volume by hour of day:**
 ```sql
 | eval hour = hour(time)
 | stats count() as volume by hour
@@ -186,7 +186,7 @@ Numeric operations and mathematical calculations.
 | `conv(<n>, <from_base>, <to_base>)` | Base conversion |
 | `crc32(<str>)` | CRC32 checksum |
 
-**Example — Convert nanoseconds to milliseconds and round:**
+**Example - Convert nanoseconds to milliseconds and round:**
 ```sql
 source = otel-v1-apm-span-*
 | eval duration_ms = round(durationInNanos / 1000000.0, 2)
@@ -238,7 +238,7 @@ Parse, create, and manipulate JSON data.
 | `json_append(<json>, <path>, <val>)` | Append to array at path |
 | `json_keys(<json>)` | Get object keys |
 
-**Example — Parse JSON from log body:**
+**Example - Parse JSON from log body:**
 ```sql
 | where json_valid(body)
 | eval parsed = json_extract(body, '$.error.type')
@@ -257,7 +257,7 @@ IP matching and geolocation.
 | `cidrmatch(<ip>, <cidr>)` | Check if IP is within CIDR range |
 | `geoip(<ip>)` | Look up IP geolocation |
 
-**Example — Filter internal IPs:**
+**Example - Filter internal IPs:**
 ```sql
 | where not cidrmatch(client_ip, '10.0.0.0/8')
   and not cidrmatch(client_ip, '172.16.0.0/12')
@@ -290,7 +290,7 @@ Full-text search using the OpenSearch query engine.
 | `simple_query_string(<fields>, <query>)` | Flexible query string |
 | `query_string(<fields>, <query>)` | Full query string syntax |
 
-**Example — Full-text search in log bodies:**
+**Example - Full-text search in log bodies:**
 ```sql
 | where match(body, 'connection timeout')
 | fields time, body, `resource.attributes.service.name`
@@ -323,7 +323,7 @@ Utilities for type inspection and diagnostics.
 |----------|-------------|
 | `typeof(<expr>)` | Returns the data type of an expression |
 
-**Example — Inspect field types:**
+**Example - Inspect field types:**
 ```sql
 | eval body_type = typeof(body), severity_type = typeof(severityNumber)
 | fields body_type, severity_type
@@ -334,6 +334,6 @@ Utilities for type inspection and diagnostics.
 
 ## Further reading
 
-- **[Command Reference](/docs/ppl/commands/)** — All 50+ PPL commands
-- **[Observability Examples](/docs/ppl/examples/)** — Real-world OTel queries
-- **[PPL function source docs](https://github.com/opensearch-project/sql/tree/main/docs/user/ppl/functions)** — Detailed parameter docs for every function
+- **[Command Reference](/docs/ppl/commands/)** - All 50+ PPL commands
+- **[Observability Examples](/docs/ppl/examples/)** - Real-world OTel queries
+- **[PPL function source docs](https://github.com/opensearch-project/sql/tree/main/docs/user/ppl/functions)** - Detailed parameter docs for every function

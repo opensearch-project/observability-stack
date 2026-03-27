@@ -1,6 +1,6 @@
 ---
 title: "head"
-description: "Return the first N results from the search — limit output for exploration and top-N queries."
+description: "Return the first N results from the search - limit output for exploration and top-N queries."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -116,7 +116,7 @@ This is useful for initial exploration of what data each service is producing, w
 
 ## See also
 
-- [sort](/docs/ppl/commands/) — Sort results before applying `head` for top-N queries
-- [dedup](/docs/ppl/commands/dedup/) — Deduplicate results for unique combinations
-- [PPL Command Reference](/docs/ppl/commands/) — All PPL commands
-- [Observability Examples](/docs/ppl/examples/) — Real-world OTel queries
+- [sort](/docs/ppl/commands/) - Sort results before applying `head` for top-N queries
+- [dedup](/docs/ppl/commands/dedup/) - Deduplicate results for unique combinations
+- [PPL Command Reference](/docs/ppl/commands/) - All PPL commands
+- [Observability Examples](/docs/ppl/examples/) - Real-world OTel queries

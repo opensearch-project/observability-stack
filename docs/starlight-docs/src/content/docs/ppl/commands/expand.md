@@ -1,11 +1,11 @@
 ---
 title: "expand"
-description: "Expand nested array fields into multiple documents — one row per array element."
+description: "Expand nested array fields into multiple documents - one row per array element."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Experimental — since 3.1">
+<Aside type="caution" title="Experimental - since 3.1">
 This command is production-ready but its parameters may change based on community feedback.
 </Aside>
 

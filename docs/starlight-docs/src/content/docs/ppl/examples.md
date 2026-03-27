@@ -1,14 +1,14 @@
 ---
 title: "PPL Observability Examples"
-description: "Real-world PPL queries for OpenTelemetry logs, traces, and AI agent observability — with live playground links to try each query instantly."
+description: "Real-world PPL queries for OpenTelemetry logs, traces, and AI agent observability - with live playground links to try each query instantly."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
-These examples use real OpenTelemetry data from the Observability Stack. Each query runs against the live [playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)) — click "Try in playground" to run any query instantly.
+These examples use real OpenTelemetry data from the Observability Stack. Each query runs against the live [playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)) - click "Try in playground" to run any query instantly.
 
 <Aside type="tip">
-In the Discover UI, the `source` index is set by the dataset selector, so queries start with `|`. In the examples below, we include `source = ...` for clarity — omit it when running in Discover.
+In the Discover UI, the `source` index is set by the dataset selector, so queries start with `|`. In the examples below, we include `source = ...` for clarity - omit it when running in Discover.
 </Aside>
 
 ## Index patterns
@@ -68,7 +68,7 @@ Calculate the error percentage for each service.
 
 ### Log volume over time
 
-Time-bucketed log volume — great for spotting traffic spikes.
+Time-bucketed log volume - great for spotting traffic spikes.
 
 ```sql
 | stats count() as volume by span(time, 5m) as time_bucket
@@ -99,7 +99,7 @@ Quick view of the noisiest services.
 
 ### Discover log patterns
 
-Automatically cluster similar log messages — no regex required.
+Automatically cluster similar log messages - no regex required.
 
 ```sql
 | patterns body
@@ -415,8 +415,8 @@ Always add `| head` while exploring to avoid scanning all data:
 
 ## Further reading
 
-- **[PPL Language Overview](/docs/ppl/)** — Why PPL and how it compares
-- **[Command Reference](/docs/ppl/commands/)** — Full syntax for all commands
-- **[Function Reference](/docs/ppl/functions/)** — 200+ built-in functions
-- **[Discover Logs](/docs/investigate/discover-logs/)** — Using PPL in the Logs UI
-- **[Discover Traces](/docs/investigate/discover-traces/)** — Using PPL in the Traces UI
+- **[PPL Language Overview](/docs/ppl/)** - Why PPL and how it compares
+- **[Command Reference](/docs/ppl/commands/)** - Full syntax for all commands
+- **[Function Reference](/docs/ppl/functions/)** - 200+ built-in functions
+- **[Discover Logs](/docs/investigate/discover-logs/)** - Using PPL in the Logs UI
+- **[Discover Traces](/docs/investigate/discover-traces/)** - Using PPL in the Traces UI

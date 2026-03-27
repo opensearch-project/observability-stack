@@ -18,13 +18,13 @@ Query distributed trace data to understand how requests flow through services an
 **GenAI agent analysis:**
 - "How many times was each AI agent invoked?"
 - "What is the average response time for the Travel Planner agent?"
-- "Show me token usage by model — which model consumes the most tokens?"
+- "Show me token usage by model - which model consumes the most tokens?"
 - "Find the slowest agent invocations in the last hour"
 
 **Error investigation:**
 - "Show me all error spans from the checkout service"
 - "Which services have the most errors?"
-- "Find failed tool executions — what tools are failing?"
+- "Find failed tool executions - what tools are failing?"
 
 **Latency analysis:**
 - "Find all spans taking longer than 5 seconds"
@@ -151,7 +151,7 @@ Connect traces, logs, and metrics for end-to-end incident investigation.
 
 ### Real-world workflow
 
-**"I see high error rates — what's happening?"**
+**"I see high error rates - what's happening?"**
 
 1. Claude checks Prometheus error rate by service
 2. Identifies the service with elevated errors (e.g., `weather-agent`)
@@ -224,11 +224,11 @@ Claude's built-in guide for constructing novel PPL queries beyond the standard t
 
 ### Combining skills
 
-Ask questions that span multiple skills — Claude automatically routes to the right ones:
+Ask questions that span multiple skills - Claude automatically routes to the right ones:
 
 - "The checkout service is slow. Show me its p95 latency, recent error logs, and the slowest traces."
 - "Compare the error rate in Prometheus with actual error spans in OpenSearch"
-- "An agent is failing — show me the traces, associated logs, and token usage"
+- "An agent is failing - show me the traces, associated logs, and token usage"
 
 ### Iterative investigation
 

@@ -64,24 +64,6 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Agent Observability',
-					collapsed: true,
-					items: [
-						{ label: 'Overview', link: '/ai-observability/' },
-						{ label: 'Getting Started', link: '/ai-observability/getting-started/' },
-						{ label: 'Framework Integrations', link: '/send-data/ai-agents/integrations/' },
-						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
-						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
-						{ label: 'Evaluation & Scoring', link: '/ai-observability/evaluation/' },
-						{ label: 'Evaluation Integrations', link: '/ai-observability/evaluation-integrations/' },
-					],
-				},
-				{
-					label: 'Agent Health',
-					collapsed: true,
-					autogenerate: { directory: 'agent-health' },
-				},
-				{
 					label: 'Send Data',
 					collapsed: true,
 					items: [
@@ -105,7 +87,7 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'PPL — Query Language',
+					label: 'PPL - Query Language',
 					collapsed: true,
 					items: [
 						{ label: 'Overview', link: '/ppl/' },
@@ -195,6 +177,19 @@ export default defineConfig({
 					autogenerate: { directory: 'investigate' },
 				},
 				{
+					label: 'Agent Observability',
+					collapsed: true,
+					items: [
+						{ label: 'Overview', link: '/ai-observability/' },
+						{ label: 'Getting Started', link: '/ai-observability/getting-started/' },
+						{ label: 'Framework Integrations', link: '/send-data/ai-agents/integrations/' },
+						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
+						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
+						{ label: 'Evaluation & Scoring', link: '/ai-observability/evaluation/' },
+						{ label: 'Evaluation Integrations', link: '/ai-observability/evaluation-integrations/' },
+					],
+				},
+				{
 					label: 'Application Monitoring',
 					collapsed: true,
 					autogenerate: { directory: 'apm' },
@@ -205,7 +200,7 @@ export default defineConfig({
 					autogenerate: { directory: 'dashboards' },
 				},
 				{
-					label: 'Alerting & Detection',
+					label: 'Alerting',
 					collapsed: true,
 					items: [
 						{ label: 'Alerting', link: '/alerting/' },
@@ -214,7 +209,12 @@ export default defineConfig({
 					],
 				},
 				{
-					label: 'Reference',
+					label: 'Agent Health',
+					collapsed: true,
+					autogenerate: { directory: 'agent-health' },
+				},
+				{
+					label: 'SDKs, MCP & Clients',
 					collapsed: true,
 					items: [
 						{ label: 'Python SDK', link: '/send-data/ai-agents/python/' },

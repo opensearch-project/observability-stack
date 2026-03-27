@@ -1,11 +1,11 @@
 ---
 title: "flatten"
-description: "Flatten struct or object fields into separate top-level fields — simplify nested data structures."
+description: "Flatten struct or object fields into separate top-level fields - simplify nested data structures."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="caution" title="Experimental — since 3.1">
+<Aside type="caution" title="Experimental - since 3.1">
 This command is production-ready but its parameters may change based on community feedback.
 </Aside>
 

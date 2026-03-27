@@ -1,6 +1,6 @@
 ---
 title: "rare"
-description: "Find the least common values of a field — surface anomalies and unusual patterns."
+description: "Find the least common values of a field - surface anomalies and unusual patterns."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -110,8 +110,8 @@ This is especially useful after a deployment: if a new operation name appears in
 
 ## See also
 
-- [top](/docs/ppl/commands/top/) — The inverse of `rare`: find the most common values
-- [dedup](/docs/ppl/commands/dedup/) — Deduplicate to get unique values with sample documents
-- [stats](/docs/ppl/commands/) — For more detailed frequency analysis with custom aggregations
-- [patterns](/docs/ppl/commands/) — Automatically discover and cluster log patterns
-- [PPL Command Reference](/docs/ppl/commands/) — All PPL commands
+- [top](/docs/ppl/commands/top/) - The inverse of `rare`: find the most common values
+- [dedup](/docs/ppl/commands/dedup/) - Deduplicate to get unique values with sample documents
+- [stats](/docs/ppl/commands/) - For more detailed frequency analysis with custom aggregations
+- [patterns](/docs/ppl/commands/) - Automatically discover and cluster log patterns
+- [PPL Command Reference](/docs/ppl/commands/) - All PPL commands

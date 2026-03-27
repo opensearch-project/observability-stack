@@ -1,18 +1,18 @@
 ---
 title: "trendline"
-description: "Calculate moving averages — simple (SMA) and weighted (WMA) for trend analysis and smoothing."
+description: "Calculate moving averages - simple (SMA) and weighted (WMA) for trend analysis and smoothing."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution">
-**Experimental** since OpenSearch 3.0 — syntax may change based on community feedback.
+**Experimental** since OpenSearch 3.0 - syntax may change based on community feedback.
 </Aside>
 
 The `trendline` command calculates moving averages over a sorted sequence of events. It supports two types:
 
-- **SMA (Simple Moving Average)** — all data points in the window are weighted equally.
-- **WMA (Weighted Moving Average)** — more recent data points receive higher weight, making the average more responsive to recent changes.
+- **SMA (Simple Moving Average)** - all data points in the window are weighted equally.
+- **WMA (Weighted Moving Average)** - more recent data points receive higher weight, making the average more responsive to recent changes.
 
 Use `trendline` to smooth noisy time-series data, reveal underlying trends in latency or throughput, and detect gradual shifts in system behavior.
 
@@ -125,7 +125,7 @@ source = otel-v1-apm-span-*
 
 ## See also
 
-- [streamstats](/docs/ppl/commands/streamstats/) — cumulative and rolling window statistics with more control
-- [eventstats](/docs/ppl/commands/eventstats/) — add group-level aggregates to every event
-- [stats](/docs/ppl/commands/) — aggregate and collapse rows
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [streamstats](/docs/ppl/commands/streamstats/) - cumulative and rolling window statistics with more control
+- [eventstats](/docs/ppl/commands/eventstats/) - add group-level aggregates to every event
+- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

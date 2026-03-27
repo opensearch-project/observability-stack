@@ -1,6 +1,6 @@
 ---
 title: "parse"
-description: "Extract fields from text using regular expressions — turn unstructured log data into structured fields."
+description: "Extract fields from text using regular expressions - turn unstructured log data into structured fields."
 ---
 
 import { Aside } from '@astrojs/starlight/components';

@@ -1,6 +1,6 @@
 ---
 title: "rename"
-description: "Rename fields in search results — simplify long OTel attribute names for readability."
+description: "Rename fields in search results - simplify long OTel attribute names for readability."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
@@ -122,6 +122,6 @@ source = otel-v1-apm-span-*
 
 ## See also
 
-- [fields](/docs/ppl/commands/) — select or exclude fields
-- [eval](/docs/ppl/commands/) — create computed fields
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [fields](/docs/ppl/commands/) - select or exclude fields
+- [eval](/docs/ppl/commands/) - create computed fields
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

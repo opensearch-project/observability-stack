@@ -1,11 +1,11 @@
 ---
 title: "describe"
-description: "Query index metadata — discover available fields, types, and schema information."
+description: "Query index metadata - discover available fields, types, and schema information."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-<Aside type="tip" title="Stable — since 2.1">
+<Aside type="tip" title="Stable - since 2.1">
 This command has a fixed API.
 </Aside>
 

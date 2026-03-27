@@ -1,12 +1,12 @@
 ---
 title: "eventstats"
-description: "Add aggregation statistics as new fields to every event — enrich each row with group-level context."
+description: "Add aggregation statistics as new fields to every event - enrich each row with group-level context."
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 
 <Aside type="caution">
-**Experimental** since OpenSearch 3.1 — syntax may change based on community feedback.
+**Experimental** since OpenSearch 3.1 - syntax may change based on community feedback.
 </Aside>
 
 The `eventstats` command calculates summary statistics and appends them as new fields to **every** event in your results. Unlike `stats`, which collapses rows into an aggregation table, `eventstats` preserves every original event and adds the computed values alongside.
@@ -127,7 +127,7 @@ source = logs-otel-v1*
 
 ## See also
 
-- [stats](/docs/ppl/commands/) — aggregate and collapse rows
-- [streamstats](/docs/ppl/commands/streamstats/) — cumulative and rolling window statistics
-- [trendline](/docs/ppl/commands/trendline/) — moving averages
-- [Command Reference](/docs/ppl/commands/) — all PPL commands
+- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [streamstats](/docs/ppl/commands/streamstats/) - cumulative and rolling window statistics
+- [trendline](/docs/ppl/commands/trendline/) - moving averages
+- [Command Reference](/docs/ppl/commands/) - all PPL commands

@@ -1,6 +1,6 @@
 ---
 title: "patterns"
-description: "Automatically discover log patterns — cluster similar log messages without writing regex."
+description: "Automatically discover log patterns - cluster similar log messages without writing regex."
 ---
 
 import { Aside } from '@astrojs/starlight/components';

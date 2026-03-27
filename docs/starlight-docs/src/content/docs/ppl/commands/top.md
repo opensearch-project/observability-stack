@@ -1,6 +1,6 @@
 ---
 title: "top"
-description: "Find the most common values of a field — quickly identify dominant patterns in your data."
+description: "Find the most common values of a field - quickly identify dominant patterns in your data."
 ---
 
 import { Aside } from '@astrojs/starlight/components';
@@ -110,8 +110,8 @@ This helps identify hot paths in your microservices architecture -- the operatio
 
 ## See also
 
-- [rare](/docs/ppl/commands/rare/) — The inverse of `top`: find the least common values
-- [stats](/docs/ppl/commands/) — For more complex aggregations beyond simple frequency counts
-- [dedup](/docs/ppl/commands/dedup/) — Deduplicate to get unique values with sample documents
-- [head](/docs/ppl/commands/head/) — Limit the number of results returned
-- [PPL Command Reference](/docs/ppl/commands/) — All PPL commands
+- [rare](/docs/ppl/commands/rare/) - The inverse of `top`: find the least common values
+- [stats](/docs/ppl/commands/) - For more complex aggregations beyond simple frequency counts
+- [dedup](/docs/ppl/commands/dedup/) - Deduplicate to get unique values with sample documents
+- [head](/docs/ppl/commands/head/) - Limit the number of results returned
+- [PPL Command Reference](/docs/ppl/commands/) - All PPL commands
