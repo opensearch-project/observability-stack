@@ -2,7 +2,7 @@
  * Default configuration values.
  */
 export const DEFAULTS = {
-  pipelineName: 'observability-stack',
+  pipelineName: `open-stack-${Math.floor(Date.now() / 1000)}`,
   osInstanceType: 'r6g.large.search',
   osInstanceCount: 1,
   osVolumeSize: 100,

@@ -57,4 +57,5 @@ export async function runDescribe(session) {
   }
 
   printPanel(`${stackName}`, entries);
+  console.error();
 }

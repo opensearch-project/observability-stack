@@ -135,7 +135,7 @@ export async function executePipeline(cfg) {
   await createOsiPipeline(cfg, pipelineYaml);
   console.error();
 
-  // Set up OpenSearch Dashboards and create Observability workspace
+  // Set up OpenSearch UI and create Observability workspace
   await setupDashboards(cfg);
 
   // ── Final summary ───────────────────────────────────────────────────
@@ -146,7 +146,6 @@ export async function executePipeline(cfg) {
     '',
     `${theme.label('Pipeline:')}     ${cfg.pipelineName}`,
     `${theme.label('OpenSearch:')}   ${cfg.opensearchEndpoint}`,
-    `${theme.label('Application:')} ${cfg.appEndpoint || cfg.appId || 'n/a'}`,
     `${theme.label('Dashboards:')}   ${cfg.dashboardsUrl}`,
     `${theme.label('IAM Role:')}     ${cfg.iamRoleArn}`,
     `${theme.label('Prometheus:')}   ${cfg.prometheusUrl}`,
@@ -154,17 +153,6 @@ export async function executePipeline(cfg) {
     '',
   ], { color: 'primary', padding: 2 });
 
-  console.error();
-  printBox([
-    '',
-    `${theme.muted('# Check pipeline status')}`,
-    `${theme.accentBold(`aws osis get-pipeline --pipeline-name ${cfg.pipelineName} --region ${cfg.region}`)}`,
-    '',
-    `${theme.muted('# Delete pipeline')}`,
-    `${theme.accentBold(`aws osis delete-pipeline --pipeline-name ${cfg.pipelineName} --region ${cfg.region}`)}`,
-    '',
-  ], { title: 'Useful commands', color: 'dim', padding: 2 });
-  console.error();
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────
@@ -245,7 +233,7 @@ function printSummary(cfg) {
     ['', theme.accentBold('OpenSearch')],
     ...osEntries,
     ['', ''],
-    ['', theme.accentBold('OpenSearch Dashboards')],
+    ['', theme.accentBold('OpenSearch UI')],
     ...dashEntries,
     ['', ''],
     ['', theme.accentBold('IAM Role')],

@@ -7,6 +7,7 @@ import {
   DescribeDomainsCommand,
   AddDirectQueryDataSourceCommand,
   CreateApplicationCommand,
+  GetApplicationCommand,
   UpdateApplicationCommand,
   ListApplicationsCommand,
 } from '@aws-sdk/client-opensearch';
@@ -420,11 +421,11 @@ export async function mapOsiRoleInDomain(cfg) {
     } else {
       const body = await resp.text();
       printWarning(`FGAC mapping returned ${resp.status}: ${body}`);
-      printInfo('You may need to manually map the IAM role in OpenSearch Dashboards → Security → Roles');
+      printInfo('You may need to manually map the IAM role in OpenSearch UI → Security → Roles');
     }
   } catch (err) {
     printWarning(`Could not map OSI role in FGAC: ${err.message}`);
-    printInfo('You may need to manually map the IAM role in OpenSearch Dashboards → Security → Roles');
+    printInfo('You may need to manually map the IAM role in OpenSearch UI → Security → Roles');
   }
 }
 
@@ -648,10 +649,10 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   printInfo(`Check: aws osis get-pipeline --pipeline-name ${cfg.pipelineName} --region ${cfg.region}`);
 }
 
-// ── OpenSearch Dashboards workspace ──────────────────────────────────────────
+// ── OpenSearch UI workspace ──────────────────────────────────────────
 
 /**
- * Set up OpenSearch Dashboards: derive the URL and create an Observability workspace.
+ * Set up OpenSearch UI: derive the URL and create an Observability workspace.
  * Skipped when dashboardsAction is 'reuse' (user provided their own URL).
  * For managed domains, uses basic auth to call the Dashboards API.
  * For serverless, provides the URL only (workspace setup via AWS console).
@@ -659,22 +660,29 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
 export async function setupDashboards(cfg) {
   if (!cfg.opensearchEndpoint) return;
   if (cfg.dashboardsAction === 'reuse') {
-    printStep('OpenSearch Dashboards');
+    printStep('OpenSearch UI');
     printSuccess(`Using existing Dashboards: ${cfg.dashboardsUrl}`);
     return;
   }
 
-  printStep('Setting up OpenSearch Dashboards...');
+  printStep('Setting up OpenSearch UI...');
 
-  // Derive Dashboards URL from OpenSearch endpoint
-  cfg.dashboardsUrl = `${cfg.opensearchEndpoint}/_dashboards`;
-  printSuccess(`Dashboards URL: ${cfg.dashboardsUrl}`);
+  // Use OpenSearch Application URL if available, otherwise fall back to endpoint
+  if (!cfg.appEndpoint && cfg.appId) {
+    const client = new OpenSearchClient({ region: cfg.region });
+    await fetchAppEndpoint(client, cfg);
+  }
+  if (cfg.appEndpoint) {
+    cfg.dashboardsUrl = `${cfg.appEndpoint}/_dashboards`;
+    printSuccess(`Dashboards URL: ${cfg.dashboardsUrl}`);
+  } else {
+    cfg.dashboardsUrl = `${cfg.opensearchEndpoint}/_dashboards`;
+    printSuccess(`Dashboards URL: ${cfg.dashboardsUrl}`);
+  }
 
   // Create observability workspace (managed domains only — uses basic auth)
-  if (!cfg.serverless) {
+  if (!cfg.serverless && !cfg.appEndpoint) {
     await createObservabilityWorkspace(cfg);
-  } else {
-    printInfo('Create an Observability workspace in OpenSearch Dashboards to view traces, logs, and metrics');
   }
 }
 
@@ -734,11 +742,11 @@ async function createObservabilityWorkspace(cfg) {
     } else {
       const body = await resp.text();
       printWarning(`Could not create Observability workspace (${resp.status}): ${body}`);
-      printInfo('You can create one manually in OpenSearch Dashboards → Workspaces');
+      printInfo('You can create one manually in OpenSearch UI → Workspaces');
     }
   } catch (err) {
     printWarning(`Could not create Observability workspace: ${err.message}`);
-    printInfo('You can create one manually in OpenSearch Dashboards → Workspaces');
+    printInfo('You can create one manually in OpenSearch UI → Workspaces');
   }
 }
 
@@ -867,8 +875,8 @@ export async function createOpenSearchApplication(cfg) {
     const existing = (list.ApplicationSummaries || []).find((a) => a.name === appName);
     if (existing) {
       cfg.appId = existing.id;
-      cfg.appEndpoint = existing.endpoint;
       printSuccess(`Application '${appName}' already exists (id: ${cfg.appId})`);
+      await fetchAppEndpoint(client, cfg);
       // Update data sources on existing app
       await associateDataSourcesWithApp(cfg, client);
       return;
@@ -876,24 +884,7 @@ export async function createOpenSearchApplication(cfg) {
   } catch { /* proceed to create */ }
 
   // Build data sources list
-  const dataSources = [];
-  if (cfg.serverless) {
-    // Serverless collection ARN: arn:aws:aoss:{region}:{accountId}:collection/{id}
-    // We need the collection ARN — derive from endpoint
-    const collectionId = extractServerlessCollectionId(cfg.opensearchEndpoint);
-    if (collectionId) {
-      dataSources.push({
-        dataSourceArn: `arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${collectionId}`,
-      });
-    }
-  } else if (cfg.osDomainName) {
-    dataSources.push({
-      dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName}`,
-    });
-  }
-  if (cfg.dqsDataSourceArn) {
-    dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
-  }
+  const dataSources = buildAppDataSources(cfg);
 
   try {
     const result = await client.send(new CreateApplicationCommand({
@@ -904,14 +895,11 @@ export async function createOpenSearchApplication(cfg) {
       },
     }));
     cfg.appId = result.id;
-    cfg.appEndpoint = result.endpoint;
     printSuccess(`Application created: ${cfg.appId}`);
-    if (cfg.appEndpoint) {
-      printInfo(`Application endpoint: ${cfg.appEndpoint}`);
-    }
     if (result.arn) {
       await tagResource(cfg.region, result.arn, cfg.pipelineName);
     }
+    await fetchAppEndpoint(client, cfg);
   } catch (err) {
     if (/already exists/i.test(err.message) || err.name === 'ResourceAlreadyExistsException' || err.name === 'ConflictException') {
       printSuccess(`Application '${appName}' already exists`);
@@ -921,7 +909,7 @@ export async function createOpenSearchApplication(cfg) {
         const existing = (list.ApplicationSummaries || []).find((a) => a.name === appName);
         if (existing) {
           cfg.appId = existing.id;
-          cfg.appEndpoint = existing.endpoint;
+          await fetchAppEndpoint(client, cfg);
           await associateDataSourcesWithApp(cfg, client);
         }
       } catch { /* best effort */ }
@@ -933,11 +921,23 @@ export async function createOpenSearchApplication(cfg) {
 }
 
 /**
- * Associate the OpenSearch domain and DQS data source with the application.
+ * Fetch the application endpoint via GetApplicationCommand.
  */
-async function associateDataSourcesWithApp(cfg, client) {
+async function fetchAppEndpoint(client, cfg) {
   if (!cfg.appId) return;
+  try {
+    const resp = await client.send(new GetApplicationCommand({ id: cfg.appId }));
+    cfg.appEndpoint = resp.endpoint || '';
+    if (cfg.appEndpoint) {
+      printInfo(`Application URL: ${cfg.appEndpoint}/_dashboards`);
+    }
+  } catch { /* best effort */ }
+}
 
+/**
+ * Build the data sources list for application create/update.
+ */
+function buildAppDataSources(cfg) {
   const dataSources = [];
   if (cfg.serverless) {
     const collectionId = extractServerlessCollectionId(cfg.opensearchEndpoint);
@@ -954,15 +954,23 @@ async function associateDataSourcesWithApp(cfg, client) {
   if (cfg.dqsDataSourceArn) {
     dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
   }
+  return dataSources;
+}
 
+/**
+ * Associate the OpenSearch domain and DQS data source with the application.
+ */
+async function associateDataSourcesWithApp(cfg, client) {
+  if (!cfg.appId) return;
+
+  const dataSources = buildAppDataSources(cfg);
   if (dataSources.length === 0) return;
 
   try {
-    const result = await client.send(new UpdateApplicationCommand({
+    await client.send(new UpdateApplicationCommand({
       id: cfg.appId,
       dataSources,
     }));
-    cfg.appEndpoint = result.endpoint || cfg.appEndpoint;
     printSuccess('Data sources associated with application');
   } catch (err) {
     printWarning(`Could not associate data sources: ${err.message}`);
@@ -1066,6 +1074,20 @@ export async function listWorkspaces(region) {
       id: w.workspaceId,
       url: `https://aps-workspaces.${region}.amazonaws.com/workspaces/${w.workspaceId}/api/v1/remote_write`,
     }));
+}
+
+/**
+ * List OpenSearch Applications in the given region.
+ * Returns [{ name, id, endpoint }].
+ */
+export async function listApplications(region) {
+  const client = new OpenSearchClient({ region });
+  const resp = await client.send(new ListApplicationsCommand({}));
+  return (resp.ApplicationSummaries || []).map((a) => ({
+    name: a.name,
+    id: a.id,
+    endpoint: a.endpoint || '',
+  }));
 }
 
 // ── Pipeline listing / describe / update ─────────────────────────────────────

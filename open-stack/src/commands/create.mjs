@@ -65,7 +65,7 @@ function renderArchitectureDiagram(cfg) {
   const svc     = box([m('Service'), m('Map')], 9);
   const os      = box([p(osLabel), m('logs, traces, svc-map')]);
   const prom    = box([p('Prometheus'), m('metrics, svc-map')]);
-  const dash    = box([p('OpenSearch Dashboards'), m('Observability workspace')]);
+  const dash    = box([p('OpenSearch UI'), m('Observability workspace')]);
 
   // ── Layout positions ──────────────────────────────────────────────────
   const sigGap  = 2;

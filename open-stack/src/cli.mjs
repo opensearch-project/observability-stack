@@ -49,7 +49,7 @@ export function parseCli(argv) {
 
   // Dashboards
   program
-    .option('--dashboards-url <url>', 'Reuse an existing OpenSearch Dashboards URL');
+    .option('--dashboards-url <url>', 'Reuse an existing OpenSearch UI URL');
 
   // Pipeline tuning
   program
@@ -212,7 +212,7 @@ export function validateConfig(cfg) {
     errors.push('--prometheus-url required when reusing APS workspace');
   }
   if (cfg.dashboardsAction === 'reuse' && !cfg.dashboardsUrl) {
-    errors.push('--dashboards-url required when reusing OpenSearch Dashboards');
+    errors.push('--dashboards-url required when reusing OpenSearch UI');
   }
 
   // Format checks

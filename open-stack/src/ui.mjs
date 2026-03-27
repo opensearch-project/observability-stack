@@ -29,9 +29,11 @@ export const DOT = '\u2022';
 export const DIAMOND = '\u25C6';
 
 // Box-drawing characters
+const DIVIDER = Symbol('divider');
+
 const BOX = {
   tl: '\u256D', tr: '\u256E', bl: '\u2570', br: '\u256F', // rounded corners
-  h: '\u2500', v: '\u2502',
+  h: '\u2500', v: '\u2502', lT: '\u251C', rT: '\u2524',
   ltee: '\u251C', rtee: '\u2524',
 };
 
@@ -52,7 +54,7 @@ export function renderBox(lines, opts = {}) {
 
   // Strip ANSI for width calculation
   const stripAnsi = (s) => s.replace(/\x1B\[[0-9;]*m/g, '');
-  const innerWidth = opts.width || Math.max(...lines.map((l) => stripAnsi(l).length)) + pad * 2;
+  const innerWidth = opts.width || Math.max(...lines.filter((l) => typeof l === 'string').map((l) => stripAnsi(l).length)) + pad * 2;
 
   const colorFn = opts.color === 'dim' ? chalk.dim
     : opts.color === 'primary' ? theme.primary
@@ -73,6 +75,10 @@ export function renderBox(lines, opts = {}) {
 
   const boxLines = [topBorder];
   for (const line of lines) {
+    if (line === DIVIDER) {
+      boxLines.push(colorFn(BOX.lT + BOX.h.repeat(innerWidth) + BOX.rT));
+      continue;
+    }
     const visLen = stripAnsi(line).length;
     const rightPad = Math.max(0, innerWidth - pad * 2 - visLen);
     boxLines.push(colorFn(BOX.v) + sp + line + ' '.repeat(rightPad) + sp + colorFn(BOX.v));
@@ -153,7 +159,7 @@ export function printInfo(msg) {
 
 // Spinner — wraps ora for consistent styling
 export function createSpinner(text) {
-  return ora({ text, stream: process.stderr, spinner: 'dots', color: 'magenta' });
+  return ora({ text, stream: process.stderr, spinner: 'dots', color: 'magenta', indent: 2 });
 }
 
 // ── Key hints ────────────────────────────────────────────────────────────────
@@ -184,14 +190,97 @@ export function formatKeysHelpTip(extraHints) {
 
 // ── Shared escape-wrapped prompts ────────────────────────────────────────────
 
+const _promptPrefix = { idle: '  ?', done: '  ✔', canceled: '  ✖' };
+
 const _selectKeyTheme = {
-  style: { keysHelpTip: formatKeysHelpTip([['Esc', 'back']]) },
+  prefix: _promptPrefix,
+  style: { keysHelpTip: formatKeysHelpTip([['/', 'search'], ['Esc', 'back']]) },
+  keybindings: ['vim'],
 };
 
-const _eSelect = withEscape(select, { vimKeys: true });
-export const eSelect = (opts) => _eSelect({ theme: _selectKeyTheme, ...opts });
 export const eInput = withEscape(input);
 export const eConfirm = withEscape(confirm);
+
+// ── Searchable select ───────────────────────────────────────────────────────
+
+const _SearchMode = Symbol('SearchMode');
+
+/**
+ * Wrap select so Escape → GoBack and '/' → SearchMode.
+ */
+function _selectWithEscapeAndSearch(opts) {
+  if (!_keypressInit && process.stdin.isTTY) {
+    readline.emitKeypressEvents(process.stdin);
+    _keypressInit = true;
+  }
+
+  const promise = select(opts);
+  let escaped = false;
+  let search = false;
+
+  const onKeypress = (_ch, key) => {
+    if (key?.name === 'escape') {
+      escaped = true;
+      promise.cancel();
+    } else if (key?.sequence === '/') {
+      search = true;
+      promise.cancel();
+    }
+  };
+
+  process.stdin.on('keypress', onKeypress);
+
+  return promise.then(
+    (val) => { process.stdin.removeListener('keypress', onKeypress); return val; },
+    (err) => {
+      process.stdin.removeListener('keypress', onKeypress);
+      if (escaped) return GoBack;
+      if (search) return _SearchMode;
+      if (err.name === 'ExitPromptError') {
+        console.error();
+        console.error(`  ${theme.muted('Goodbye.')}`);
+        console.error();
+        process.exit(0);
+      }
+      throw err;
+    },
+  );
+}
+
+/**
+ * Select prompt with vim navigation, Escape-to-go-back, and '/' search.
+ * Pressing '/' opens a search input; the matching choice becomes pre-selected.
+ */
+export async function eSelect(opts) {
+  const fullOpts = { loop: false, theme: _selectKeyTheme, ...opts };
+  let defaultValue = fullOpts.default;
+
+  while (true) {
+    const result = await _selectWithEscapeAndSearch({ ...fullOpts, default: defaultValue });
+
+    if (result === GoBack) return GoBack;
+
+    if (result === _SearchMode) {
+      const term = await eInput({
+        message: theme.accent('/'),
+        theme: { prefix: _promptPrefix },
+      });
+      if (term === GoBack || !term) continue;
+
+      const lower = term.toLowerCase();
+      const match = fullOpts.choices.find((c) => {
+        if (c.type === 'separator' || c.disabled) return false;
+        const name = (c.name || String(c.value || '')).toLowerCase();
+        return name.includes(lower);
+      });
+
+      if (match) defaultValue = match.value;
+      continue;
+    }
+
+    return result;
+  }
+}
 
 // ── Pipeline status colorizer ────────────────────────────────────────────────
 
@@ -224,15 +313,18 @@ export function formatDate(d) {
 
 // ── REPL banner ──────────────────────────────────────────────────────────────
 
-export function printBanner() {
+export function printBanner(session) {
   console.error();
-  const banner = [
-    '',
-    `${theme.primaryBold('Open Stack')}`,
+  const lines = [
     `${theme.muted('Create and manage your observability stack on AWS')}`,
-    '',
   ];
-  printBox(banner, { color: 'primary', padding: 2 });
+  if (session) {
+    lines.push(DIVIDER);
+    lines.push(`${theme.muted('Account')}  ${session.account}`);
+    lines.push(`${theme.muted('Region')}   ${session.region}`);
+    lines.push(`${theme.muted('Identity')} ${theme.muted(session.arn)}`);
+  }
+  printBox(lines, { title: 'Open Stack', color: 'primary', padding: 2 });
 }
 
 // ── Horizontal divider ──────────────────────────────────────────────────────
@@ -251,10 +343,8 @@ let _keypressInit = false;
  * Wrap an @inquirer/prompts function so that pressing Escape cancels
  * the prompt and returns the GoBack sentinel instead of throwing.
  * @param {Function} promptFn
- * @param {Object}   [opts]
- * @param {boolean}  [opts.vimKeys] - Remap j/k to down/up arrow keys
  */
-export function withEscape(promptFn, { vimKeys = false } = {}) {
+export function withEscape(promptFn) {
   return (...args) => {
     if (!_keypressInit && process.stdin.isTTY) {
       readline.emitKeypressEvents(process.stdin);
@@ -268,10 +358,6 @@ export function withEscape(promptFn, { vimKeys = false } = {}) {
       if (key?.name === 'escape') {
         escaped = true;
         promise.cancel();
-      } else if (vimKeys && key?.name === 'j') {
-        process.stdin.emit('keypress', '', { name: 'down' });
-      } else if (vimKeys && key?.name === 'k') {
-        process.stdin.emit('keypress', '', { name: 'up' });
       }
     };
 

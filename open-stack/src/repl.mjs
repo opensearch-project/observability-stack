@@ -2,7 +2,7 @@ import { input } from '@inquirer/prompts';
 import { STSClient, GetCallerIdentityCommand } from '@aws-sdk/client-sts';
 import {
   printBanner, printDivider, printError, printInfo,
-  printPanel, theme, GoBack, eSelect,
+  theme, GoBack, eSelect,
 } from './ui.mjs';
 import { COMMANDS, COMMAND_CHOICES } from './commands/index.mjs';
 
@@ -29,27 +29,21 @@ async function initSession() {
     throw err;
   }
 
-  printPanel('Session', [
-    ['Account', identity.Account],
-    ['Region', region],
-    ['Identity', theme.muted(identity.Arn)],
-  ]);
-
-  return { region, accountId: identity.Account };
+  return { region, accountId: identity.Account, arn: identity.Arn };
 }
 
 /**
  * Start the interactive REPL loop.
  */
 export async function startRepl() {
-  printBanner();
-
   let session;
   try {
     session = await initSession();
   } catch {
     process.exit(1);
   }
+
+  printBanner({ account: session.accountId, region: session.region, arn: session.arn });
 
   console.error();
 

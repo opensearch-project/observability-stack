@@ -3,7 +3,7 @@ import {
   createSpinner, theme, GoBack, eSelect, eInput,
 } from './ui.mjs';
 import { createDefaultConfig, DEFAULTS } from './config.mjs';
-import { listDomains, listWorkspaces } from './aws.mjs';
+import { listDomains, listWorkspaces, listApplications } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
 
@@ -194,7 +194,8 @@ async function stepOpenSearch(cfg) {
 async function stepIam(cfg) {
   if (cfg.mode !== 'advanced') return 'skip';
 
-  printStep('IAM role');
+  printStep('IAM role for OSI pipeline');
+  printInfo('This role allows the ingestion pipeline to write to OpenSearch and Prometheus');
   console.error();
 
   const iamChoice = await eSelect({
@@ -209,7 +210,7 @@ async function stepIam(cfg) {
 
   if (iamChoice === 'reuse') {
     cfg.iamAction = 'reuse';
-    const arn = await promptArn();
+    const arn = await promptArn('IAM role ARN');
     if (arn === GoBack) return GoBack;
     cfg.iamRoleArn = arn;
   } else {
@@ -276,16 +277,75 @@ async function stepAps(cfg) {
   }
 }
 
-async function stepDashboards(cfg) {
+async function stepDqsRole(cfg) {
   if (cfg.mode !== 'advanced') return 'skip';
 
-  printStep('OpenSearch Dashboards');
+  printStep('Direct Query IAM role');
+  printInfo('This role allows OpenSearch to query Prometheus metrics via Direct Query Service');
   console.error();
 
   const choice = await eSelect({
     message: 'Create new or reuse existing?',
     choices: [
-      { name: `Create new ${theme.muted('\u2014 set up Observability workspace automatically')}`, value: 'create' },
+      { name: 'Create new', value: 'create' },
+      { name: 'Reuse existing', value: 'reuse' },
+      { name: `Skip ${theme.muted('\u2014 no Prometheus integration')}`, value: 'skip' },
+    ],
+    default: cfg.dqsRoleName ? 'create' : 'create',
+  });
+  if (choice === GoBack) return GoBack;
+
+  if (choice === 'skip') {
+    cfg.dqsRoleName = '';
+    cfg.dqsDataSourceName = '';
+    cfg.appName = '';
+    return;
+  }
+
+  if (choice === 'reuse') {
+    const arn = await promptArn('DQS role ARN');
+    if (arn === GoBack) return GoBack;
+    cfg.dqsRoleArn = arn;
+    cfg.dqsRoleName = '';
+  } else {
+    const roleName = await eInput({
+      message: 'DQS role name',
+      default: cfg.dqsRoleName || `${cfg.pipelineName}-dqs-prometheus-role`,
+    });
+    if (roleName === GoBack) return GoBack;
+    cfg.dqsRoleName = roleName;
+  }
+}
+
+async function stepDqsDataSource(cfg) {
+  if (cfg.mode !== 'advanced') return 'skip';
+  // Skip if no DQS role was configured
+  if (!cfg.dqsRoleName && !cfg.dqsRoleArn) return 'skip';
+
+  printStep('Direct Query data source');
+  printInfo('Connects OpenSearch to Prometheus so you can query metrics from OpenSearch UI');
+  console.error();
+
+  const dsName = await eInput({
+    message: 'Data source name',
+    default: cfg.dqsDataSourceName || `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`,
+    validate: (v) => /^[a-z][a-z0-9_]+$/.test(v.trim()) || 'Must match [a-z][a-z0-9_]+ (lowercase, underscores only)',
+  });
+  if (dsName === GoBack) return GoBack;
+  cfg.dqsDataSourceName = dsName;
+}
+
+async function stepApp(cfg) {
+  if (cfg.mode !== 'advanced') return 'skip';
+
+  printStep('OpenSearch UI');
+  printInfo('The OpenSearch Application provides a unified dashboard for your observability data');
+  console.error();
+
+  const choice = await eSelect({
+    message: 'Create new or reuse existing?',
+    choices: [
+      { name: `Create new ${theme.muted('\u2014 creates an OpenSearch Application with data sources')}`, value: 'create' },
       { name: 'Reuse existing', value: 'reuse' },
     ],
     default: cfg.dashboardsAction || 'create',
@@ -295,12 +355,44 @@ async function stepDashboards(cfg) {
   if (choice === 'reuse') {
     cfg.dashboardsAction = 'reuse';
 
-    const url = await promptUrl('OpenSearch Dashboards URL');
-    if (url === GoBack) return GoBack;
-    cfg.dashboardsUrl = url;
+    const apps = await fetchWithSpinner(
+      'Loading OpenSearch Applications',
+      () => listApplications(cfg.region),
+    );
+
+    if (apps.length > 0) {
+      const choices = apps.map((a) => ({
+        name: a.endpoint
+          ? `${a.name} ${theme.muted(`\u2014 ${a.endpoint}`)}`
+          : `${a.name} ${theme.muted(`(${a.id})`)}`,
+        value: a.endpoint || a.id,
+      }));
+      choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
+
+      const selected = await eSelect({ message: 'Select application', choices });
+      if (selected === GoBack) return GoBack;
+      if (selected === CUSTOM_INPUT) {
+        const url = await promptUrl('OpenSearch UI URL');
+        if (url === GoBack) return GoBack;
+        cfg.dashboardsUrl = url;
+      } else {
+        cfg.dashboardsUrl = selected.startsWith('http') ? `${selected}/_dashboards` : selected;
+      }
+    } else {
+      printInfo('No applications found \u2014 enter URL manually');
+      const url = await promptUrl('OpenSearch UI URL');
+      if (url === GoBack) return GoBack;
+      cfg.dashboardsUrl = url;
+    }
+    cfg.appName = '';
   } else {
     cfg.dashboardsAction = 'create';
-    printSubStep('Will create Observability workspace in OpenSearch Dashboards');
+    const appName = await eInput({
+      message: 'Application name',
+      default: cfg.appName || cfg.pipelineName,
+    });
+    if (appName === GoBack) return GoBack;
+    cfg.appName = appName;
   }
 }
 
@@ -331,17 +423,6 @@ async function stepTuning(cfg) {
   cfg.serviceMapWindow = window;
 }
 
-async function stepOutput(cfg) {
-  if (cfg.mode !== 'advanced') return 'skip';
-
-  printStep('Output');
-  console.error();
-
-  const outputFile = await eInput({ message: 'Output file for pipeline YAML (leave empty for stdout)', default: cfg.outputFile || '' });
-  if (outputFile === GoBack) return GoBack;
-  cfg.outputFile = outputFile;
-}
-
 // ── Main wizard ──────────────────────────────────────────────────────────────
 
 /**
@@ -354,7 +435,7 @@ export async function runCreateWizard(session = null) {
 
   if (!session) printHeader();
 
-  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepDashboards, stepTuning, stepOutput];
+  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepDqsRole, stepDqsDataSource, stepApp, stepTuning];
   const visited = [];
   let i = 0;
 
@@ -391,9 +472,9 @@ function promptEndpoint() {
   });
 }
 
-function promptArn() {
+function promptArn(message) {
   return eInput({
-    message: 'IAM role ARN',
+    message,
     validate: (v) => {
       if (!v.trim()) return 'ARN is required';
       if (!v.startsWith('arn:aws:iam:')) return 'Must start with arn:aws:iam:';
