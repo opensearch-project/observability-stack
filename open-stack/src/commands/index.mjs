@@ -32,6 +32,6 @@ export const COMMAND_CHOICES = [
   { name: `\u2728 Create    ${theme.muted('Create a new observability stack')}`, value: 'create' },
   { name: `\u2630 List      ${theme.muted('List existing stacks')}`, value: 'list' },
   { name: `\uD83D\uDD0D Describe  ${theme.muted('Show details of a stack')}`, value: 'describe' },
-  { name: `\uD83D\uDE80 Demo      ${theme.muted('Create demo services on EKS')}`, value: 'demo' },
+  { name: `\uD83D\uDE80 Install Demo ${theme.muted('Create demo services on EKS')}`, value: 'demo' },
   { name: `\uD83D\uDEAA Quit      ${theme.muted('Exit')}`, value: 'quit' },
 ];

@@ -82,11 +82,13 @@ async function stepCore(cfg, session) {
     cfg.dqsDataSourceName = `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`;
     cfg.appName = cfg.pipelineName;
     console.error();
-    printSubStep(
-      `Will create: OpenSearch Serverless collection '${theme.accent(cfg.osDomainName)}', ` +
-      `IAM role '${theme.accent(cfg.iamRoleName)}', APS workspace '${theme.accent(cfg.apsWorkspaceAlias)}', ` +
-      `OpenSearch Application '${theme.accent(cfg.appName)}' with Prometheus data source`
-    );
+    printInfo(`Will create:`);
+    printSubStep(`OpenSearch Serverless collection: ${theme.accent(cfg.osDomainName)}`);
+    printSubStep(`IAM role: ${theme.accent(cfg.iamRoleName)}`);
+    printSubStep(`APS workspace: ${theme.accent(cfg.apsWorkspaceAlias)}`);
+    printSubStep(`DQS role: ${theme.accent(cfg.dqsRoleName)}`);
+    printSubStep(`DQS data source: ${theme.accent(cfg.dqsDataSourceName)}`);
+    printSubStep(`OpenSearch Application: ${theme.accent(cfg.appName)}`);
   }
 }
 
@@ -299,18 +301,10 @@ async function stepDqsRole(cfg) {
       choices: [
         { name: 'Create new', value: 'create' },
         { name: 'Reuse existing', value: 'reuse' },
-        { name: `Skip ${theme.muted('\u2014 no Prometheus integration')}`, value: 'skip' },
       ],
-      default: cfg.dqsRoleName ? 'create' : 'create',
+      default: 'create',
     });
     if (choice === GoBack) return GoBack;
-
-    if (choice === 'skip') {
-      cfg.dqsRoleName = '';
-      cfg.dqsDataSourceName = '';
-      cfg.appName = '';
-      return;
-    }
 
     if (choice === 'reuse') {
       const arn = await promptArn('DQS role ARN');

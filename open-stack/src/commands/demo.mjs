@@ -60,7 +60,7 @@ async function selectPipeline(region) {
  */
 export async function runDemo(session) {
   console.error();
-  printStep('Create Demo Services');
+  printStep('Install Demo');
   printInfo('Creates an EKS cluster and installs the observability stack Helm chart with demo applications');
   printInfo(`Default config: ${DEMO_DEFAULTS.nodeCount} x ${DEMO_DEFAULTS.instanceType} nodes`);
   console.error();
@@ -140,7 +140,7 @@ export async function runDemo(session) {
 export async function promptDemoAfterCreate(session, pipelineName) {
   console.error();
   const wantDemo = await eConfirm({
-    message: 'Would you like to create demo EKS services?',
+    message: 'Would you like to install demo EKS services?',
     default: false,
   });
 

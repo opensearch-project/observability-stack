@@ -671,31 +671,37 @@ export async function setupDashboards(cfg) {
   if (cfg.dashboardsAction === 'reuse') {
     printStep('OpenSearch UI');
     printSuccess(`Using existing Dashboards: ${cfg.dashboardsUrl}`);
+    if (!cfg.serverless) {
+      await createObservabilityWorkspace(cfg);
+    }
     return;
   }
 
   printStep('Setting up OpenSearch UI...');
 
-  // Use OpenSearch Application URL if available, otherwise fall back to endpoint
+  // Use OpenSearch Application URL
   if (!cfg.appEndpoint && cfg.appId) {
     const client = new OpenSearchClient({ region: cfg.region });
     await fetchAppEndpoint(client, cfg);
   }
-  if (cfg.appEndpoint) {
-    cfg.dashboardsUrl = cfg.appEndpoint;
-    printSuccess(`Dashboards URL: ${cfg.dashboardsUrl}`);
-  } else {
-    cfg.dashboardsUrl = `${cfg.opensearchEndpoint}/_dashboards`;
-    printSuccess(`Dashboards URL: ${cfg.dashboardsUrl}`);
-    // Create observability workspace (managed domains only — uses basic auth)
-    if (!cfg.serverless) {
-      await createObservabilityWorkspace(cfg);
-    }
+  cfg.dashboardsUrl = cfg.appEndpoint || '';
+  if (!cfg.dashboardsUrl) {
+    printWarning('No OpenSearch Application endpoint available');
+    printInfo('Create an OpenSearch Application in the AWS console to get the UI URL');
+    return;
+  }
+  printSuccess(`URL: ${cfg.dashboardsUrl}`);
+
+  // Create observability workspace (managed domains only — uses basic auth)
+  if (!cfg.serverless) {
+    await createObservabilityWorkspace(cfg);
   }
 }
 
 async function createObservabilityWorkspace(cfg) {
-  const url = `${cfg.dashboardsUrl}/api/workspaces`;
+  if (!cfg.dashboardsUrl) return;
+  const dashboardsBase = cfg.dashboardsUrl.replace(/\/+$/, '');
+  const url = `${dashboardsBase}/api/workspaces`;
   const auth = Buffer.from(`${MANAGED_MASTER_USER}:${MANAGED_MASTER_PASS}`).toString('base64');
 
   // Check if an observability workspace already exists
@@ -715,7 +721,6 @@ async function createObservabilityWorkspace(cfg) {
       );
       if (existing) {
         printSuccess(`Observability workspace already exists (id: ${existing.id})`);
-        cfg.dashboardsUrl = `${cfg.opensearchEndpoint}/_dashboards/w/${existing.id}/app/observability-overview#/`;
         return;
       }
     }
@@ -742,7 +747,6 @@ async function createObservabilityWorkspace(cfg) {
       const data = await resp.json();
       const workspaceId = data.result?.id;
       if (workspaceId) {
-        cfg.dashboardsUrl = `${cfg.opensearchEndpoint}/_dashboards/w/${workspaceId}/app/observability-overview#/`;
         printSuccess(`Observability workspace created (id: ${workspaceId})`);
       } else {
         printSuccess('Observability workspace created');
@@ -942,9 +946,7 @@ async function fetchAppEndpoint(client, cfg) {
   try {
     const resp = await client.send(new GetApplicationCommand({ id: cfg.appId }));
     cfg.appEndpoint = resp.endpoint || '';
-    if (cfg.appEndpoint) {
-      printInfo(`Application URL: ${cfg.appEndpoint}`);
-    }
+    // endpoint logged by setupDashboards
   } catch { /* best effort */ }
 }
 

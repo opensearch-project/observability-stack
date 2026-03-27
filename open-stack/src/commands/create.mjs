@@ -1,6 +1,5 @@
 import { runCreateWizard } from '../interactive.mjs';
-import { applySimpleDefaults, validateConfig, fillDryRunPlaceholders } from '../cli.mjs';
-import { renderPipeline } from '../render.mjs';
+import { applySimpleDefaults, validateConfig } from '../cli.mjs';
 import { executePipeline } from '../main.mjs';
 import { promptDemoAfterCreate } from './demo.mjs';
 import { printError, printStep, theme, GoBack, eConfirm } from '../ui.mjs';
@@ -58,14 +57,14 @@ function renderArchitectureDiagram(cfg) {
   const sp = (n) => ' '.repeat(Math.max(0, n));
 
   // ── Define all boxes ──────────────────────────────────────────────────
-  const otlp    = box([a('OTLP Endpoint'), m(pathLabel)], 21);
+  const otlp    = box([a('OSI Endpoint'), m(pathLabel)], 21);
   const logs    = box([h('Logs')],    9);
   const traces  = box([h('Traces')],  9);
   const metrics = box([h('Metrics')], 9);
   const raw     = box([m('Raw'), m('Traces')],  9);
   const svc     = box([m('Service'), m('Map')], 9);
   const os      = box([p(osLabel), m('logs, traces, svc-map')]);
-  const prom    = box([p('Prometheus'), m('metrics, svc-map')]);
+  const prom    = box([p('AWS Prometheus'), m('metrics, svc-map')]);
   const dash    = box([p('OpenSearch UI'), m('Observability workspace')]);
 
   // ── Layout positions ──────────────────────────────────────────────────
@@ -147,16 +146,34 @@ function renderArchitectureDiagram(cfg) {
   for (let r = 0; r < Math.max(os.lines.length, prom.lines.length); r++) {
     out.push((os.lines[r] || sp(os.w)) + sp(sinkGap) + (prom.lines[r] || sp(prom.w)));
   }
-  out.push(os.botC + sp(sinkGap) + prom.bot);
+  const C_PROM = os.w + sinkGap + prom.mid;
+  out.push(os.botC + sp(sinkGap) + prom.botC);
 
-  // Arrow from OpenSearch to Dashboards
-  out.push(connector(os.w, [[os.mid, '│']]));
-  out.push(connector(os.w, [[os.mid, '▼']]));
+  // Prometheus → DQS box
+  out.push(connector(os.w + sinkGap + prom.w, [[os.mid, '│'], [C_PROM, '│']]));
+  out.push(connector(os.w + sinkGap + prom.w, [[os.mid, '│'], [C_PROM, '▼']]));
 
-  // Dashboards box
-  out.push(dash.top);
-  for (const l of dash.lines) out.push(l);
-  out.push(dash.bot);
+  const dqs = box([p('Direct Query Service')]);
+  const dqsOff = Math.max(0, C_PROM - dqs.mid);
+  const C_DQS = dqsOff + dqs.mid;
+  const osPipe = (rest) => sp(os.mid) + m('│') + sp(dqsOff - os.mid - 1) + rest;
+  out.push(osPipe(dqs.top));
+  for (const l of dqs.lines) out.push(osPipe(l));
+  out.push(osPipe(dqs.botC));
+
+  // Merge OpenSearch + DQS → Dashboards
+  out.push(hline(dqsOff + dqs.w, os.mid, C_DQS, [
+    [os.mid, '└'], [C_DQS, '┘'],
+  ]));
+  const mergeMid = Math.floor((os.mid + C_DQS) / 2);
+  out.push(connector(dqsOff + dqs.w, [[mergeMid, '│']]));
+  out.push(connector(dqsOff + dqs.w, [[mergeMid, '▼']]));
+
+  // Dashboards box — centered under merge point
+  const dashOff = Math.max(0, mergeMid - dash.mid);
+  out.push(sp(dashOff) + dash.top);
+  for (const l of dash.lines) out.push(sp(dashOff) + l);
+  out.push(sp(dashOff) + dash.bot);
   out.push('');
 
   return out;
@@ -182,28 +199,6 @@ export async function runCreate(session) {
   printStep('Architecture');
   const diagram = renderArchitectureDiagram(cfg);
   for (const line of diagram) console.error(`  ${line}`);
-
-  // ── Show pipeline config preview (top-level keys only) ────────────────
-  printStep('Pipeline config preview');
-  console.error();
-
-  const previewCfg = { ...cfg };
-  fillDryRunPlaceholders(previewCfg);
-  const yaml = renderPipeline(previewCfg);
-
-  for (const line of yaml.split('\n')) {
-    // Show only top-level keys (no leading whitespace) and comments before them
-    if (line.startsWith('#')) {
-      console.error(`    ${theme.muted(line)}`);
-    } else if (/^\S/.test(line) && line.includes(':')) {
-      const match = line.match(/^([\w-]+)(:.*)/);
-      if (match) {
-        console.error(`    ${theme.accent(match[1])}${theme.muted(match[2])}`);
-      }
-    } else if (line.trim() === '') {
-      console.error();
-    }
-  }
 
   // ── Confirm to proceed ─────────────────────────────────────────────────
   console.error();

@@ -159,6 +159,12 @@ export async function executePipeline(cfg) {
     console.error();
   }
 
+  // Extract apsWorkspaceId from prometheusUrl if not already set
+  if (!cfg.apsWorkspaceId && cfg.prometheusUrl) {
+    const m = cfg.prometheusUrl.match(/\/workspaces\/(ws-[^/]+)\//);
+    if (m) cfg.apsWorkspaceId = m[1];
+  }
+
   // Create DQS Prometheus role and Direct Query data source (connects AMP to OpenSearch)
   if (cfg.apsWorkspaceId && cfg.dqsRoleName) {
     await createDqsPrometheusRole(cfg);
@@ -192,19 +198,18 @@ export async function executePipeline(cfg) {
 
   // ── Final summary ───────────────────────────────────────────────────
   console.error();
+  const pad = (l) => l.padEnd(35);
   printBox([
     '',
     `${theme.success.bold(`${STAR} Open Stack Setup Complete! ${STAR}`)}`,
     '',
-    `${theme.label('Pipeline:')}     ${cfg.pipelineName}`,
-    `${theme.label('OpenSearch:')}   ${cfg.opensearchEndpoint}`,
-    `${theme.label('Dashboards:')}   ${cfg.dashboardsUrl}`,
-    `${theme.label('IAM Role:')}     ${cfg.iamRoleArn}`,
-    `${theme.label('Prometheus:')}   ${cfg.prometheusUrl}`,
-    `${theme.label('DQ Source:')}    ${cfg.dqsDataSourceArn || 'n/a'}`,
-    ...(cfg.ingestEndpoints?.length ? cfg.ingestEndpoints.map(
-      (url) => `${theme.label('Ingestion:')}   https://${url}`,
-    ) : []),
+    `${theme.label(pad('OSI Pipeline:'))} ${cfg.ingestEndpoints?.length ? `https://${cfg.ingestEndpoints[0]}` : cfg.pipelineName}`,
+    `${theme.label(pad('OSI Pipeline Role:'))} ${cfg.iamRoleArn}`,
+    `${theme.label(pad('OpenSearch:'))} ${cfg.opensearchEndpoint}`,
+    `${theme.label(pad('OpenSearch UI:'))} ${cfg.dashboardsUrl}`,
+    `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
+    `${theme.label(pad('Direct Query Service Datasource:'))} ${cfg.dqsDataSourceArn || 'n/a'}`,
+    `${theme.label(pad('Direct Query Service Role:'))} ${cfg.dqsRoleArn || 'n/a'}`,
     '',
   ], { color: 'primary', padding: 2 });
 
