@@ -1,0 +1,200 @@
+import { Command } from 'commander';
+import { DEFAULTS } from './config.mjs';
+
+/**
+ * Parse CLI arguments into a config object.
+ * Returns null when no flags were given (triggers interactive mode).
+ */
+export function parseCli(argv) {
+  const program = new Command()
+    .name('open-stack')
+    .description(
+      'Create AWS resources and an OpenSearch Ingestion (OSI) pipeline\n' +
+      'for the full Observability Stack: logs, traces, metrics, service map.'
+    )
+    .version('1.0.0');
+
+  // Mode
+  program
+    .option('--simple', 'Minimal input — auto-creates all resources with defaults')
+    .option('--advanced', 'More options — create new or reuse existing resources');
+
+  // Core
+  program
+    .option('--pipeline-name <name>', 'Pipeline name and resource prefix', DEFAULTS.pipelineName)
+    .option('--region <region>', 'AWS region (e.g. us-east-1)');
+
+  // OpenSearch — reuse
+  program
+    .option('--opensearch-endpoint <url>', 'Reuse an existing OpenSearch endpoint');
+  // OpenSearch — create
+  program
+    .option('--os-domain-name <name>', 'Domain name for new OpenSearch domain')
+    .option('--os-instance-type <type>', 'Instance type', DEFAULTS.osInstanceType)
+    .option('--os-instance-count <n>', 'Number of data nodes', DEFAULTS.osInstanceCount)
+    .option('--os-volume-size <gb>', 'EBS volume size in GB', DEFAULTS.osVolumeSize)
+    .option('--os-engine-version <ver>', 'Engine version', DEFAULTS.osEngineVersion)
+    .option('--serverless', 'Target is OpenSearch Serverless (default in simple mode)')
+    .option('--managed', 'Target is OpenSearch managed domain');
+
+  // IAM
+  program
+    .option('--iam-role-arn <arn>', 'Reuse an existing IAM role')
+    .option('--iam-role-name <name>', 'Name for new IAM role');
+
+  // APS
+  program
+    .option('--prometheus-url <url>', 'Reuse an existing APS remote-write URL')
+    .option('--aps-workspace-alias <name>', 'Alias for new APS workspace');
+
+  // Pipeline tuning
+  program
+    .option('--min-ocu <n>', 'Minimum OCUs', DEFAULTS.minOcu)
+    .option('--max-ocu <n>', 'Maximum OCUs', DEFAULTS.maxOcu)
+    .option('--service-map-window <dur>', 'Service-map window duration', DEFAULTS.serviceMapWindow);
+
+  // Output
+  program
+    .option('-o, --output <file>', 'Write pipeline YAML to file instead of stdout')
+    .option('--dry-run', 'Generate config only; do not create AWS resources');
+
+  program.parse(argv);
+  const opts = program.opts();
+
+  // If no meaningful flags were provided, return null → interactive
+  const userArgs = argv.slice(2);
+  if (userArgs.length === 0) return null;
+
+  return optsToConfig(opts);
+}
+
+/**
+ * Convert commander opts to our normalized config shape.
+ */
+function optsToConfig(opts) {
+  const mode = opts.advanced ? 'advanced' : 'simple';
+
+  // Determine actions based on which flags were provided
+  let osAction = '';
+  if (opts.opensearchEndpoint) osAction = 'reuse';
+  else if (opts.osDomainName) osAction = 'create';
+
+  let iamAction = '';
+  if (opts.iamRoleArn) iamAction = 'reuse';
+  else if (opts.iamRoleName) iamAction = 'create';
+
+  let apsAction = '';
+  if (opts.prometheusUrl) apsAction = 'reuse';
+  else if (opts.apsWorkspaceAlias) apsAction = 'create';
+
+  // Auto-detect serverless from endpoint URL when not explicitly set
+  if (opts.serverless && opts.managed) {
+    throw new Error('--serverless and --managed are mutually exclusive');
+  }
+
+  let serverless;
+  if (opts.managed) {
+    serverless = false;
+  } else if (opts.serverless) {
+    serverless = true;
+  } else if (opts.opensearchEndpoint && /\.aoss\.amazonaws\.com/i.test(opts.opensearchEndpoint)) {
+    serverless = true;
+  } else if (opts.opensearchEndpoint) {
+    serverless = false;
+  } else {
+    serverless = null; // let applySimpleDefaults decide
+  }
+
+  return {
+    mode,
+    pipelineName: opts.pipelineName,
+    region: opts.region || '',
+    osAction,
+    opensearchEndpoint: opts.opensearchEndpoint || '',
+    osDomainName: opts.osDomainName || '',
+    osInstanceType: opts.osInstanceType,
+    osInstanceCount: Number(opts.osInstanceCount),
+    osVolumeSize: Number(opts.osVolumeSize),
+    osEngineVersion: opts.osEngineVersion,
+    serverless,
+    iamAction,
+    iamRoleArn: opts.iamRoleArn || '',
+    iamRoleName: opts.iamRoleName || '',
+    apsAction,
+    prometheusUrl: opts.prometheusUrl || '',
+    apsWorkspaceAlias: opts.apsWorkspaceAlias || '',
+    apsWorkspaceId: '',
+    minOcu: Number(opts.minOcu),
+    maxOcu: Number(opts.maxOcu),
+    serviceMapWindow: opts.serviceMapWindow,
+    outputFile: opts.output || '',
+    dryRun: opts.dryRun || false,
+    accountId: '',
+  };
+}
+
+/**
+ * Apply simple-mode defaults: fill in blanks so every field has a value.
+ */
+export function applySimpleDefaults(cfg) {
+  if (!cfg.osAction) cfg.osAction = 'create';
+  if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
+  if (cfg.serverless === null) cfg.serverless = true;
+  if (!cfg.iamAction) cfg.iamAction = 'create';
+  if (!cfg.iamRoleName) cfg.iamRoleName = `${cfg.pipelineName}-osi-role`;
+  if (!cfg.apsAction) cfg.apsAction = 'create';
+  if (!cfg.apsWorkspaceAlias) cfg.apsWorkspaceAlias = cfg.pipelineName;
+}
+
+/**
+ * Fill in placeholder values for resources that would be created in dry-run mode.
+ */
+export function fillDryRunPlaceholders(cfg) {
+  if (cfg.osAction === 'create' && !cfg.opensearchEndpoint) {
+    cfg.opensearchEndpoint = cfg.serverless
+      ? `https://<collection-id>.${cfg.region}.aoss.amazonaws.com`
+      : `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
+  }
+  if (cfg.iamAction === 'create' && !cfg.iamRoleArn) {
+    cfg.iamRoleArn = `arn:aws:iam::${cfg.accountId || '123456789012'}:role/${cfg.iamRoleName}`;
+  }
+  if (cfg.apsAction === 'create' && !cfg.prometheusUrl) {
+    cfg.prometheusUrl = `https://aps-workspaces.${cfg.region}.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write`;
+  }
+}
+
+/**
+ * Validate the config. Returns an array of error strings (empty = valid).
+ */
+export function validateConfig(cfg) {
+  const errors = [];
+
+  if (!cfg.pipelineName) errors.push('--pipeline-name is required');
+  if (!cfg.region) errors.push('--region is required');
+
+  if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
+    errors.push('--opensearch-endpoint required when reusing OpenSearch');
+  }
+  if (cfg.iamAction === 'reuse' && !cfg.iamRoleArn) {
+    errors.push('--iam-role-arn required when reusing IAM role');
+  }
+  if (cfg.apsAction === 'reuse' && !cfg.prometheusUrl) {
+    errors.push('--prometheus-url required when reusing APS workspace');
+  }
+
+  // Format checks
+  if (cfg.region && !/^[a-z]{2}-[a-z]+-\d+$/.test(cfg.region)) {
+    errors.push(`Region format looks wrong: ${cfg.region} (expected e.g. us-east-1)`);
+  }
+  if (cfg.osAction === 'reuse' && cfg.opensearchEndpoint && !/^https?:\/\//.test(cfg.opensearchEndpoint)) {
+    errors.push('OpenSearch endpoint must start with http:// or https://');
+  }
+  if (cfg.iamAction === 'reuse' && cfg.iamRoleArn && !cfg.iamRoleArn.startsWith('arn:aws:iam:')) {
+    errors.push('IAM role ARN must start with arn:aws:iam:');
+  }
+  if (cfg.apsAction === 'reuse' && cfg.prometheusUrl && !/^https?:\/\//.test(cfg.prometheusUrl)) {
+    errors.push('Prometheus URL must start with http:// or https://');
+  }
+
+  return errors;
+}

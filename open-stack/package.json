@@ -1,0 +1,22 @@
+{
+  "name": "@joshualiamzn/open-stack",
+  "version": "0.0.1",
+  "description": "CLI for the Observability Stack",
+  "type": "module",
+  "bin": "./bin/open-stack.mjs",
+  "scripts": {
+    "start": "node bin/open-stack.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-amp": "^3.750.0",
+    "@aws-sdk/client-iam": "^3.750.0",
+    "@aws-sdk/client-opensearch": "^3.750.0",
+    "@aws-sdk/client-opensearchserverless": "^3.1018.0",
+    "@aws-sdk/client-osis": "^3.750.0",
+    "@aws-sdk/client-sts": "^3.750.0",
+    "@inquirer/prompts": "^7.0.0",
+    "chalk": "^5.4.0",
+    "commander": "^13.0.0",
+    "ora": "^8.0.0"
+  }
+}
