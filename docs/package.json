@@ -39,7 +39,7 @@
     "@vitest/coverage-v8": "^4.0.18",
     "@vitest/ui": "^4.0.18",
     "fast-check": "^4.5.3",
-    "happy-dom": "^20.3.9",
+    "happy-dom": "^20.8.9",
     "vitest": "^4.0.18"
   }
 }
