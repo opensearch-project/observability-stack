@@ -58,7 +58,6 @@ Smooth span latency with a 5-point SMA:
 ```sql
 source = otel-v1-apm-span-*
 | trendline sort startTime sma(5, durationInNanos) as latency_trend
-| fields startTime, serviceName, durationInNanos, latency_trend
 | head 50
 ```
 
@@ -69,7 +68,6 @@ Compute both an SMA and WMA on latency simultaneously to compare smoothing behav
 ```sql
 source = otel-v1-apm-span-*
 | trendline sort startTime sma(5, durationInNanos) as sma_latency wma(5, durationInNanos) as wma_latency
-| fields startTime, serviceName, sma_latency, wma_latency
 | head 50
 ```
 
@@ -80,7 +78,6 @@ When no alias is specified, the output column is named `<field>_trendline`:
 ```sql
 source = otel-v1-apm-span-*
 | trendline sort startTime sma(5, durationInNanos)
-| fields startTime, serviceName, durationInNanos_trendline
 | head 50
 ```
 
@@ -91,7 +88,6 @@ WMA gives more weight to recent values, producing a trend that reacts faster:
 ```sql
 source = otel-v1-apm-span-*
 | trendline sort startTime wma(5, durationInNanos)
-| fields startTime, serviceName, durationInNanos_trendline
 | head 50
 ```
 
@@ -105,7 +101,6 @@ Sort spans by time and calculate a 5-span SMA of duration to smooth out latency 
 source = otel-v1-apm-span-*
 | trendline sort startTime sma(5, durationInNanos) as latency_sma wma(5, durationInNanos) as latency_wma
 | eval sma_ms = latency_sma / 1000000, wma_ms = latency_wma / 1000000
-| fields startTime, serviceName, durationInNanos, sma_ms, wma_ms
 | head 50
 ```
 
@@ -119,7 +114,6 @@ Track the moving average of token consumption over time for a generative AI serv
 source = otel-v1-apm-span-*
 | where `attributes.gen_ai.usage.output_tokens` > 0
 | trendline sort startTime sma(10, `attributes.gen_ai.usage.output_tokens`) as token_trend
-| fields startTime, serviceName, `attributes.gen_ai.usage.output_tokens`, token_trend
 | head 100
 ```
 
@@ -127,5 +121,5 @@ source = otel-v1-apm-span-*
 
 - [streamstats](/docs/ppl/commands/streamstats/) - cumulative and rolling window statistics with more control
 - [eventstats](/docs/ppl/commands/eventstats/) - add group-level aggregates to every event
-- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [stats](/docs/ppl/commands/stats/) - aggregate and collapse rows
 - [Command Reference](/docs/ppl/commands/) - all PPL commands

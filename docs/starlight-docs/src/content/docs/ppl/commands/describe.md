@@ -70,8 +70,9 @@ Filter for all `bigint` (long) fields:
 ```sql
 describe logs-otel-v1*
 | where TYPE_NAME = 'bigint'
-| fields COLUMN_NAME, TYPE_NAME
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'describe%20logs-otel-v1%2A%20%7C%20where%20TYPE_NAME%20%3D%20!%27bigint!%27')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Find fields by name pattern
 
@@ -80,8 +81,9 @@ Search for fields containing `service` in their name:
 ```sql
 describe logs-otel-v1*
 | where like(COLUMN_NAME, '%service%')
-| fields COLUMN_NAME, TYPE_NAME
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'describe%20logs-otel-v1%2A%20%7C%20where%20like%28COLUMN_NAME%2C%20!%27%25service%25!%27%29')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### List all gen_ai fields
 
@@ -90,8 +92,9 @@ Discover GenAI semantic convention fields in your OTel index:
 ```sql
 describe logs-otel-v1*
 | where like(COLUMN_NAME, '%gen_ai%')
-| fields COLUMN_NAME, TYPE_NAME
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'describe%20logs-otel-v1%2A%20%7C%20where%20like%28COLUMN_NAME%2C%20!%27%25gen_ai%25!%27%29')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Describe the trace index
 
@@ -99,7 +102,6 @@ Explore the span index schema to understand available trace fields:
 
 ```sql
 describe otel-v1-apm-span-*
-| fields COLUMN_NAME, TYPE_NAME
 | sort COLUMN_NAME
 ```
 
@@ -112,15 +114,15 @@ Describe both the log and trace indices to find common fields for cross-signal c
 ```sql
 describe logs-otel-v1*
 | where COLUMN_NAME IN ('traceId', 'spanId', 'time', 'severityText', 'body')
-| fields TABLE_NAME, COLUMN_NAME, TYPE_NAME
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'describe%20logs-otel-v1%2A%20%7C%20where%20COLUMN_NAME%20IN%20%28!%27traceId!%27%2C%20!%27spanId!%27%2C%20!%27time!%27%2C%20!%27severityText!%27%2C%20!%27body!%27%29')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 Then compare with the trace index:
 
 ```sql
 describe otel-v1-apm-span-*
 | where COLUMN_NAME IN ('traceId', 'spanId', 'startTime', 'endTime', 'serviceName')
-| fields TABLE_NAME, COLUMN_NAME, TYPE_NAME
 ```
 
 ### Discover all nested object fields
@@ -130,12 +132,13 @@ Find all object and nested field types to understand the document structure:
 ```sql
 describe logs-otel-v1*
 | where TYPE_NAME = 'object' OR TYPE_NAME = 'nested'
-| fields COLUMN_NAME, TYPE_NAME
 | sort COLUMN_NAME
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'describe%20logs-otel-v1%2A%20%7C%20where%20TYPE_NAME%20%3D%20!%27object!%27%20OR%20TYPE_NAME%20%3D%20!%27nested!%27%20%7C%20sort%20COLUMN_NAME')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## See also
 
-- [fields](/docs/ppl/commands/#fields) -- select or exclude fields from query results
-- [showdatasources](/docs/ppl/commands/#showdatasources) -- list all configured data sources
-- [search](/docs/ppl/commands/#search) -- retrieve documents from an index
+- [fields](/docs/ppl/commands/fields/) -- select or exclude fields from query results
+- [showdatasources](/docs/ppl/commands/) -- list all configured data sources
+- [search](/docs/ppl/commands/search/) -- retrieve documents from an index

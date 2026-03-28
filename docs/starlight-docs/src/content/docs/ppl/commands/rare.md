@@ -77,6 +77,8 @@ Return just the rare values without frequency counts:
 | rare showcount=false severityText
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rare%20showcount%3Dfalse%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Rename the count column
 
 Use a custom name for the count field:
@@ -84,6 +86,8 @@ Use a custom name for the count field:
 ```sql
 | rare countfield='occurrences' `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rare%20countfield%3D!%27occurrences!%27%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 
@@ -112,6 +116,6 @@ This is especially useful after a deployment: if a new operation name appears in
 
 - [top](/docs/ppl/commands/top/) - The inverse of `rare`: find the most common values
 - [dedup](/docs/ppl/commands/dedup/) - Deduplicate to get unique values with sample documents
-- [stats](/docs/ppl/commands/) - For more detailed frequency analysis with custom aggregations
-- [patterns](/docs/ppl/commands/) - Automatically discover and cluster log patterns
+- [stats](/docs/ppl/commands/stats/) - For more detailed frequency analysis with custom aggregations
+- [patterns](/docs/ppl/commands/patterns/) - Automatically discover and cluster log patterns
 - [PPL Command Reference](/docs/ppl/commands/) - All PPL commands

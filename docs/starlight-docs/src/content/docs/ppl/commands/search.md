@@ -40,7 +40,7 @@ source=<index> [<boolean-expression>]
 - **Cross-cluster search**: To query an index on a remote cluster, prefix the index name with the cluster name and a colon. Cross-cluster search must be configured at the OpenSearch level.
 - **Full-text search**: Unquoted terms search across all fields (or the configured default field). Multiple terms are combined with `AND` by default. Use quotes for phrase matching.
 - **Wildcard patterns in index names**: Index names support `*` wildcards (e.g., `source=logs-*`), which is common for querying across time-based index patterns.
-- **Operator precedence**: Boolean operators in the search expression follow this precedence: `Parentheses > NOT > OR > AND`.
+- **Operator precedence**: Boolean operators in the search expression follow this precedence: `Parentheses > NOT > OR > AND`. Note that this is PPL-specific and differs from SQL and Splunk SPL, where `AND` binds tighter than `OR`. In PPL, `a OR b AND c` is evaluated as `(a OR b) AND c`, not `a OR (b AND c)`. Use explicit parentheses to avoid ambiguity.
 - **`NOT` vs. `!=`**: The `!=` operator excludes documents with null or missing fields, while `NOT` includes them. See the extended examples for details.
 
 ## Basic examples
@@ -53,6 +53,8 @@ Fetch every document from an index with no filter. Useful for exploring data or 
 source=logs-otel-v1*
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Filter with a boolean expression
 
 Return only documents where `severityText` is `ERROR`:
@@ -60,6 +62,8 @@ Return only documents where `severityText` is `ERROR`:
 ```sql
 source=logs-otel-v1* severityText="ERROR"
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Full-text search
 
@@ -69,6 +73,8 @@ Search across all fields for documents containing the term `timeout`:
 search timeout source=logs-otel-v1*
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20match%28body%2C%20!%27timeout!%27%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Multi-value match with IN
 
 Match documents where `severityText` is one of several values:
@@ -77,13 +83,18 @@ Match documents where `severityText` is one of several values:
 source=logs-otel-v1* severityText IN ("ERROR", "WARN", "FATAL")
 ```
 
-### Wildcard index pattern
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20IN%20%28!%27ERROR!%27%2C%20!%27WARN!%27%2C%20!%27FATAL!%27%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-Query across all OTel log indices:
+### Search across trace data
+
+Query OTel trace spans with a filter to find error spans:
 
 ```sql
-source=logs-otel-v1*
+source=otel-v1-apm-span-* status.code=2
+| head 20
 ```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dotel-v1-apm-span-%2A%20status.code%3D2%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
 
 ## Extended examples
 
@@ -94,12 +105,11 @@ Find error logs from a specific service using OTel semantic convention fields. B
 ```sql
 source=logs-otel-v1*
   severityText="ERROR"
-  AND `resource.attributes.service.name`="cart-service"
-| fields time, body, severityText
+  AND `resource.attributes.service.name`="cart"
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20and%20%60resource.attributes.service.name%60%20%3D%20!%27cart-service!%27%20%7C%20fields%20time%2C%20body%2C%20severityText%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20and%20%60resource.attributes.service.name%60%20%3D%20!%27cart!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Discover-style query (no source clause)
 
@@ -107,11 +117,10 @@ In the Discover UI, the dataset selector sets the index. Your query starts with 
 
 ```sql
 | where severityText = 'ERROR'
-| fields time, body, `resource.attributes.service.name`
 | head 50
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20fields%20time%2C%20body%2C%20%60resource.attributes.service.name%60%20%7C%20head%2050')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20head%2050')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Cross-cluster search
 

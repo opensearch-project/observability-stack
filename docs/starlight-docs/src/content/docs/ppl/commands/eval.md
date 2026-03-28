@@ -61,7 +61,6 @@ eval <field> = <expression> [, <field> = <expression>]...
 ```sql
 source = otel-v1-apm-span-*
 | eval duration_ms = durationInNanos / 1000000
-| fields serviceName, name, duration_ms
 ```
 
 ### String concatenation
@@ -69,16 +68,18 @@ source = otel-v1-apm-span-*
 ```sql
 source = logs-otel-v1*
 | eval service_severity = `resource.attributes.service.name` + ' - ' + severityText
-| fields time, service_severity, body
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_severity%20%3D%20%60resource.attributes.service.name%60%20%2B%20!%27%20-%20!%27%20%2B%20severityText%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Conditional with `if()`
 
 ```sql
 source = logs-otel-v1*
 | eval is_error = if(severityText = 'ERROR', 'yes', 'no')
-| fields time, severityText, is_error, body
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20is_error%20%3D%20if%28severityText%20%3D%20!%27ERROR!%27%2C%20!%27yes!%27%2C%20!%27no!%27%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Multi-way conditional with `case()`
 
@@ -89,7 +90,6 @@ source = otel-v1-apm-span-*
     durationInNanos < 500000000, 'moderate',
     durationInNanos < 1000000000, 'slow'
     else 'critical')
-| fields serviceName, name, latency_tier
 ```
 
 ### Type casting with string concatenation
@@ -97,7 +97,6 @@ source = otel-v1-apm-span-*
 ```sql
 source = otel-v1-apm-span-*
 | eval span_info = 'Service: ' + serviceName + ', Duration (ns): ' + CAST(durationInNanos AS STRING)
-| fields serviceName, span_info
 ```
 
 ---
@@ -126,16 +125,16 @@ Combine the service name and severity into a single field for downstream groupin
 
 ```sql
 | eval service_status = `resource.attributes.service.name` + ' [' + severityText + ']'
-| fields time, service_status, body
+| head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_status%20%3D%20%60resource.attributes.service.name%60%20%2B%20!%27%20%5B!%27%20%2B%20severityText%20%2B%20!%27%5D!%27%20%7C%20fields%20time%2C%20service_status%2C%20body')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_status%20%3D%20%60resource.attributes.service.name%60%20%2B%20!%27%20%5B!%27%20%2B%20severityText%20%2B%20!%27%5D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ---
 
 ## See also
 
 - [stats](/docs/ppl/commands/stats/) -- aggregate results (often used after `eval`)
-- [fields](/docs/ppl/commands/) -- select which fields to display
-- [where](/docs/ppl/commands/) -- filter results using expressions
+- [fields](/docs/ppl/commands/fields/) -- select which fields to display
+- [where](/docs/ppl/commands/where/) -- filter results using expressions
 - [sort](/docs/ppl/commands/sort/) -- order results by computed fields

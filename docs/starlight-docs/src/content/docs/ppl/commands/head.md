@@ -72,9 +72,10 @@ Combine `sort` and `head` to find the 10 slowest spans:
 ```sql
 source = otel-v1-apm-span-*
 | sort - durationInNanos
-| fields traceId, serviceName, name, durationInNanos
 | head 10
 ```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20otel-v1-apm-span-%2A%0A%7C%20sort%20-%20durationInNanos%0A%7C%20head%2010')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
 
 ### Top-N pattern: services with the most errors (OTel logs)
 
@@ -98,25 +99,28 @@ Page through error logs 20 at a time. This query returns the second page (result
 ```sql
 | where severityText = 'ERROR'
 | sort - time
-| fields time, body, `resource.attributes.service.name`
 | head 20 from 20
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20sort%20-%20time%20%7C%20head%2020%20from%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Sample logs from each OTel service
 
 Get a quick sample of 5 logs per service by combining `dedup` and `head`:
 
 ```sql
-| fields time, body, severityText, `resource.attributes.service.name`
+source = logs-otel-v1*
+| dedup 5 `resource.attributes.service.name`
 | sort - time
-| head 100
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20sort%20-%20time%20%7C%20head%20100')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 This is useful for initial exploration of what data each service is producing, without scanning the entire index.
 
 ## See also
 
-- [sort](/docs/ppl/commands/) - Sort results before applying `head` for top-N queries
+- [sort](/docs/ppl/commands/sort/) - Sort results before applying `head` for top-N queries
 - [dedup](/docs/ppl/commands/dedup/) - Deduplicate results for unique combinations
 - [PPL Command Reference](/docs/ppl/commands/) - All PPL commands
 - [Observability Examples](/docs/ppl/examples/) - Real-world OTel queries

@@ -28,7 +28,9 @@ grok <field> <grok-pattern>
 
 - Grok patterns are built on top of regular expressions but provide a more readable, reusable syntax.
 - Use the `%{PATTERN:fieldname}` syntax to extract a named field. If you omit `:fieldname`, the match is consumed but no field is created.
+- The grok pattern must match the **entire** string from start to end for extraction to succeed. Use `%{GREEDYDATA}` or `%{GREEDYDATA:name}` at the end of your pattern to consume any remaining text (including trailing newlines via `[\s\S]`).
 - When parsing a null field, the result is an empty string.
+- Each unnamed `%{PATTERN}` must be unique within a single grok expression, or you will get a "Duplicate key" error. Give each pattern a unique field name to avoid this.
 - Grok shares the same [limitations](/docs/ppl/commands/parse/#limitations) as the `parse` command.
 
 ### Commonly used grok patterns
@@ -40,9 +42,7 @@ grok <field> <grok-pattern>
 | `%{WORD:word}` | Single word (no whitespace) | `ERROR` |
 | `%{HOSTNAME:host}` | Hostname or FQDN | `api.example.com` |
 | `%{GREEDYDATA:msg}` | Everything (greedy match) | any remaining text |
-| `%{HTTPDATE:ts}` | Common log format timestamp | `28/Sep/2022:10:15:57 -0700` |
 | `%{IPORHOST:server}` | IP address or hostname | `10.0.0.1` or `web01` |
-| `%{SYSLOGLINE}` | Syslog format line | standard syslog entry |
 | `%{URI:url}` | Full URI | `https://example.com/path?q=1` |
 | `%{URIPATH:path}` | URI path component | `/api/v1/agents` |
 | `%{POSINT:code}` | Positive integer | `200`, `404` |
@@ -50,115 +50,117 @@ grok <field> <grok-pattern>
 
 ## Basic examples
 
-### Extract client IP and status code from log bodies
+### Extract HTTP method, path, and status from Envoy access logs
 
-Use the `%{IP}` and `%{POSINT}` patterns to capture the client address and HTTP response code:
+The frontend-proxy service emits Envoy access logs in the body field. Use grok patterns to parse the timestamp, HTTP method, request path, and response status:
 
 ```sql
-source = logs-otel-v1*
-| grok body '%{IP:clientip} .* %{POSINT:status}'
-| fields body, clientip, status
+source=logs-otel-v1*
+| where like(body, '%HTTP/1.1"%')
+| grok body '\[%{DATA:ts}\] "%{WORD:method} %{DATA:path} HTTP/%{DATA:ver}" %{POSINT:status} %{GREEDYDATA:rest}'
+| head 20
 ```
 
-| body | clientip | status |
-|------|----------|--------|
-| 10.0.1.55 - - [27/Mar/2026:10:15:32 +0000] "GET /api/v1/agents HTTP/1.1" 200 1234 | 10.0.1.55 | 200 |
-| 192.168.1.10 - - [27/Mar/2026:10:15:33 +0000] "POST /api/v1/invoke HTTP/1.1" 404 567 | 192.168.1.10 | 404 |
-| 172.16.0.42 - - [27/Mar/2026:10:15:34 +0000] "GET /health HTTP/1.1" 500 89 | 172.16.0.42 | 500 |
+| body | method | path | status |
+|------|--------|------|--------|
+| [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 - via_upstream ... | GET | /api/data | 200 |
+| [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/0PUK6V6EV0 HTTP/1.1" 200 ... | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 | 200 |
+| [2026-02-26T18:04:21.629Z] "GET /api/data/ HTTP/1.1" 308 - via_upstream ... | GET | /api/data/ | 308 |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20grok%20body%20!%27%25%7BIP%3Aclientip%7D%20.*%20%25%7BPOSINT%3Astatus%7D!%27%20%7C%20fields%20body%2C%20clientip%2C%20status')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Override an existing field
 
-Strip the timestamp prefix from a log body, keeping only the message content:
+Strip the Kafka broker prefix from log bodies, keeping only the message content:
 
 ```sql
-source = logs-otel-v1*
-| grok body '%{TIMESTAMP_ISO8601} %{GREEDYDATA:body}'
-| fields body
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'kafka'
+| where like(body, '%Broker%Creating%')
+| grok body '\[%{DATA}\] %{GREEDYDATA:body}'
+| head 20
 ```
 
 | body |
 |------|
-| Connection refused to upstream service |
-| Agent invocation completed in 245ms |
-| Request processed successfully |
-| Timeout waiting for response from model provider |
+| Creating new partition __consumer_offsets-33 with topic id _xZjVwc_TO2HCCnHkcNIDg. |
+| Creating new partition __consumer_offsets-15 with topic id _xZjVwc_TO2HCCnHkcNIDg. |
+| Creating new partition __consumer_offsets-48 with topic id _xZjVwc_TO2HCCnHkcNIDg. |
 
-### Parse HTTP access log lines from log bodies
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20where%20like%28body%2C%20!%27%25Broker%25Creating%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%7D%5C%5D%20%25%7BGREEDYDATA%3Abody%7D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-Use multiple grok patterns to extract structured fields from HTTP access log entries in log bodies:
+### Extract component name and broker ID from Kafka logs
+
+Use grok to parse the `[Component id=N]` prefix from Kafka broker log bodies:
 
 ```sql
-source = logs-otel-v1*
-| grok body '%{IP:clientip} %{DATA} %{DATA} \[%{HTTPDATE:timestamp}\] "%{WORD:method} %{URIPATH:path} HTTP/%{NUMBER:version}" %{POSINT:status} %{NUMBER:bytes}'
-| fields timestamp, method, path, status, bytes
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'kafka'
+| grok body '\[%{DATA:component} id=%{NUMBER:brokerId}\] %{GREEDYDATA:message}'
+| where length(component) > 0
+| head 20
 ```
 
-| timestamp | method | path | status | bytes |
-|-----------|--------|------|--------|-------|
-| 27/Mar/2026:10:15:57 -0700 | GET | /api/v1/agents | 404 | 19927 |
-| 27/Mar/2026:10:15:57 -0700 | POST | /api/v1/invoke | 200 | 28722 |
-| 27/Mar/2026:10:15:57 -0700 | GET | /health | 401 | 27439 |
-| 27/Mar/2026:10:15:57 -0700 | DELETE | /api/v1/sessions | 301 | 9481 |
+| body | component | brokerId | message |
+|------|-----------|----------|---------|
+| [Broker id=1] Creating new partition __consumer_offsets-33 ... | Broker | 1 | Creating new partition __consumer_offsets-33 ... |
+| [RaftManager id=1] Completed transition to Leader ... | RaftManager | 1 | Completed transition to Leader ... |
+| [QuorumController id=1] The request from broker 1 ... | QuorumController | 1 | The request from broker 1 ... |
 
-### Extract IP address and response code with aggregation
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Acomponent%7D%20id%3D%25%7BNUMBER%3AbrokerId%7D%5C%5D%20%25%7BGREEDYDATA%3Amessage%7D!%27%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-Combine multiple grok patterns to parse log formats and aggregate results:
+### Aggregate HTTP requests by method and status
 
-```sql
-source = logs-otel-v1*
-| grok body '%{IP:clientip} .* %{POSINT:status} %{NUMBER:bytes}'
-| stats count() as requests, sum(cast(bytes as long)) as total_bytes by status
-| sort - requests
-```
-
-### Extract duration and service info from structured logs
-
-Mix grok patterns with literal text to parse structured log output:
+Parse Envoy access logs and count requests grouped by HTTP method and status code:
 
 ```sql
-source = logs-otel-v1*
-| grok body 'duration=%{NUMBER:duration}ms service=%{HOSTNAME:service}'
-| where cast(duration as int) > 500
-| fields duration, service
-```
-
-| duration | service |
-|----------|---------|
-| 671 | agent-orchestrator |
-| 789 | model-gateway |
-| 880 | tool-executor |
-
-## Extended examples
-
-### Parse OTel log bodies with grok
-
-OpenTelemetry log bodies often contain structured text that grok can parse more readably than raw regex:
-
-```sql
-source = logs-otel-v1*
-| grok body '%{WORD:level} %{GREEDYDATA:detail}'
-| where isnotnull(level)
-| stats count() as occurrences by level
-| sort - occurrences
-```
-
-This extracts the first word from each log body as the log level, then counts occurrences per level.
-
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20grok%20body%20!%27%25%7BWORD%3Alevel%7D%20%25%7BGREEDYDATA%3Adetail%7D!%27%20%7C%20where%20isnotnull(level)%20%7C%20stats%20count()%20as%20occurrences%20by%20level%20%7C%20sort%20-%20occurrences')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
-
-### Extract IP addresses and paths from OTel HTTP logs
-
-Parse HTTP access patterns from log bodies that contain request information:
-
-```sql
-source = logs-otel-v1*
-| grok body '%{IP:clientip}.*"%{WORD:method} %{URIPATH:path} HTTP/%{NUMBER:version}" %{POSINT:status}'
-| where isnotnull(clientip)
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'frontend-proxy'
+| head 1000
+| grok body '\[%{DATA:ts}\] "%{WORD:method} %{DATA:path} HTTP/%{DATA:ver}" %{POSINT:status} %{GREEDYDATA:rest}'
+| where length(method) > 0
 | stats count() as requests by method, status
 | sort - requests
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20status%20%7C%20sort%20-%20requests')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## Extended examples
+
+### Extract the first word from OTel log bodies
+
+OpenTelemetry log bodies often start with a keyword that indicates the log type. Use grok to extract the first word and aggregate:
+
+```sql
+source=logs-otel-v1*
+| head 1000
+| grok body '%{WORD:first} %{GREEDYDATA:rest}'
+| where length(first) > 0
+| stats count() as occurrences by first
+| sort - occurrences
+| head 20
+```
+
+This extracts the first word from each log body, then counts occurrences to identify the most common log message prefixes across all services.
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201000%20%7C%20grok%20body%20!%27%25%7BWORD%3Afirst%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28first%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20occurrences%20by%20first%20%7C%20sort%20-%20occurrences%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Identify top endpoints from Envoy access logs
+
+Parse Envoy access log bodies and aggregate by HTTP method and request path to find the busiest endpoints:
+
+```sql
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'frontend-proxy'
+| head 1000
+| grok body '\[%{DATA:ts}\] "%{WORD:method} %{DATA:path} HTTP/%{DATA:ver}" %{POSINT:status} %{GREEDYDATA:rest}'
+| where length(method) > 0
+| stats count() as requests by method, path
+| sort - requests
+| head 20
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 <Aside type="tip">
 When grok patterns become very long, consider whether `parse` with a targeted regex might be simpler. Grok excels at parsing well-known formats (HTTP access logs, syslog, etc.); for ad-hoc extraction of one or two fields, `parse` or `rex` may be more concise.

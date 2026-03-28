@@ -27,6 +27,7 @@ parse <field> <regex-pattern>
 ## Usage notes
 
 - Named capture groups in the regex pattern become new fields. For example, `(?<host>.+)` creates a field called `host`.
+- The pattern must match the **entire** string from start to end. Use `[\s\S]+` at the end of the pattern to consume any remaining content including trailing newlines.
 - If a named group matches a field that already exists, the existing field is overwritten with the extracted value.
 - Parsed fields are available for use in all subsequent pipe commands (`where`, `stats`, `sort`, `eval`, etc.).
 - The pattern uses [Java regular expression syntax](https://docs.oracle.com/javase/8/docs/api/java/util/regex/Pattern.html).
@@ -40,107 +41,118 @@ parse <field> <regex-pattern>
 |---------|---------|
 | `(?<ip>\d+\.\d+\.\d+\.\d+)` | IPv4 addresses |
 | `(?<status>\d{3})` | HTTP status codes |
-| `(?<key>\w+)=(?<value>[^\s]+)` | Key-value pairs |
 | `(?<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})` | ISO timestamps |
 | `(?<method>GET\|POST\|PUT\|DELETE)` | HTTP methods |
 | `(?<path>/[^\s]+)` | URL paths |
+| `[\s\S]+` | Match remaining text (including newlines) |
 
 ## Basic examples
 
-### Extract HTTP method and path from log bodies
+### Extract HTTP method, path, and status from Envoy access logs
 
-Parse the HTTP method and request path from log messages:
+Parse the Envoy access log format emitted by the frontend-proxy service. The pattern must match the full body string:
 
 ```sql
-source = logs-otel-v1*
-| parse body '(?<method>GET|POST|PUT|DELETE|PATCH|HEAD) (?<path>/[^\s]+)'
-| fields body, method, path
+source=logs-otel-v1*
+| where like(body, '%HTTP/1.1"%')
+| parse body '\[(?<ts>[^\]]+)\] "(?<method>\w+) (?<path>\S+) HTTP/(?<ver>[^"]+)" (?<status>\d+)[\s\S]+'
+| head 20
 ```
 
-| body | method | path |
-|------|--------|------|
-| GET /api/v1/agents HTTP/1.1 200 | GET | /api/v1/agents |
-| POST /api/v1/invoke HTTP/1.1 201 | POST | /api/v1/invoke |
-| DELETE /api/v1/sessions/abc123 HTTP/1.1 204 | DELETE | /api/v1/sessions/abc123 |
+| body | ts | method | path | status |
+|------|----|--------|------|--------|
+| [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 ... | 2026-02-26T18:04:21.634Z | GET | /api/data | 200 |
+| [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/0PUK6V6EV0 HTTP/1.1" 200 ... | 2026-02-26T18:04:23.059Z | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 | 200 |
+| [2026-02-26T18:04:21.629Z] "GET /api/data/ HTTP/1.1" 308 ... | 2026-02-26T18:04:21.629Z | GET | /api/data/ | 308 |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20parse%20body%20!%27(%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%7CHEAD)%20(%3F%3Cpath%3E%2F%5B%5E%5Cs%5D%2B)!%27%20%7C%20fields%20body%2C%20method%2C%20path')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20parse%20body%20!%27%5C%5B%28%3F%3Cts%3E%5B%5E%5C%5D%5D%2B%29%5C%5D%20%22%28%3F%3Cmethod%3E%5Cw%2B%29%20%28%3F%3Cpath%3E%5CS%2B%29%20HTTP%2F%28%3F%3Cver%3E%5B%5E%22%5D%2B%29%22%20%28%3F%3Cstatus%3E%5Cd%2B%29%5B%5Cs%5CS%5D%2B!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-### Extract IP address and status code from log lines
+### Filter Envoy logs by status code
 
-Split a log body into its IP and status code components, then filter and sort:
+Parse the status code from Envoy access logs and filter for non-2xx responses:
 
 ```sql
-source = logs-otel-v1*
-| parse body '(?<clientip>\d+\.\d+\.\d+\.\d+).*\s(?<status>\d{3})\s'
-| where cast(status as int) >= 400
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'frontend-proxy'
+| parse body '\[(?<ts>[^\]]+)\] "(?<method>\w+) (?<path>\S+) HTTP/(?<ver>[^"]+)" (?<status>\d+)[\s\S]+'
+| where cast(status as int) >= 300
 | sort status
-| fields clientip, status
+| head 20
 ```
 
-| clientip | status |
-|----------|--------|
-| 10.0.1.55 | 400 |
-| 192.168.1.10 | 404 |
-| 172.16.0.42 | 500 |
+| method | path | status |
+|--------|------|--------|
+| GET | /api/data/ | 308 |
+| GET | /api/data/ | 308 |
+| GET | /api/data/ | 308 |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20parse%20body%20!%27%5C%5B%28%3F%3Cts%3E%5B%5E%5C%5D%5D%2B%29%5C%5D%20%22%28%3F%3Cmethod%3E%5Cw%2B%29%20%28%3F%3Cpath%3E%5CS%2B%29%20HTTP%2F%28%3F%3Cver%3E%5B%5E%22%5D%2B%29%22%20%28%3F%3Cstatus%3E%5Cd%2B%29%5B%5Cs%5CS%5D%2B!%27%20%7C%20where%20cast%28status%20as%20int%29%20%3E%3D%20300%20%7C%20sort%20status%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Override an existing field
 
-Replace the `body` field with only the message portion after the timestamp by using the same field name in the capture group:
+Replace the `body` field with just the user action by using the same field name in the capture group. This works on load-generator log bodies that start with "User":
 
 ```sql
-source = logs-otel-v1*
-| parse body '\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\S*\s+(?<body>.+)'
-| fields body
+source=logs-otel-v1*
+| where like(body, 'User %')
+| parse body 'User (?<body>.+)'
+| head 20
 ```
 
 | body |
 |------|
-| Connection refused to upstream service |
-| Request completed successfully |
-| Timeout waiting for response |
-| Agent invocation started |
+| viewing cart |
+| getting recommendations for product: 0PUK6V6EV0 |
+| getting ads for category: None |
+| accessing index page |
 
-### Extract request metrics from structured log bodies
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27User%20%25!%27%29%20%7C%20parse%20body%20!%27User%20%28%3F%3Cbody%3E.%2B%29!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-Parse structured log messages to pull out the HTTP method and request path:
+### Aggregate request counts by endpoint
+
+Parse the Envoy access log format and count requests per method and path:
 
 ```sql
-source = logs-otel-v1*
-| parse body '"(?<method>GET|POST|PUT|DELETE|PATCH|HEAD) (?<path>[^\s]+) HTTP'
-| stats count() by method, path
-| sort - count()
+source=logs-otel-v1*
+| where like(body, '%HTTP/1.1"%')
+| parse body '\[(?<ts>[^\]]+)\] "(?<method>\w+) (?<path>\S+) HTTP/(?<ver>[^"]+)" (?<status>\d+)[\s\S]+'
+| stats count() as cnt by method, path
+| sort - cnt
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20parse%20body%20!%27%5C%5B%28%3F%3Cts%3E%5B%5E%5C%5D%5D%2B%29%5C%5D%20%22%28%3F%3Cmethod%3E%5Cw%2B%29%20%28%3F%3Cpath%3E%5CS%2B%29%20HTTP%2F%28%3F%3Cver%3E%5B%5E%22%5D%2B%29%22%20%28%3F%3Cstatus%3E%5Cd%2B%29%5B%5Cs%5CS%5D%2B!%27%20%7C%20stats%20count%28%29%20as%20cnt%20by%20method%2C%20path%20%7C%20sort%20-%20cnt')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 
-### Parse structured fields from OTel log bodies
+### Extract partition names from Kafka broker logs
 
-OpenTelemetry log bodies often contain semi-structured text. Use `parse` to extract actionable fields:
-
-```sql
-source = logs-otel-v1*
-| parse body '(?<level>\w+)\s+\[(?<component>[^\]]+)\]\s+(?<message>.+)'
-| where isnotnull(level)
-| stats count() as log_count by level, component
-| sort - log_count
-```
-
-This query extracts a log level, component name, and message text from log bodies that follow a `LEVEL [component] message` pattern, then aggregates counts by level and component.
-
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20parse%20body%20!%27(%3F%3Clevel%3E%5Cw%2B)%5Cs%2B%5C%5B(%3F%3Ccomponent%3E%5B%5E%5C%5D%5D%2B)%5C%5D%5Cs%2B(%3F%3Cmessage%3E.%2B)!%27%20%7C%20where%20isnotnull(level)%20%7C%20stats%20count()%20as%20log_count%20by%20level%2C%20component%20%7C%20sort%20-%20log_count')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
-
-### Extract key=value pairs from log messages
-
-Many applications emit logs with `key=value` style metadata. Parse these into queryable fields:
+Parse the Kafka broker log body format to extract the broker ID and partition name:
 
 ```sql
-source = logs-otel-v1*
-| parse body 'status=(?<status>\d+)'
-| parse body 'duration=(?<duration>[^\s,]+)'
-| where isnotnull(status)
-| stats avg(cast(duration as double)) as avg_duration by status
-| sort status
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'kafka'
+| where like(body, '%Broker%Creating%')
+| parse body '\[Broker id=(?<brokerId>\d+)\] Creating new partition (?<partition>\S+) [\s\S]+'
+| head 20
 ```
+
+This extracts the broker ID and partition name from Kafka log bodies that follow the `[Broker id=N] Creating new partition ...` pattern.
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20where%20like%28body%2C%20!%27%25Broker%25Creating%25!%27%29%20%7C%20parse%20body%20!%27%5C%5BBroker%20id%3D%28%3F%3CbrokerId%3E%5Cd%2B%29%5C%5D%20Creating%20new%20partition%20%28%3F%3Cpartition%3E%5CS%2B%29%20%5B%5Cs%5CS%5D%2B!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Extract product IDs from recommendation logs
+
+Parse recommendation log bodies to extract product IDs and count how often each product is recommended:
+
+```sql
+source=logs-otel-v1*
+| where like(body, '%product:%')
+| parse body '(?<action>.+)product: (?<productId>.+)'
+| stats count() as cnt by productId
+| sort - cnt
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25product%3A%25!%27%29%20%7C%20parse%20body%20!%27%28%3F%3Caction%3E.%2B%29product%3A%20%28%3F%3CproductId%3E.%2B%29!%27%20%7C%20stats%20count%28%29%20as%20cnt%20by%20productId%20%7C%20sort%20-%20cnt')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 <Aside type="caution">
 Fields created by `parse` cannot be re-parsed by another `parse` command in the same query. Each `parse` must operate on an original source field.
@@ -151,7 +163,7 @@ Fields created by `parse` cannot be re-parsed by another `parse` command in the 
 - Fields created by `parse` cannot be parsed again by a subsequent `parse` command.
 - Fields created by `parse` cannot be overridden by `eval`.
 - The source text field used by `parse` cannot be overridden and still produce correct results.
-- Parsed fields do not appear in the final results unless the original source field is included in the `fields` command.
+- The pattern must match the entire string. Use `[\s\S]+` at the end to consume remaining content including trailing newlines.
 - Parsed fields cannot be filtered or sorted after they are used in a `stats` command.
 
 ## See also

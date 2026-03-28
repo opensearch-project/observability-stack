@@ -93,12 +93,16 @@ source = logs-otel-v1*
 | stats count()
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count%28%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Average severity by service
 
 ```sql
 source = logs-otel-v1*
 | stats avg(severityNumber) by `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20avg%28severityNumber%29%20by%20%60resource.attributes.service.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Multiple aggregations
 
@@ -107,6 +111,8 @@ source = logs-otel-v1*
 | stats avg(severityNumber) as avg_severity, max(severityNumber) as max_severity, count() as cnt by `resource.attributes.service.name`
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20avg%28severityNumber%29%20as%20avg_severity%2C%20max%28severityNumber%29%20as%20max_severity%2C%20count%28%29%20as%20cnt%20by%20%60resource.attributes.service.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Time bucketing with span
 
 ```sql
@@ -114,12 +120,29 @@ source = logs-otel-v1*
 | stats count() as log_count by span(time, 10m) as time_bucket
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count%28%29%20as%20log_count%20by%20span%28time%2C%2010m%29%20as%20time_bucket%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Percentile calculation
 
 ```sql
 source = otel-v1-apm-span-*
 | stats percentile(durationInNanos, 90) as p90 by serviceName
 ```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20otel-v1-apm-span-%2A%0A%7C%20stats%20percentile%28durationInNanos%2C%2090%29%20as%20p90%20by%20serviceName')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
+
+### First and last occurrence
+
+Find the first and last error timestamp per service, along with the total error count:
+
+```sql
+source = logs-otel-v1*
+| where severityText = 'ERROR'
+| stats earliest(time) as first_error, latest(time) as last_error, count() as total by `resource.attributes.service.name`
+| sort first_error
+```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%0A%7C%20where%20severityText%20%3D%20!%27ERROR!%27%0A%7C%20stats%20earliest%28time%29%20as%20first_error%2C%20latest%28time%29%20as%20last_error%2C%20count%28%29%20as%20total%20by%20%60resource.attributes.service.name%60%0A%7C%20sort%20first_error')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
 
 ---
 
@@ -154,5 +177,5 @@ Track how many log events arrive per 5-minute window, broken down by severity.
 
 - [eval](/docs/ppl/commands/eval/) -- create computed fields from aggregation results
 - [sort](/docs/ppl/commands/sort/) -- order aggregated results
-- [where](/docs/ppl/commands/) -- filter before aggregating
-- [head](/docs/ppl/commands/) -- limit output rows
+- [where](/docs/ppl/commands/where/) -- filter before aggregating
+- [head](/docs/ppl/commands/head/) -- limit output rows

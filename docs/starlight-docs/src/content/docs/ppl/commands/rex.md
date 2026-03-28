@@ -48,143 +48,136 @@ Backreferences (`\1`, `\2`, etc.) are supported in the replacement string.
 | Multiple matches (`max_match`) | Yes | No |
 | Text substitution (sed mode) | Yes | No |
 | Offset tracking | Yes | No |
+| Requires full-string match | No | Yes |
 
 ## Usage notes
 
 - In extract mode, each named capture group creates a new string field. When `max_match > 1`, fields become arrays.
-- Group names cannot contain underscores or special characters due to Java regex limitations. Use `(?<username>...)` not `(?<user_name>...)`.
-- Non-matching patterns return `null` for the extracted fields (unlike `parse` which returns empty strings).
+- Unlike `parse`, `rex` performs partial matching -- the pattern does not need to match the entire string.
+- Group names cannot contain underscores or special characters due to Java regex limitations. Use `(?<userName>...)` not `(?<user_name>...)`.
+- Non-matching patterns return an empty string for the extracted fields. Use `where length(field) > 0` to filter non-matches.
 - Multiple `rex` commands can be chained to extract from different fields in the same query.
 - The `max_match` system limit defaults to `10` and can be configured via the `plugins.ppl.rex.max_match.limit` cluster setting. Requesting more than the limit results in an error.
 
 ## Basic examples
 
-### Extract HTTP method and path from log bodies
+### Extract HTTP method and path from Envoy access logs
 
-Use two named capture groups to split an HTTP request line from a log body:
+Use two named capture groups to extract the HTTP method and request path from frontend-proxy (Envoy) log bodies:
 
 ```sql
-source = logs-otel-v1*
+source=logs-otel-v1*
 | rex field=body "(?<method>GET|POST|PUT|DELETE|PATCH)\s+(?<path>/[^\s]+)"
-| fields body, method, path
-| head 2
+| where length(method) > 0
+| head 20
 ```
 
 | body | method | path |
 |------|--------|------|
-| GET /api/v1/agents HTTP/1.1 200 1234 | GET | /api/v1/agents |
-| POST /api/v1/invoke HTTP/1.1 201 567 | POST | /api/v1/invoke |
+| [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 ... | GET | /api/data |
+| [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/0PUK6V6EV0 HTTP/1.1" 200 ... | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 |
+| [2026-02-26T18:04:27.084Z] "GET /api/products/6E92ZMYYFZ HTTP/1.1" 200 ... | GET | /api/products/6E92ZMYYFZ |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20rex%20field%3Dbody%20%22(%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH)%5Cs%2B(%3F%3Cpath%3E%2F%5B%5E%5Cs%5D%2B)%22%20%7C%20fields%20body%2C%20method%2C%20path%20%7C%20head%202')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5B%5E%5Cs%5D%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Replace text using sed mode
 
-Mask IP addresses in log bodies by substituting them with a placeholder:
+Mask IP addresses in Envoy access log bodies by substituting them with a placeholder:
 
 ```sql
-source = logs-otel-v1*
+source=logs-otel-v1*
+| where like(body, '%HTTP/1.1"%')
 | rex field=body mode=sed "s/\d+\.\d+\.\d+\.\d+/[REDACTED]/g"
-| fields body
 | head 2
 ```
 
 | body |
 |------|
-| [REDACTED] - - [27/Mar/2026:10:15:32 +0000] "GET /api/v1/agents HTTP/1.1" 200 |
-| [REDACTED] - - [27/Mar/2026:10:15:33 +0000] "POST /api/v1/invoke HTTP/1.1" 404 |
+| [[REDACTED]] "GET /api/data/ HTTP/1.1" 308 - via_upstream - "-" 0 9 3 2 "-" "python-requests/2.32.5" ... "[REDACTED]" frontend [REDACTED] ... |
+| [[REDACTED]] "GET /api/data HTTP/1.1" 200 - via_upstream - "-" 0 211 140 140 "-" "python-requests/2.32.5" ... "[REDACTED]" frontend [REDACTED] ... |
 
-### Extract multiple key-value pairs with max_match
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20rex%20field%3Dbody%20mode%3Dsed%20%22s%2F%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%2F%5BREDACTED%5D%2Fg%22%20%7C%20head%202')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
-Pull out multiple `key=value` pairs from a structured log body as an array:
+### Extract Kafka broker component and ID
+
+Pull out the component name and broker ID from Kafka log bodies with bracketed prefixes:
 
 ```sql
-source = logs-otel-v1*
-| rex field=body "(?<kvpair>\w+=[^\s,]+)" max_match=3
-| fields body, kvpair
-| head 3
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'kafka'
+| rex field=body "\[(?<component>\w+) id=(?<brokerId>\d+)\]"
+| where length(component) > 0
+| head 5
 ```
 
-| body | kvpair |
-|------|--------|
-| status=200 duration=45ms service=agent-orchestrator | [status=200,duration=45ms,service=agent-orchestrator] |
-| status=500 duration=1200ms service=model-gateway | [status=500,duration=1200ms,service=model-gateway] |
-| status=404 duration=12ms service=tool-executor | [status=404,duration=12ms,service=tool-executor] |
+| body | component | brokerId |
+|------|-----------|----------|
+| [Broker id=1] Creating new partition __consumer_offsets-33 ... | Broker | 1 |
+| [RaftManager id=1] Completed transition to Leader ... | RaftManager | 1 |
+| [QuorumController id=1] The request from broker 1 ... | QuorumController | 1 |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20rex%20field%3Dbody%20%22%5C%5B%28%3F%3Ccomponent%3E%5Cw%2B%29%20id%3D%28%3F%3CbrokerId%3E%5Cd%2B%29%5C%5D%22%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%205')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Track match positions with offset_field
 
-Record where each capture group matched within the source string:
+Record where each capture group matched within the Envoy access log body:
 
 ```sql
-source = logs-otel-v1*
-| rex field=body "(?<method>GET|POST|PUT|DELETE).*(?<status>\d{3})" offset_field=matchpos
-| fields body, method, status, matchpos
+source=logs-otel-v1*
+| rex field=body "(?<method>GET|POST|PUT|DELETE).*(?<statusCode>\d{3})" offset_field=matchpos
+| where length(method) > 0
 | head 2
 ```
 
-| body | method | status | matchpos |
-|------|--------|--------|----------|
-| GET /api/v1/agents HTTP/1.1 200 1234 | GET | 200 | method=0-2&status=29-31 |
-| POST /api/v1/invoke HTTP/1.1 404 567 | POST | 404 | method=0-3&status=30-32 |
+| body | method | statusCode | matchpos |
+|------|--------|------------|----------|
+| [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 ... | GET | 200 | method=29-31&statusCode=50-52 |
+| [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/... | POST | 200 | method=29-32&statusCode=81-83 |
 
-### Extract service name and duration from structured logs
-
-Capture the service name and response duration in a single pattern:
-
-```sql
-source = logs-otel-v1*
-| rex field=body "service=(?<service>[^\s,]+).*duration=(?<duration>\d+)ms"
-| fields body, service, duration
-| head 2
-```
-
-| body | service | duration |
-|------|---------|----------|
-| service=agent-orchestrator request=invoke duration=245ms status=200 | agent-orchestrator | 245 |
-| service=model-gateway request=chat duration=1802ms status=200 | model-gateway | 1802 |
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%29.%2A%28%3F%3CstatusCode%3E%5Cd%7B3%7D%29%22%20offset_field%3Dmatchpos%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%202')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 
-### Extract structured data from OTel log bodies
+### Chain rex commands to extract from multiple fields
 
-Use `rex` to pull out key fields from OpenTelemetry log messages, taking advantage of multiple named groups:
+Extract the first character of the severity text and the HTTP method/path from the body in a single query:
 
 ```sql
-source = logs-otel-v1*
-| rex field=body "(?<method>GET|POST|PUT|DELETE|PATCH)\s+(?<path>/[^\s]*)\s+.*\s(?<status>\d{3})"
-| where isnotnull(method)
-| stats count() as requests,
-        sum(case(cast(status as int) >= 400, 1 else 0)) as errors
-  by method, path
-| eval error_rate = if(requests > 0, errors * 100.0 / requests, 0)
+source=logs-otel-v1*
+| rex field=severityText "(?<severityChar>^.)"
+| rex field=body "(?<method>GET|POST|PUT|DELETE|PATCH)\s+(?<path>/\S+)"
+| where length(method) > 0
+| head 3
+```
+
+| severityText | body | severityChar | method | path |
+|-------------|------|-------------|--------|------|
+| INFO | [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 ... | I | GET | /api/data |
+| INFO | [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/... | I | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 |
+| INFO | [2026-02-26T18:04:24.766Z] "GET / HTTP/1.1" 200 ... | I | GET | / |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3DseverityText%20%22%28%3F%3CseverityChar%3E%5E.%29%22%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%203')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Aggregate endpoint traffic from Envoy access logs
+
+Use `rex` to extract method and path from frontend-proxy log bodies, then aggregate to find the busiest endpoints:
+
+```sql
+source=logs-otel-v1*
+| where `resource.attributes.service.name` = 'frontend-proxy'
+| rex field=body "(?<method>GET|POST|PUT|DELETE|PATCH)\s+(?<path>/\S+)"
+| where length(method) > 0
+| stats count() as requests by method, path
 | sort - requests
 | head 20
 ```
 
-This extracts HTTP method, path, and status code from log bodies, then calculates error rates per endpoint.
+This extracts HTTP method and path from Envoy access log bodies, then counts requests per endpoint.
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20rex%20field%3Dbody%20%22(%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH)%5Cs%2B(%3F%3Cpath%3E%2F%5B%5E%5Cs%5D*)%5Cs%2B.*%5Cs(%3F%3Cstatus%3E%5Cd%7B3%7D)%22%20%7C%20where%20isnotnull(method)%20%7C%20stats%20count()%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
-
-### Chain rex commands to extract from multiple fields
-
-Extract the first character of the severity text and the service name prefix in a single query:
-
-```sql
-source = logs-otel-v1*
-| rex field=severityText "(?<severitychar>^.)"
-| rex field=body "service=(?<service>[^\s,]+)"
-| where isnotnull(service)
-| fields severityText, body, severitychar, service
-| head 3
-```
-
-| severityText | body | severitychar | service |
-|-------------|------|-------------|---------|
-| ERROR | service=agent-orchestrator error=timeout | E | agent-orchestrator |
-| WARN | service=model-gateway retries=3 | W | model-gateway |
-| INFO | service=tool-executor status=completed | I | tool-executor |
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 <Aside type="caution">
-Capture group names **cannot contain underscores**. Use `(?<username>...)` instead of `(?<user_name>...)`. This is a Java regex limitation.
+Capture group names **cannot contain underscores**. Use `(?<userName>...)` instead of `(?<user_name>...)`. This is a Java regex limitation.
 </Aside>
 
 ## See also

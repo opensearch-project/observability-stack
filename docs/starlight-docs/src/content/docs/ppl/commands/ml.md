@@ -134,7 +134,6 @@ Detect unusually slow spans without considering time ordering:
 
 ```sql
 source = otel-v1-apm-span-*
-| fields durationInNanos
 | ml action='train' algorithm='rcf'
 | where anomalous = 'True'
 ```
@@ -147,7 +146,6 @@ Use k-means to group services into behavioral clusters based on error rate and a
 source = otel-v1-apm-span-*
 | stats avg(durationInNanos) as avg_duration, count() as total, sum(case(status.code = 2, 1 else 0)) as errors by serviceName
 | eval error_rate = errors * 100.0 / total
-| fields avg_duration, error_rate
 | ml action='train' algorithm='kmeans' centroids=3
 ```
 
@@ -181,9 +179,8 @@ After identifying the anomalous time windows, investigate individual traces:
 
 ```sql
 source = otel-v1-apm-span-*
-| where serviceName = 'checkout-service' AND startTime >= '2024-01-15 14:00:00' AND startTime <= '2024-01-15 14:05:00'
+| where serviceName = 'checkout'
 | sort - durationInNanos
-| fields traceId, name, durationInNanos, status.code
 | head 20
 ```
 
@@ -195,13 +192,12 @@ Group services by their token usage, latency, and throughput characteristics to 
 source = otel-v1-apm-span-*
 | stats avg(durationInNanos) as avg_duration, count() as throughput by serviceName
 | eval avg_duration_ms = avg_duration / 1000000
-| fields avg_duration_ms, throughput
 | ml action='train' algorithm='kmeans' centroids=3 distance_type=EUCLIDEAN
 ```
 
 ## See also
 
-- [stats](/docs/ppl/commands/#stats) -- aggregate data before feeding to ML algorithms
-- [eventstats](/docs/ppl/commands/#eventstats) -- append aggregation results alongside original events
-- [trendline](/docs/ppl/commands/#trendline) -- simple and weighted moving averages
-- [eval](/docs/ppl/commands/#eval) -- normalize fields before clustering
+- [stats](/docs/ppl/commands/stats/) -- aggregate data before feeding to ML algorithms
+- [eventstats](/docs/ppl/commands/eventstats/) -- append aggregation results alongside original events
+- [trendline](/docs/ppl/commands/trendline/) -- simple and weighted moving averages
+- [eval](/docs/ppl/commands/eval/) -- normalize fields before clustering

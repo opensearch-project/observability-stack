@@ -73,12 +73,16 @@ Conditional logic and null handling.
 | stats count() as log_count by severity_group
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20severity_group%20%3D%20case%28severityNumber%20%3E%3D%2017%2C%20!%27error!%27%2C%20severityNumber%20%3E%3D%209%2C%20!%27warning!%27%2C%20else%20!%27info!%27%29%20%7C%20stats%20count%28%29%20as%20log_count%20by%20severity_group')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 **Example - Safe division with null handling:**
 ```sql
 | stats count() as total, sum(case(severityText = 'ERROR', 1 else 0)) as errors
   by `resource.attributes.service.name`
 | eval error_rate = if(total > 0, errors * 100.0 / total, 0)
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%20%7C%20eval%20error_rate%20%3D%20if%28total%20%3E%200%2C%20errors%20%2A%20100.0%20%2F%20total%2C%200%29')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ---
 
@@ -111,6 +115,8 @@ Text manipulation and pattern matching.
 | eval service_prefix = substring(`resource.attributes.service.name`, 0, locate('-', `resource.attributes.service.name`))
 | stats count() by service_prefix
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_prefix%20%3D%20substring%28%60resource.attributes.service.name%60%2C%200%2C%20locate%28!%27-!%27%2C%20%60resource.attributes.service.name%60%29%29%20%7C%20stats%20count%28%29%20by%20service_prefix')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ---
 
@@ -154,6 +160,8 @@ Date arithmetic, extraction, formatting, and conversion. All operations use UTC.
 | sort hour
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20hour%20%3D%20hour%28time%29%20%7C%20stats%20count%28%29%20as%20volume%20by%20hour%20%7C%20sort%20hour')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ---
 
 ## Math functions
@@ -190,7 +198,6 @@ Numeric operations and mathematical calculations.
 ```sql
 source = otel-v1-apm-span-*
 | eval duration_ms = round(durationInNanos / 1000000.0, 2)
-| fields serviceName, name, duration_ms
 | sort - duration_ms
 | head 20
 ```
@@ -246,6 +253,8 @@ Parse, create, and manipulate JSON data.
 | stats count() by parsed
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20json_valid%28body%29%20%7C%20eval%20parsed%20%3D%20json_extract%28body%2C%20!%27%24.error.type!%27%29%20%7C%20where%20isnotnull%28parsed%29%20%7C%20stats%20count%28%29%20by%20parsed')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ---
 
 ## IP address functions
@@ -293,8 +302,10 @@ Full-text search using the OpenSearch query engine.
 **Example - Full-text search in log bodies:**
 ```sql
 | where match(body, 'connection timeout')
-| fields time, body, `resource.attributes.service.name`
+| head 20
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20match%28body%2C%20!%27connection%20timeout!%27%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ---
 
@@ -326,9 +337,10 @@ Utilities for type inspection and diagnostics.
 **Example - Inspect field types:**
 ```sql
 | eval body_type = typeof(body), severity_type = typeof(severityNumber)
-| fields body_type, severity_type
 | head 1
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20body_type%20%3D%20typeof%28body%29%2C%20severity_type%20%3D%20typeof%28severityNumber%29%20%7C%20head%201')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ---
 

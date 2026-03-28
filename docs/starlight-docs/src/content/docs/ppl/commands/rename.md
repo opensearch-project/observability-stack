@@ -41,7 +41,6 @@ rename <source-field> AS <target-field> [, <source-field> AS <target-field>]...
 ```sql
 source = otel-v1-apm-span-*
 | rename serviceName as service
-| fields service, name, durationInNanos
 | head 20
 ```
 
@@ -50,7 +49,6 @@ source = otel-v1-apm-span-*
 ```sql
 source = otel-v1-apm-span-*
 | rename serviceName as service, durationInNanos as duration_ns
-| fields service, name, duration_ns
 | head 20
 ```
 
@@ -61,7 +59,6 @@ Match all fields ending in `Name` and replace with `_name`:
 ```sql
 source = otel-v1-apm-service-map-*
 | rename *Name as *_name
-| fields service_name, traceGroup_name
 | head 20
 ```
 
@@ -72,7 +69,6 @@ Combine several wildcard renames in one command:
 ```sql
 source = otel-v1-apm-span-*
 | rename *Name as *_name, *Id as *_id
-| fields service_name, trace_id, span_id, name
 | head 20
 ```
 
@@ -83,7 +79,6 @@ The target field is replaced by the source field's values:
 ```sql
 source = otel-v1-apm-span-*
 | rename serviceName as name
-| fields name, durationInNanos
 | head 20
 ```
 
@@ -98,14 +93,14 @@ OpenTelemetry log fields have long, dot-delimited names. Rename them for readabi
 ```sql
 source = logs-otel-v1*
 | rename `resource.attributes.service.name` as service,
-         `resource.attributes.service.version` as version,
-         `resource.attributes.deployment.environment` as env
+         `resource.attributes.telemetry.sdk.language` as language,
+         `resource.attributes.host.name` as host
 | where severityText = 'ERROR'
-| stats count() as errors by service, version, env
+| stats count() as errors by service, language, host
 | sort - errors
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rename%20%60resource.attributes.service.name%60%20as%20service%20%7C%20fields%20time%2C%20body%2C%20severityText%2C%20service%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rename%20%60resource.attributes.service.name%60%20as%20service%2C%20%60resource.attributes.telemetry.sdk.language%60%20as%20language%2C%20%60resource.attributes.host.name%60%20as%20host%20%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20stats%20count%28%29%20as%20errors%20by%20service%2C%20language%2C%20host%20%7C%20sort%20-%20errors')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Rename span fields for dashboard readability
 
@@ -115,13 +110,12 @@ Shorten trace span attribute names for cleaner output in dashboards:
 source = otel-v1-apm-span-*
 | rename serviceName as service, durationInNanos as duration_ns
 | eval duration_ms = duration_ns / 1000000
-| fields service, name, duration_ms, traceId
 | sort - duration_ms
 | head 20
 ```
 
 ## See also
 
-- [fields](/docs/ppl/commands/) - select or exclude fields
-- [eval](/docs/ppl/commands/) - create computed fields
+- [fields](/docs/ppl/commands/fields/) - select or exclude fields
+- [eval](/docs/ppl/commands/eval/) - create computed fields
 - [Command Reference](/docs/ppl/commands/) - all PPL commands

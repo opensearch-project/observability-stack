@@ -92,7 +92,7 @@ Add a pattern label to each log body:
 ```sql
 source = logs-otel-v1*
 | patterns body method=simple_pattern
-| fields body, patterns_field
+| head 20
 ```
 
 | body | patterns_field |
@@ -101,7 +101,7 @@ source = logs-otel-v1*
 | 192.168.1.10 - POST /api/v1/invoke 201 567ms | \<*\>.\<*\>.\<*\>.\<*\> - \<*\> /\<*\>/\<*\>/\<*\> \<*\> \<*\>\<*\> |
 | 172.16.0.42 - GET /health 200 12ms | \<*\>.\<*\>.\<*\>.\<*\> - \<*\> /\<*\> \<*\> \<*\>\<*\> |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1*%20%7C%20patterns%20body%20method%3Dsimple_pattern%20%7C%20fields%20body%2C%20patterns_field')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%20%7C%20patterns%20body%20method%3Dsimple_pattern%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Aggregation mode -- group by pattern
 
@@ -110,10 +110,12 @@ Count how many log entries match each pattern:
 ```sql
 source = logs-otel-v1*
 | patterns body method=simple_pattern mode=aggregation
-| fields patterns_field, pattern_count, sample_logs
+| head 20
 ```
 
 This returns one row per unique pattern with the count and up to 10 sample log lines.
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%20%7C%20patterns%20body%20method%3Dsimple_pattern%20mode%3Daggregation%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Brain method -- smarter clustering
 
@@ -122,7 +124,7 @@ The brain method preserves more semantic meaning than simple_pattern:
 ```sql
 source = logs-otel-v1*
 | patterns body method=brain
-| fields body, patterns_field
+| head 20
 ```
 
 The brain algorithm identifies that HTTP methods (GET, POST, etc.), URL paths, and status codes are variable while structural elements (brackets, dashes, quotes) are constant, producing cleaner patterns like:
@@ -131,6 +133,8 @@ The brain algorithm identifies that HTTP methods (GET, POST, etc.), URL paths, a
 <*IP*> - <*> [<*>/<*>/<*>:<*>:<*>:<*> <*>] "<*> <*> HTTP/<*>" <*> <*>
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%20%7C%20patterns%20body%20method%3Dbrain%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Custom regex pattern
 
 Replace only digits, preserving all other characters:
@@ -138,8 +142,10 @@ Replace only digits, preserving all other characters:
 ```sql
 source = logs-otel-v1*
 | patterns body method=simple_pattern new_field='no_numbers' pattern='[0-9]'
-| fields body, no_numbers
+| head 20
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%20%7C%20patterns%20body%20method%3Dsimple_pattern%20new_field%3D!%27no_numbers!%27%20pattern%3D!%27%5B0-9%5D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Aggregation with numbered tokens
 
@@ -148,11 +154,12 @@ Enable numbered tokens to see exactly which parts of the pattern are variable:
 ```sql
 source = logs-otel-v1*
 | patterns body method=simple_pattern mode=aggregation show_numbered_token=true
-| fields patterns_field, pattern_count, tokens
 | head 1
 ```
 
 The output includes a `tokens` map showing what each `<tokenN>` placeholder matched, e.g. `{'<token1>': ['200'], '<token2>': ['404'], ...}`.
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20logs-otel-v1%2A%20%7C%20patterns%20body%20method%3Dsimple_pattern%20mode%3Daggregation%20show_numbered_token%3Dtrue%20%7C%20head%201')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 

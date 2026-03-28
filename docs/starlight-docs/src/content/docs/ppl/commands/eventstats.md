@@ -52,7 +52,6 @@ Calculate aggregate latency statistics per service and add them to every span:
 ```sql
 source = otel-v1-apm-span-*
 | eventstats avg(durationInNanos), sum(durationInNanos), count() by serviceName
-| fields serviceName, name, durationInNanos, `avg(durationInNanos)`, `sum(durationInNanos)`, `count()`
 | head 50
 ```
 
@@ -65,7 +64,6 @@ Count trace spans within 1-hour time buckets, grouped by service:
 ```sql
 source = otel-v1-apm-span-*
 | eventstats count() as cnt by span(startTime, 1h) as time_bucket, serviceName
-| fields startTime, serviceName, name, cnt
 | head 50
 ```
 
@@ -78,7 +76,6 @@ source = otel-v1-apm-span-*
 | eventstats avg(durationInNanos) as avg_duration by serviceName
 | eval deviation = durationInNanos - avg_duration
 | where abs(deviation) > avg_duration * 2
-| fields serviceName, name, durationInNanos, avg_duration, deviation
 | sort - deviation
 ```
 
@@ -89,7 +86,6 @@ Exclude `null` group-by values from aggregation:
 ```sql
 source = otel-v1-apm-span-*
 | eventstats bucket_nullable=false count() as cnt by `status.code`
-| fields serviceName, name, `status.code`, cnt
 | head 50
 ```
 
@@ -106,7 +102,6 @@ source = otel-v1-apm-span-*
 | eventstats avg(durationInNanos) as avg_duration by serviceName
 | eval deviation = durationInNanos - avg_duration
 | where deviation > avg_duration * 2
-| fields serviceName, name, durationInNanos, avg_duration, deviation
 | sort - deviation
 | head 20
 ```
@@ -121,13 +116,14 @@ source = logs-otel-v1*
 | where severityText = 'ERROR'
 | eventstats avg(svc_error_count) as avg_errors
 | where svc_error_count > avg_errors * 3
-| fields `resource.attributes.service.name`, severityText, svc_error_count, avg_errors
 | dedup `resource.attributes.service.name`
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eventstats%20count%28%29%20as%20svc_error_count%20by%20%60resource.attributes.service.name%60%2C%20severityText%20%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20eventstats%20avg%28svc_error_count%29%20as%20avg_errors%20%7C%20where%20svc_error_count%20%3E%20avg_errors%20%2A%203%20%7C%20dedup%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## See also
 
-- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [stats](/docs/ppl/commands/stats/) - aggregate and collapse rows
 - [streamstats](/docs/ppl/commands/streamstats/) - cumulative and rolling window statistics
 - [trendline](/docs/ppl/commands/trendline/) - moving averages
 - [Command Reference](/docs/ppl/commands/) - all PPL commands

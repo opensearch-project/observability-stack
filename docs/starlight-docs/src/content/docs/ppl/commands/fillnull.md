@@ -74,8 +74,9 @@ Replace nulls in both `severityText` and `resource.attributes.service.name`:
 ```sql
 source = logs-otel-v1*
 | fillnull with 'N/A' in severityText, `resource.attributes.service.name`
-| fields time, body, severityText, `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20with%20!%27N%2FA!%27%20in%20severityText%2C%20%60resource.attributes.service.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Per-field defaults with the using syntax
 
@@ -84,8 +85,9 @@ Assign different default values to different fields:
 ```sql
 source = logs-otel-v1*
 | fillnull using severityText = 'INFO', `resource.attributes.service.name` = 'unknown-service'
-| fields time, body, severityText, `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20using%20severityText%20%3D%20!%27INFO!%27%2C%20%60resource.attributes.service.name%60%20%3D%20!%27unknown-service!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Fill all fields using the value= syntax
 
@@ -93,9 +95,10 @@ Replace nulls across all string fields with a placeholder:
 
 ```sql
 source = logs-otel-v1*
-| fields body, severityText, `resource.attributes.service.name`
 | fillnull value='<empty>'
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20value%3D!%27%3Cempty%3E!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Clean data before visualization
 
@@ -106,6 +109,8 @@ source = logs-otel-v1*
 | fillnull with 'unknown' in `resource.attributes.service.name`
 | timechart timefield=time span=5m count() by `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20with%20!%27unknown!%27%20in%20%60resource.attributes.service.name%60%20%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 
@@ -123,6 +128,8 @@ source = logs-otel-v1*
 | sort - error_rate
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20using%20severityText%20%3D%20!%27UNSET!%27%2C%20%60resource.attributes.service.name%60%20%3D%20!%27unknown!%27%20%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%20OR%20severityText%20%3D%20!%27FATAL!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%20%7C%20eval%20error_rate%20%3D%20round%28errors%20%2A%20100.0%20%2F%20total%2C%202%29%20%7C%20sort%20-%20error_rate')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Fill missing trace context for log-trace correlation
 
 When correlating logs with traces, fill missing trace IDs to identify uncorrelated logs:
@@ -134,9 +141,11 @@ source = logs-otel-v1*
 | where traceId = 'no-trace'
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20using%20traceId%20%3D%20!%27no-trace!%27%2C%20spanId%20%3D%20!%27no-span!%27%20%7C%20stats%20count%28%29%20as%20log_count%20by%20traceId%20%7C%20where%20traceId%20%3D%20!%27no-trace!%27')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## See also
 
-- [eval](/docs/ppl/commands/#eval) -- create computed fields or conditional replacements with `case()`
-- [where](/docs/ppl/commands/#where) -- filter out null values with `IS NOT NULL`
-- [stats](/docs/ppl/commands/#stats) -- aggregation (benefits from clean non-null data)
+- [eval](/docs/ppl/commands/eval/) -- create computed fields or conditional replacements with `case()`
+- [where](/docs/ppl/commands/where/) -- filter out null values with `IS NOT NULL`
+- [stats](/docs/ppl/commands/stats/) -- aggregation (benefits from clean non-null data)
 - [timechart](/docs/ppl/commands/timechart/) -- time-based charts (null `by` fields create `NULL` categories)

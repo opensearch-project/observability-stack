@@ -47,6 +47,10 @@ lookup <lookupIndex> (<lookupMappingField> [AS <sourceMappingField>])...
 - **Multiple mapping fields** are supported. Separate them with commas to match on a composite key.
 - When `<inputField>` is omitted, **all fields** from the lookup index (except the mapping keys) are applied to the output.
 
+<Aside type="note">
+The `lookup` command requires a pre-existing lookup index (dimension table) in your cluster. The examples below assume you have created the referenced lookup indices. They are not available in the public playground.
+</Aside>
+
 ## Examples
 
 ### Basic lookup - replace values
@@ -57,7 +61,6 @@ Enrich log events with team ownership from a `service_owners` reference index:
 source = logs-otel-v1*
 | eval service = `resource.attributes.service.name`
 | LOOKUP service_owners service_name AS service REPLACE team
-| fields time, body, severityText, service, team
 ```
 
 ### Append missing values only
@@ -68,7 +71,6 @@ Fill in `team` where it is currently `null`, without overwriting existing values
 source = logs-otel-v1*
 | eval service = `resource.attributes.service.name`
 | LOOKUP service_owners service_name AS service APPEND team
-| fields time, body, severityText, service, team
 ```
 
 ### Lookup without specifying input fields
@@ -79,7 +81,6 @@ When no `inputField` is specified, all non-key fields from the lookup index are 
 source = logs-otel-v1*
 | eval service = `resource.attributes.service.name`
 | LOOKUP service_owners service_name AS service
-| fields time, body, severityText, service, team, oncall, tier
 ```
 
 ### Map to a new output field
@@ -89,7 +90,6 @@ Place matched values into a new field using `AS`:
 ```sql
 source = otel-v1-apm-span-*
 | LOOKUP environments service_name AS serviceName REPLACE env AS deploy_env
-| fields serviceName, name, durationInNanos, deploy_env
 ```
 
 ### Using the OUTPUT keyword
@@ -100,7 +100,6 @@ source = otel-v1-apm-span-*
 source = logs-otel-v1*
 | eval service = `resource.attributes.service.name`
 | LOOKUP service_owners service_name AS service OUTPUT team
-| fields time, body, severityText, service, team
 ```
 
 ## Extended examples
@@ -113,7 +112,6 @@ Assume you have a `service_owners` index mapping `service.name` to `team`, `onca
 source = logs-otel-v1*
 | eval service = `resource.attributes.service.name`
 | LOOKUP service_owners service.name AS service REPLACE team, oncall, tier
-| fields time, body, severityText, service, team, oncall, tier
 | head 50
 ```
 
@@ -125,7 +123,6 @@ Enrich trace spans with deployment metadata from an `environments` reference ind
 source = otel-v1-apm-span-*
 | LOOKUP environments service_name AS serviceName REPLACE env, region, cost_center
 | where env = 'production'
-| fields serviceName, name, durationInNanos, env, region, cost_center
 | sort - durationInNanos
 | head 20
 ```
@@ -133,5 +130,5 @@ source = otel-v1-apm-span-*
 ## See also
 
 - [join](/docs/ppl/commands/join/) - full join for complex multi-field correlation
-- [eval](/docs/ppl/commands/) - compute new fields from expressions
+- [eval](/docs/ppl/commands/eval/) - compute new fields from expressions
 - [Command Reference](/docs/ppl/commands/) - all PPL commands

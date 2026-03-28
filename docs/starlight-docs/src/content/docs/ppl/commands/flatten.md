@@ -35,39 +35,41 @@ flatten <field> [as (<alias-list>)]
 
 - Do **not** apply `flatten` to array fields. Use [expand](/docs/ppl/commands/expand/) to split arrays into rows first, then `flatten` each resulting object.
 - When a field contains a nested array, only the first element of the array is flattened.
-- The `flatten` command may not work as expected if flattened fields are hidden. For example, `source=my-index | fields message | flatten message` fails because sub-fields like `message.info` are hidden after `fields message`. Instead, use `source=my-index | flatten message`.
+- The `flatten` command may not work as expected if flattened fields are hidden. For example, `source=logs-otel-v1* | fields instrumentationScope | flatten instrumentationScope` fails because sub-fields like `instrumentationScope.name` are hidden after `fields instrumentationScope`. Instead, use `source=logs-otel-v1* | flatten instrumentationScope`.
 - Aliases must follow the lexicographic order of original keys. For a struct with keys `b`, `c`, `Z`, provide aliases in the order `Z`, `b`, `c` (uppercase sorts before lowercase).
 
 ## Examples
 
+<Aside type="note">
+In the Observability Stack, Data Prepper flattens OTel attributes into dotted field names (e.g., `resource.attributes.service.name`). The `flatten` command is most useful when working with indices that store nested objects or arrays of key-value pairs, such as raw OTLP data ingested without flattening.
+</Aside>
+
 ### Flatten an object field
 
-Flatten a `message` object into its component fields:
+Flatten the `instrumentationScope` object from OTel log records into its component fields (`name`, `version`, `attributes`):
 
 ```sql
-source = my-index
-| flatten message
-| fields myNum, author, dayOfWeek, info
+source = logs-otel-v1*
+| flatten instrumentationScope
 ```
 
 ### Flatten with aliases
 
-Rename flattened fields using aliases (in lexicographic order of original keys: `author`, `dayOfWeek`, `info`):
+Rename flattened fields using aliases (in lexicographic order of original keys: `attributes`, `name`, `version`):
 
 ```sql
-source = my-index
-| flatten message as (creator, dow, details)
+source = logs-otel-v1*
+| flatten instrumentationScope as (scope_attrs, scope_name, scope_version)
 ```
 
 ### Flatten after filtering
 
-Filter first, then flatten to reduce the data volume before restructuring:
+Filter for error logs first, then flatten to reduce data volume before restructuring:
 
 ```sql
-source = my-index
-| where myNum > 1
-| flatten message
-| fields author, info
+source = logs-otel-v1*
+| where severityText = 'ERROR'
+| flatten instrumentationScope
 ```
 
 ## Extended examples
@@ -79,7 +81,6 @@ OTel span documents store HTTP metadata in nested objects. Flatten them for easi
 ```sql
 source = otel-v1-apm-span-*
 | flatten attributes
-| fields serviceName, name, `http.method`, `http.status_code`, `http.url`
 | where `http.status_code` >= 400
 | stats count() as error_count by serviceName, `http.status_code`
 ```
@@ -89,15 +90,14 @@ source = otel-v1-apm-span-*
 Combine `expand` and `flatten` to work with arrays of structured objects. First expand the array into rows, then flatten each object:
 
 ```sql
-source = my-index
-| expand events as event
-| flatten event
-| fields timestamp, event_type, details
-| sort - timestamp
+source = logs-otel-v1*
+| expand resource.attributes as attr
+| flatten attr
+| sort - key
 ```
 
 ## See also
 
 - [expand](/docs/ppl/commands/expand/) -- expand array fields into multiple rows (use before `flatten` for arrays of objects)
 - [spath](/docs/ppl/commands/spath/) -- extract fields from JSON strings
-- [fields](/docs/ppl/commands/#fields) -- select or exclude fields from results
+- [fields](/docs/ppl/commands/fields/) -- select or exclude fields from results

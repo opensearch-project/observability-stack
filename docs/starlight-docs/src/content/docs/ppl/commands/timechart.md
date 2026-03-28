@@ -23,7 +23,7 @@ timechart [timefield=<field>] [span=<interval>] [limit=<N>] [useother=<bool>] [u
 
 | Argument | Description |
 |----------|-------------|
-| `<aggregation>` | The aggregation function to apply to each time bucket. Only a single aggregation function is supported per `timechart` command. Supports all [stats](/docs/ppl/commands/#stats) aggregation functions plus the timechart-specific rate functions (`per_second`, `per_minute`, `per_hour`, `per_day`). |
+| `<aggregation>` | The aggregation function to apply to each time bucket. Only a single aggregation function is supported per `timechart` command. Supports all [stats](/docs/ppl/commands/stats/) aggregation functions plus the timechart-specific rate functions (`per_second`, `per_minute`, `per_hour`, `per_day`). |
 
 ### Optional
 
@@ -79,6 +79,8 @@ source = logs-otel-v1*
 | timechart timefield=time span=5m count() by `resource.attributes.service.name`
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Top 3 services with the rest grouped as OTHER
 
 Limit the breakdown to the top 3 services by volume, grouping remaining services into `OTHER`:
@@ -87,6 +89,8 @@ Limit the breakdown to the top 3 services by volume, grouping remaining services
 source = logs-otel-v1*
 | timechart timefield=time span=5m limit=3 count() by `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20limit%3D3%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Exclude the OTHER category
 
@@ -97,6 +101,8 @@ source = logs-otel-v1*
 | timechart timefield=time span=5m limit=5 useother=false count() by `resource.attributes.service.name`
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20limit%3D5%20useother%3Dfalse%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## Extended examples
 
 ### Request latency percentiles over time (OTel traces)
@@ -105,8 +111,10 @@ Calculate average span duration per minute, broken down by service, to visualize
 
 ```sql
 source = otel-v1-apm-span-*
-| timechart span=1m avg(durationInNanos) by serviceName
+| timechart timefield=startTime span=1m avg(durationInNanos) by serviceName
 ```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20otel-v1-apm-span-%2A%0A%7C%20timechart%20timefield%3DstartTime%20span%3D1m%20avg%28durationInNanos%29%20by%20serviceName')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
 
 This produces a time-series suitable for a dashboard line chart where each line represents a service's average latency over time.
 
@@ -119,9 +127,11 @@ source = logs-otel-v1*
 | timechart timefield=time span=1m per_second(severityNumber) by severityText
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D1m%20per_second%28severityNumber%29%20by%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## See also
 
-- [stats](/docs/ppl/commands/#stats) -- general aggregation and grouping
-- [chart](/docs/ppl/commands/#chart) -- row/column split aggregation for non-time-based charts
-- [trendline](/docs/ppl/commands/#trendline) -- moving averages over ordered data
-- [bin](/docs/ppl/commands/#bin) -- bucket numeric or time values into intervals
+- [stats](/docs/ppl/commands/stats/) -- general aggregation and grouping
+- [chart](/docs/ppl/commands/) -- row/column split aggregation for non-time-based charts
+- [trendline](/docs/ppl/commands/trendline/) -- moving averages over ordered data
+- [bin](/docs/ppl/commands/) -- bucket numeric or time values into intervals

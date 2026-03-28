@@ -41,34 +41,37 @@ expand <field> [as <alias>]
 
 ## Examples
 
+<Aside type="note">
+In the Observability Stack, Data Prepper flattens OTel attributes into dotted field names (e.g., `resource.attributes.service.name`). The `expand` command is most useful when working with indices that store arrays or nested objects, such as custom application indices or raw OTLP data ingested without flattening.
+</Aside>
+
 ### Expand an array field
 
-Expand a nested array of addresses into individual rows:
+Expand the `resource.attributes` array from OTel log records into individual rows, one per attribute:
 
 ```sql
-source = my-index
-| expand address
+source = logs-otel-v1*
+| expand resource.attributes
 ```
 
 ### Expand with an alias
 
-Expand and rename the expanded field:
+Expand and rename the expanded field for clarity:
 
 ```sql
-source = my-index
-| expand address as addr
-| fields name, age, addr
+source = logs-otel-v1*
+| expand resource.attributes as attr
 ```
 
 ### Filter after expansion
 
-Expand an array and then filter for specific elements:
+Expand resource attributes into rows, then filter for a specific attribute key:
 
 ```sql
-source = my-index
-| expand tags as tag
-| where tag = 'production'
-| fields name, tag
+source = logs-otel-v1*
+| expand resource.attributes as attr
+| flatten attr
+| where key = 'service.name'
 ```
 
 ## Extended examples
@@ -81,8 +84,9 @@ OTel data often stores attributes as arrays of key-value objects. Expand the arr
 source = logs-otel-v1*
 | expand resource.attributes as attr
 | flatten attr
-| fields time, key, value, body
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20expand%20resource.attributes%20as%20attr%20%7C%20flatten%20attr%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ### Expand nested scope attributes for instrumentation analysis
 
@@ -96,8 +100,10 @@ source = logs-otel-v1*
 | sort - log_count
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20expand%20instrumentationScope.attributes%20as%20scope_attr%20%7C%20flatten%20scope_attr%20%7C%20stats%20count%28%29%20as%20log_count%20by%20key%2C%20value%20%7C%20sort%20-%20log_count')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ## See also
 
 - [flatten](/docs/ppl/commands/flatten/) -- flatten struct/object fields into top-level columns
 - [spath](/docs/ppl/commands/spath/) -- parse JSON strings before expanding
-- [eval](/docs/ppl/commands/#eval) -- transform expanded values
+- [eval](/docs/ppl/commands/eval/) -- transform expanded values

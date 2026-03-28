@@ -62,7 +62,6 @@ streamstats [bucket_nullable=<bool>] [current=<bool>] [window=<int>] [global=<bo
 source = otel-v1-apm-span-*
 | sort startTime
 | streamstats avg(durationInNanos) as running_avg, sum(durationInNanos) as running_sum, count() as running_count by serviceName
-| fields startTime, serviceName, name, durationInNanos, running_avg, running_sum, running_count
 | head 50
 ```
 
@@ -76,7 +75,6 @@ Compute the maximum latency from the previous 2 spans (excluding the current spa
 source = otel-v1-apm-span-*
 | sort startTime
 | streamstats current=false window=2 max(durationInNanos) as prev_max_latency
-| fields startTime, serviceName, durationInNanos, prev_max_latency
 | head 50
 ```
 
@@ -90,7 +88,6 @@ With `global=true`, the window slides across all rows but aggregation respects t
 source = otel-v1-apm-span-*
 | sort startTime
 | streamstats window=5 global=true avg(durationInNanos) as running_avg by serviceName
-| fields startTime, serviceName, durationInNanos, running_avg
 | head 50
 ```
 
@@ -100,7 +97,6 @@ With `global=false`, each `by` group gets its own independent window:
 source = otel-v1-apm-span-*
 | sort startTime
 | streamstats window=5 global=false avg(durationInNanos) as running_avg by serviceName
-| fields startTime, serviceName, durationInNanos, running_avg
 | head 50
 ```
 
@@ -114,7 +110,6 @@ Reset running statistics when latency crosses a threshold:
 source = otel-v1-apm-span-*
 | sort startTime
 | streamstats current=false reset_before="(durationInNanos > 10000000000)" reset_after="(durationInNanos < 1000000)" avg(durationInNanos) as avg_latency by serviceName
-| fields startTime, serviceName, durationInNanos, avg_latency
 | head 50
 ```
 
@@ -131,7 +126,6 @@ source = otel-v1-apm-span-*
 | sort startTime
 | streamstats window=10 avg(durationInNanos) as rolling_avg_latency by serviceName
 | eval rolling_avg_ms = rolling_avg_latency / 1000000
-| fields startTime, serviceName, name, durationInNanos, rolling_avg_ms
 | head 50
 ```
 
@@ -144,13 +138,14 @@ source = logs-otel-v1*
 | where severityText = 'ERROR'
 | sort time
 | streamstats count() as cumulative_errors by `resource.attributes.service.name`
-| fields time, `resource.attributes.service.name`, body, cumulative_errors
 | head 100
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20sort%20time%20%7C%20streamstats%20count%28%29%20as%20cumulative_errors%20by%20%60resource.attributes.service.name%60%20%7C%20head%20100')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## See also
 
 - [eventstats](/docs/ppl/commands/eventstats/) - add group-level statistics to every event
 - [trendline](/docs/ppl/commands/trendline/) - simple and weighted moving averages
-- [stats](/docs/ppl/commands/) - aggregate and collapse rows
+- [stats](/docs/ppl/commands/stats/) - aggregate and collapse rows
 - [Command Reference](/docs/ppl/commands/) - all PPL commands

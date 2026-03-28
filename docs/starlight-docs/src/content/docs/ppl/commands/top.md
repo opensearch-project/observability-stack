@@ -77,6 +77,8 @@ Return just the values without frequency counts:
 | top showcount=false severityText
 ```
 
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20top%20showcount%3Dfalse%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
 ### Rename the count column
 
 Use a custom name for the count field:
@@ -84,6 +86,8 @@ Use a custom name for the count field:
 ```sql
 | top countfield='frequency' `resource.attributes.service.name`
 ```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20top%20countfield%3D!%27frequency!%27%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
 
 ## Extended examples
 
@@ -111,7 +115,7 @@ This helps identify hot paths in your microservices architecture -- the operatio
 ## See also
 
 - [rare](/docs/ppl/commands/rare/) - The inverse of `top`: find the least common values
-- [stats](/docs/ppl/commands/) - For more complex aggregations beyond simple frequency counts
+- [stats](/docs/ppl/commands/stats/) - For more complex aggregations beyond simple frequency counts
 - [dedup](/docs/ppl/commands/dedup/) - Deduplicate to get unique values with sample documents
 - [head](/docs/ppl/commands/head/) - Limit the number of results returned
 - [PPL Command Reference](/docs/ppl/commands/) - All PPL commands

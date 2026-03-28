@@ -81,7 +81,6 @@ Correlate log entries with trace spans using `traceId` to see which spans produc
 ```sql
 source = logs-otel-v1*
 | inner join left=l right=r ON l.traceId = r.traceId otel-v1-apm-span-*
-| fields l.time, l.body, l.severityText, r.serviceName, r.name, r.durationInNanos
 ```
 
 ### Join with a subsearch
@@ -94,11 +93,9 @@ source = logs-otel-v1* as l
 | left join ON l.traceId = r.traceId [
     source = otel-v1-apm-span-*
     | where durationInNanos > 5000000000
-    | fields traceId, serviceName, name, durationInNanos
     | sort - durationInNanos
     | head 100
   ] as r
-| fields l.time, l.body, l.severityText, r.serviceName, r.name, r.durationInNanos
 ```
 
 ### Join using a field list (extended syntax)
@@ -111,11 +108,9 @@ source = logs-otel-v1*
 | join type=left overwrite=true traceId [
     source = otel-v1-apm-span-*
     | where durationInNanos > 1000000000
-    | fields traceId, serviceName, name, durationInNanos
     | sort - durationInNanos
     | head 100
   ]
-| fields time, body, severityText, serviceName, name, durationInNanos
 ```
 
 ### Semi join - find logs with matching spans
@@ -146,9 +141,7 @@ Join log events with trace span data using `traceId` to see which spans produced
 source = logs-otel-v1*
 | left join left=l right=r on l.traceId = r.traceId [
     source = otel-v1-apm-span-*
-    | fields traceId, serviceName, name, durationInNanos
   ]
-| fields l.time, l.body, l.severityText, r.serviceName, r.name, r.durationInNanos
 | head 50
 ```
 
@@ -159,11 +152,9 @@ Join raw spans with the service map index to add dependency context:
 ```sql
 source = otel-v1-apm-span-*
 | inner join left=span right=svc on span.serviceName = svc.serviceName [
-    source = otel-v1-apm-service-map*
-    | fields serviceName, destination.domain, destination.resource
+    source = otel-v2-apm-service-map*
     | dedup serviceName
   ]
-| fields span.serviceName, span.name, span.durationInNanos, svc.destination.domain
 | sort - span.durationInNanos
 | head 20
 ```
