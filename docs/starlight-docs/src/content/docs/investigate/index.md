@@ -3,7 +3,7 @@ title: "Investigate"
 description: "Explore, query, and analyze your observability data across logs, traces, and metrics using Discover"
 ---
 
-Observability investigation in OpenSearch centers on the Discover experience — a consistent querying interface available across logs, traces, and metrics, each on its own dedicated page. Analysts use Discover to understand system behavior, diagnose issues, and uncover patterns.
+Observability investigation in OpenSearch centers on the Discover experience - a consistent querying interface available across logs, traces, and metrics, each on its own dedicated page. Analysts use Discover to understand system behavior, diagnose issues, and uncover patterns.
 
 ## Discover: your investigation starting point
 
@@ -55,14 +55,20 @@ source = otel-v1-apm-span-*
 | head 10
 ```
 
-For the full PPL command reference, see the [PPL documentation](https://github.com/opensearch-project/sql/blob/main/docs/user/ppl/index.md). For hands-on examples using OTEL data, see [Discover Logs](/docs/investigate/discover-logs/) and [Discover Traces](/docs/investigate/discover-traces/).
+For the full PPL reference, see:
+- **[PPL Language Overview](/docs/ppl/)** - Why PPL and how it fits into the stack
+- **[Command Reference](/docs/ppl/commands/)** - Syntax and examples for all 50+ commands
+- **[Function Reference](/docs/ppl/functions/)** - 200+ built-in functions
+- **[Observability Examples](/docs/ppl/examples/)** - Real-world queries with live playground links
+
+For hands-on exploration in the Discover UI, see [Discover Logs](/docs/investigate/discover-logs/) and [Discover Traces](/docs/investigate/discover-traces/).
 
 ### PromQL
 
 PromQL is a functional query language for selecting and aggregating time-series metrics. It supports instant queries, range queries, and built-in functions for rates, aggregations, and mathematical operations.
 
 :::caution[Placeholder queries]
-The PromQL examples below use standard OpenTelemetry metric names. Your environment may use different metric names and labels — adjust accordingly.
+The PromQL examples below use standard OpenTelemetry metric names. Your environment may use different metric names and labels - adjust accordingly.
 :::
 
 **Sample queries:**
@@ -116,7 +122,7 @@ After running a query against logs or traces, analysts can build visualizations 
 | Gauge chart | Progress toward thresholds or goals |
 | Tag cloud | Frequency analysis of terms or categories |
 
-Discover automatically recommends the most appropriate visualization based on your query results — for example, a single metric with a date column defaults to a line chart, while categorical columns with high cardinality trigger a heat map.
+Discover automatically recommends the most appropriate visualization based on your query results - for example, a single metric with a date column defaults to a line chart, while categorical columns with high cardinality trigger a heat map.
 
 ## Save to dashboard
 
@@ -138,7 +144,7 @@ When your investigation is complete, save your query for future use and share it
 - **Save:** Preserve the query text, filters, time range, and selected fields. Access saved queries from the **Open** menu in Discover.
 - **Share:** Share your saved query with team members so they can rerun the same investigation, build on your work, or use it as a starting point for their own analysis.
 
-Saved queries become reusable building blocks — use them to standardize investigation runbooks, onboard new team members, or create a library of common diagnostic queries for your organization.
+Saved queries become reusable building blocks - use them to standardize investigation runbooks, onboard new team members, or create a library of common diagnostic queries for your organization.
 
 ## Datasets
 
@@ -146,7 +152,7 @@ Datasets provide a unified way to discover and select data sources for your quer
 
 ## Correlations
 
-Correlations let you jump between related signals — linking a log entry to the trace that produced it, or navigating from a slow trace to the associated logs. See [Correlations](/docs/investigate/correlations/) for details.
+Correlations let you jump between related signals - linking a log entry to the trace that produced it, or navigating from a slow trace to the associated logs. See [Correlations](/docs/investigate/correlations/) for details.
 
 ## Troubleshooting
 

@@ -5,7 +5,7 @@ sidebar:
   hidden: true
 ---
 
-Agent Health is an evaluation and observability framework for AI agents. It helps you measure agent performance through "Golden Path" trajectory comparison — where an LLM judge evaluates agent actions against expected outcomes. Check out the [GitHub repository](https://github.com/opensearch-project/agent-health) for source code and contributions.
+Agent Health is an evaluation and observability framework for AI agents. It helps you measure agent performance through "Golden Path" trajectory comparison - where an LLM judge evaluates agent actions against expected outcomes. Check out the [GitHub repository](https://github.com/opensearch-project/agent-health) for source code and contributions.
 
 ## Quick start
 
@@ -50,8 +50,8 @@ For creating custom connectors, see [Connectors](/docs/agent-health/configuratio
 
 ## Next steps
 
-- [Getting Started](/docs/agent-health/getting-started/) — step-by-step walkthrough from install to first evaluation
-- [Evaluations](/docs/agent-health/evaluations/) — how evaluations, test cases, and experiments work
-- [Trace Visualization](/docs/agent-health/traces/) — real-time trace monitoring and comparison
-- [Configuration](/docs/agent-health/configuration/) — connect your own agent and configure the environment
-- [CLI Reference](/docs/agent-health/cli/) — all CLI commands and options
+- [Getting Started](/docs/agent-health/getting-started/) - step-by-step walkthrough from install to first evaluation
+- [Evaluations](/docs/agent-health/evaluations/) - how evaluations, test cases, and experiments work
+- [Trace Visualization](/docs/agent-health/traces/) - real-time trace monitoring and comparison
+- [Configuration](/docs/agent-health/configuration/) - connect your own agent and configure the environment
+- [CLI Reference](/docs/agent-health/cli/) - all CLI commands and options

@@ -1,6 +1,6 @@
 ---
 title: "Getting Started"
-description: "Instrument an AI agent, view traces, and score quality — end to end in 5 minutes"
+description: "Instrument an AI agent, view traces, and score quality - end to end in 5 minutes"
 sidebar:
   order: 0
 ---
@@ -11,7 +11,7 @@ This guide walks you through instrumenting an AI agent with the Python SDK, view
 
 ## End-to-end platform
 
-From code to insight — the platform covers the full AI observability lifecycle:
+From code to insight - the platform covers the full AI observability lifecycle:
 
 ```mermaid
 flowchart LR
@@ -111,7 +111,7 @@ flowchart LR
     ```python
     from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
 
-    # One-line setup — connects to the local OTel Collector
+    # One-line setup - connects to the local OTel Collector
     register(
         endpoint="http://localhost:4318/v1/traces",
         service_name="my-agent",
@@ -195,7 +195,7 @@ flowchart LR
 
 ## What's next
 
-- [Python SDK reference](/docs/send-data/ai-agents/python/) — full API documentation for `register`, `observe`, `enrich`, and AWS auth
-- [Evaluation & Scoring](/docs/ai-observability/evaluation/) — `score()`, `evaluate()`, `Experiment`, and `OpenSearchTraceRetriever` in depth
-- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) — explore traces, graphs, and timelines in OpenSearch Dashboards
-- [Agent Health](/docs/agent-health/) — evaluate agents with Golden Path comparison, LLM judges, and batch experiments
+- [Python SDK reference](/docs/send-data/ai-agents/python/) - full API documentation for `register`, `observe`, `enrich`, and AWS auth
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - `score()`, `evaluate()`, `Experiment`, and `OpenSearchTraceRetriever` in depth
+- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) - explore traces, graphs, and timelines in OpenSearch Dashboards
+- [Agent Health](/docs/agent-health/) - evaluate agents with Golden Path comparison, LLM judges, and batch experiments

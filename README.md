@@ -15,6 +15,7 @@ Observability Stack is an open-source stack designed for modern distributed syst
 - **OpenSearch**: Stores and indexes logs and traces for search and analysis
 - **Prometheus**: Stores time-series metrics data
 - **OpenSearch Dashboards**: Provides web-based visualization and exploration
+- **PPL (Piped Processing Language)**: Native query language for logs and traces — pipe-based, human-readable, 50+ commands
 
 ## See it in action 
 
@@ -441,8 +442,22 @@ The current configuration includes a custom OpenSearch Dockerfile (`docker-compo
 
 Track progress: [OpenSearch 3.5.0 Release](https://github.com/opensearch-project/OpenSearch/releases)
 
+## Query Language: PPL
+
+The Observability Stack uses **Piped Processing Language (PPL)** as its native query language for logs and traces. PPL is a pipe-based language designed for the way operators actually investigate data:
+
+```
+source = logs-otel-v1*
+| where severityNumber >= 17
+| stats count() as errors by `resource.attributes.service.name`
+| sort - errors
+```
+
+PPL provides 50+ commands and 200+ functions covering search, aggregation, pattern discovery, machine learning, joins, and more. See the [PPL documentation](https://observability.opensearch.org/docs/ppl/) for the full reference with live playground examples.
+
 ## Documentation
 
+- [PPL Language Reference](https://observability.opensearch.org/docs/ppl/) - Query language documentation with live examples
 - [AGENTS.md](AGENTS.md) - AI-optimized repository documentation
 - [CONTRIBUTING.md](CONTRIBUTING.md) - Development workflow and contribution guidelines
 - [examples/](examples/) - Language-specific instrumentation examples

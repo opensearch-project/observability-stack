@@ -267,7 +267,7 @@ with tracer.start_as_current_span("llm.chat") as span:
 
 ## Related links
 
-- [Python SDK](/docs/send-data/ai-agents/python/) — purpose-built instrumentation for AI agent applications
+- [Python SDK](/docs/send-data/ai-agents/python/) - purpose-built instrumentation for AI agent applications
 - [Applications overview](/docs/send-data/applications/)
 - [Auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
 - [Manual instrumentation](/docs/send-data/opentelemetry/manual-instrumentation/)

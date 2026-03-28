@@ -53,7 +53,7 @@ Verify the skills loaded:
 
 Claude Desktop supports custom skills through **Settings → Capabilities → Skills**. Each skill must be uploaded as a separate ZIP file.
 
-Pre-built ZIP files are attached to each [GitHub release](https://github.com/opensearch-project/observability-stack/releases) — one per skill:
+Pre-built ZIP files are attached to each [GitHub release](https://github.com/opensearch-project/observability-stack/releases) - one per skill:
 
 | ZIP file | Skill |
 |---|---|
@@ -80,7 +80,7 @@ To install:
 4. Enable each skill after uploading
 
 :::note
-Claude Desktop requires one ZIP per skill — you cannot bundle all skills into a single ZIP. Upload all eight for the full observability experience.
+Claude Desktop requires one ZIP per skill - you cannot bundle all skills into a single ZIP. Upload all eight for the full observability experience.
 :::
 
 ## Try it out
@@ -127,7 +127,7 @@ export PROMETHEUS_ENDPOINT=http://your-prometheus-host:9090
 
 ### AWS managed services
 
-The skill files include AWS SigV4 variants for Amazon OpenSearch Service and Amazon Managed Service for Prometheus. When using managed services, the query syntax stays the same — only the endpoint URL and authentication method change.
+The skill files include AWS SigV4 variants for Amazon OpenSearch Service and Amazon Managed Service for Prometheus. When using managed services, the query syntax stays the same - only the endpoint URL and authentication method change.
 
 ## Index patterns
 
@@ -193,8 +193,8 @@ docker compose up -d prometheus
 
 ## Related links
 
-- [Usage Guide](/docs/claude-code/usage/) — 50+ sample questions with real examples
-- [MCP Server](/docs/mcp/) — query OpenSearch via Model Context Protocol
-- [Investigate Traces](/docs/investigate/discover-traces/) — explore traces in OpenSearch Dashboards
-- [Investigate Logs](/docs/investigate/discover-logs/) — explore logs in OpenSearch Dashboards
-- [Send Data](/docs/send-data/) — instrument your applications with OpenTelemetry
+- [Usage Guide](/docs/claude-code/usage/) - 50+ sample questions with real examples
+- [MCP Server](/docs/mcp/) - query OpenSearch via Model Context Protocol
+- [Investigate Traces](/docs/investigate/discover-traces/) - explore traces in OpenSearch Dashboards
+- [Investigate Logs](/docs/investigate/discover-logs/) - explore logs in OpenSearch Dashboards
+- [Send Data](/docs/send-data/) - instrument your applications with OpenTelemetry

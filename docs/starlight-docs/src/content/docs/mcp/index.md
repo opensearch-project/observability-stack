@@ -54,5 +54,5 @@ The MCP server is particularly useful for AI-assisted investigation workflows:
 
 ## Learn more
 
-- [Introducing MCP in OpenSearch](https://opensearch.org/blog/introducing-mcp-in-opensearch/) — announcement blog post with architecture details
-- [Model Context Protocol specification](https://modelcontextprotocol.io/) — the MCP standard
+- [Introducing MCP in OpenSearch](https://opensearch.org/blog/introducing-mcp-in-opensearch/) - announcement blog post with architecture details
+- [Model Context Protocol specification](https://modelcontextprotocol.io/) - the MCP standard

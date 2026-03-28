@@ -1,0 +1,351 @@
+---
+title: "PPL Function Reference"
+description: "Complete reference for PPL built-in functions - aggregations, string manipulation, date/time, math, conditionals, JSON, IP, collections, and more."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+PPL includes **200+ built-in functions** across 13 categories. Functions are used within commands like `eval`, `where`, `stats`, and `fields` to transform, filter, and aggregate data.
+
+## Aggregation functions
+
+Used with `stats`, `eventstats`, and `streamstats` to calculate summary values across rows.
+
+| Function | Description |
+|----------|-------------|
+| `count()` | Count the number of values |
+| `sum(<field>)` | Sum of expression values |
+| `avg(<field>)` | Average (mean) value |
+| `max(<field>)` | Maximum value |
+| `min(<field>)` | Minimum value |
+| `var_samp(<field>)` | Sample variance |
+| `var_pop(<field>)` | Population variance |
+| `stddev_samp(<field>)` | Sample standard deviation |
+| `stddev_pop(<field>)` | Population standard deviation |
+| `distinct_count(<field>)` | Approximate distinct count (HyperLogLog++) |
+| `percentile(<field>, <pct>)` | Approximate percentile at given percentage |
+| `median(<field>)` | Median (50th percentile) |
+| `first(<field>)` | First non-null value |
+| `last(<field>)` | Last non-null value |
+| `earliest(<field>)` | Earliest value by timestamp |
+| `latest(<field>)` | Latest value by timestamp |
+| `take(<field>, <n>)` | Collect up to N original values |
+| `list(<field>)` | Collect all values into array (with duplicates) |
+| `values(<field>)` | Collect all unique values into sorted array |
+
+**Example - Error rate with percentile latency:**
+```sql
+source = otel-v1-apm-span-*
+| stats count() as total,
+        sum(case(status.code = 2, 1 else 0)) as errors,
+        percentile(durationInNanos, 95) as p95_latency,
+        percentile(durationInNanos, 99) as p99_latency
+  by serviceName
+```
+
+---
+
+## Condition functions
+
+Conditional logic and null handling.
+
+| Function | Description |
+|----------|-------------|
+| `isnull(<field>)` | Returns true if field is null |
+| `isnotnull(<field>)` | Returns true if field is not null |
+| `ifnull(<field>, <default>)` | Returns default if field is null |
+| `nullif(<expr1>, <expr2>)` | Returns null if expressions are equal |
+| `if(<condition>, <then>, <else>)` | Conditional expression |
+| `case(<cond1>, <val1>, ..., else <default>)` | Multi-branch conditional |
+| `coalesce(<expr1>, <expr2>, ...)` | First non-null value from list |
+| `isblank(<field>)` | True if null, empty, or whitespace-only |
+| `isempty(<field>)` | True if null or empty string |
+| `contains(<field>, <substr>)` | True if field contains substring (case-insensitive) |
+| `regexp_match(<field>, <pattern>)` | True if regex matches |
+
+**Example - Categorize log severity:**
+```sql
+| eval severity_group = case(
+    severityNumber >= 17, 'error',
+    severityNumber >= 9, 'warning',
+    else 'info'
+  )
+| stats count() as log_count by severity_group
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20severity_group%20%3D%20case%28severityNumber%20%3E%3D%2017%2C%20!%27error!%27%2C%20severityNumber%20%3E%3D%209%2C%20!%27warning!%27%2C%20else%20!%27info!%27%29%20%7C%20stats%20count%28%29%20as%20log_count%20by%20severity_group')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+**Example - Safe division with null handling:**
+```sql
+| stats count() as total, sum(case(severityText = 'ERROR', 1 else 0)) as errors
+  by `resource.attributes.service.name`
+| eval error_rate = if(total > 0, errors * 100.0 / total, 0)
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%20%7C%20eval%20error_rate%20%3D%20if%28total%20%3E%200%2C%20errors%20%2A%20100.0%20%2F%20total%2C%200%29')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## String functions
+
+Text manipulation and pattern matching.
+
+| Function | Description |
+|----------|-------------|
+| `concat(<str1>, <str2>, ...)` | Concatenate up to 9 strings |
+| `concat_ws(<sep>, <str1>, ...)` | Concatenate with separator |
+| `length(<str>)` | String length in bytes |
+| `lower(<str>)` | Convert to lowercase |
+| `upper(<str>)` | Convert to uppercase |
+| `trim(<str>)` | Remove leading and trailing spaces |
+| `ltrim(<str>)` | Remove leading spaces |
+| `rtrim(<str>)` | Remove trailing spaces |
+| `substring(<str>, <start>, <length>)` | Extract substring |
+| `replace(<str>, <pattern>, <replacement>)` | Replace occurrences (supports regex) |
+| `regexp_replace(<str>, <pattern>, <repl>)` | Regex-based replacement |
+| `locate(<substr>, <str>)` | Position of first occurrence |
+| `position(<substr> IN <str>)` | Position of first occurrence |
+| `reverse(<str>)` | Reverse a string |
+| `right(<str>, <n>)` | Last N characters |
+| `like(<str>, <pattern>)` | Wildcard pattern match (`%`, `_`) |
+| `ilike(<str>, <pattern>)` | Case-insensitive wildcard match |
+
+**Example - Extract service name prefix:**
+```sql
+| eval service_prefix = substring(`resource.attributes.service.name`, 0, locate('-', `resource.attributes.service.name`))
+| stats count() by service_prefix
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_prefix%20%3D%20substring%28%60resource.attributes.service.name%60%2C%200%2C%20locate%28!%27-!%27%2C%20%60resource.attributes.service.name%60%29%29%20%7C%20stats%20count%28%29%20by%20service_prefix')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## Date and time functions
+
+Date arithmetic, extraction, formatting, and conversion. All operations use UTC.
+
+| Function | Description |
+|----------|-------------|
+| `now()` | Current date and time |
+| `curdate()` / `current_date()` | Current date |
+| `curtime()` / `current_time()` | Current time |
+| `date(<expr>)` | Create DATE from string |
+| `time(<expr>)` | Create TIME from string |
+| `timestamp(<expr>)` | Create TIMESTAMP from string |
+| `date_add(<date>, INTERVAL <n> <unit>)` | Add interval to date |
+| `date_sub(<date>, INTERVAL <n> <unit>)` | Subtract interval from date |
+| `datediff(<date1>, <date2>)` | Difference in days |
+| `timestampdiff(<unit>, <ts1>, <ts2>)` | Difference in specified units |
+| `date_format(<date>, <format>)` | Format date as string |
+| `str_to_date(<str>, <format>)` | Parse string to date |
+| `year(<date>)` | Extract year |
+| `month(<date>)` | Extract month |
+| `day(<date>)` / `dayofmonth(<date>)` | Extract day of month |
+| `hour(<ts>)` | Extract hour |
+| `minute(<ts>)` | Extract minute |
+| `second(<ts>)` | Extract second |
+| `dayofweek(<date>)` | Day of week (1=Sunday) |
+| `dayofyear(<date>)` | Day of year |
+| `week(<date>)` | Week number |
+| `quarter(<date>)` | Quarter of year |
+| `unix_timestamp(<ts>)` | Convert to Unix timestamp |
+| `from_unixtime(<epoch>)` | Convert Unix timestamp to date |
+| `last_day(<date>)` | Last day of month |
+| `extract(<part> FROM <date>)` | Extract date part |
+
+**Example - Log volume by hour of day:**
+```sql
+| eval hour = hour(time)
+| stats count() as volume by hour
+| sort hour
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20hour%20%3D%20hour%28time%29%20%7C%20stats%20count%28%29%20as%20volume%20by%20hour%20%7C%20sort%20hour')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## Math functions
+
+Numeric operations and mathematical calculations.
+
+| Function | Description |
+|----------|-------------|
+| `abs(<n>)` | Absolute value |
+| `ceil(<n>)` / `ceiling(<n>)` | Ceiling (round up) |
+| `floor(<n>)` | Floor (round down) |
+| `round(<n>, <decimals>)` | Round to decimal places |
+| `sqrt(<n>)` | Square root |
+| `cbrt(<n>)` | Cube root |
+| `pow(<base>, <exp>)` / `power(...)` | Exponentiation |
+| `exp(<n>)` | e raised to power |
+| `ln(<n>)` | Natural logarithm |
+| `log(<n>)` | Natural logarithm |
+| `log2(<n>)` | Base-2 logarithm |
+| `log10(<n>)` | Base-10 logarithm |
+| `mod(<n>, <m>)` | Modulo (remainder) |
+| `sign(<n>)` | Sign of value (-1, 0, 1) |
+| `rand()` | Random float [0, 1) |
+| `pi()` | Pi constant |
+| `e()` | Euler's number |
+| `sin(<n>)`, `cos(<n>)`, `tan(<n>)` | Trigonometric functions |
+| `asin(<n>)`, `acos(<n>)`, `atan(<n>)` | Inverse trigonometric |
+| `degrees(<radians>)` | Radians to degrees |
+| `radians(<degrees>)` | Degrees to radians |
+| `conv(<n>, <from_base>, <to_base>)` | Base conversion |
+| `crc32(<str>)` | CRC32 checksum |
+
+**Example - Convert nanoseconds to milliseconds and round:**
+```sql
+source = otel-v1-apm-span-*
+| eval duration_ms = round(durationInNanos / 1000000.0, 2)
+| sort - duration_ms
+| head 20
+```
+
+---
+
+## Collection functions
+
+Create, manipulate, and analyze arrays and multivalue fields.
+
+| Function | Description |
+|----------|-------------|
+| `array(<val1>, <val2>, ...)` | Create an array |
+| `array_length(<arr>)` | Length of array |
+| `forall(<arr>, <lambda>)` | True if all elements satisfy condition |
+| `exists(<arr>, <lambda>)` | True if any element satisfies condition |
+| `filter(<arr>, <lambda>)` | Filter array elements by condition |
+| `transform(<arr>, <lambda>)` | Transform each element |
+| `reduce(<arr>, <init>, <lambda>)` | Reduce array to single value |
+| `split(<str>, <delimiter>)` | Split string into array |
+| `mvjoin(<arr>, <separator>)` | Join array into string |
+| `mvappend(<arr1>, <arr2>, ...)` | Concatenate arrays |
+| `mvdedup(<arr>)` | Remove duplicate array values |
+| `mvfind(<arr>, <regex>)` | Find first matching element index |
+| `mvindex(<arr>, <start>, <end>)` | Slice array by index |
+| `mvmap(<arr>, <expr>)` | Map expression over array |
+| `mvzip(<arr1>, <arr2>, <delim>)` | Zip two arrays element-wise |
+
+---
+
+## JSON functions
+
+Parse, create, and manipulate JSON data.
+
+| Function | Description |
+|----------|-------------|
+| `json(<str>)` | Validate and parse JSON string |
+| `json_valid(<str>)` | Check if string is valid JSON |
+| `json_object(<key1>, <val1>, ...)` | Create JSON object |
+| `json_array(<val1>, <val2>, ...)` | Create JSON array |
+| `json_array_length(<json>)` | Count array elements |
+| `json_extract(<json>, <path>...)` | Extract values by path |
+| `json_delete(<json>, <path>...)` | Delete values by path |
+| `json_set(<json>, <path>, <val>)` | Set value at path |
+| `json_append(<json>, <path>, <val>)` | Append to array at path |
+| `json_keys(<json>)` | Get object keys |
+
+**Example - Parse JSON from log body:**
+```sql
+| where json_valid(body)
+| eval parsed = json_extract(body, '$.error.type')
+| where isnotnull(parsed)
+| stats count() by parsed
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20json_valid%28body%29%20%7C%20eval%20parsed%20%3D%20json_extract%28body%2C%20!%27%24.error.type!%27%29%20%7C%20where%20isnotnull%28parsed%29%20%7C%20stats%20count%28%29%20by%20parsed')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## IP address functions
+
+IP matching and geolocation.
+
+| Function | Description |
+|----------|-------------|
+| `cidrmatch(<ip>, <cidr>)` | Check if IP is within CIDR range |
+| `geoip(<ip>)` | Look up IP geolocation |
+
+**Example - Filter internal IPs:**
+```sql
+| where not cidrmatch(client_ip, '10.0.0.0/8')
+  and not cidrmatch(client_ip, '172.16.0.0/12')
+```
+
+---
+
+## Cryptographic functions
+
+Hashing for data integrity and anonymization.
+
+| Function | Description |
+|----------|-------------|
+| `md5(<str>)` | MD5 hash (32-char hex) |
+| `sha1(<str>)` | SHA-1 hash |
+| `sha2(<str>, <bits>)` | SHA-2 hash (224, 256, 384, 512) |
+
+---
+
+## Relevance functions
+
+Full-text search using the OpenSearch query engine.
+
+| Function | Description |
+|----------|-------------|
+| `match(<field>, <query>)` | Full-text match query |
+| `match_phrase(<field>, <query>)` | Exact phrase match |
+| `match_phrase_prefix(<field>, <query>)` | Phrase prefix match |
+| `multi_match(<fields>, <query>)` | Search across multiple fields |
+| `simple_query_string(<fields>, <query>)` | Flexible query string |
+| `query_string(<fields>, <query>)` | Full query string syntax |
+
+**Example - Full-text search in log bodies:**
+```sql
+| where match(body, 'connection timeout')
+| head 20
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20match%28body%2C%20!%27connection%20timeout!%27%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## Type conversion functions
+
+Convert between data types.
+
+| Function | Description |
+|----------|-------------|
+| `cast(<expr> AS <type>)` | Cast to specified type |
+| `tostring(<val>, <format>)` | Convert to string (formats: binary, hex, commas, duration) |
+| `tonumber(<str>, <base>)` | Convert string to number (base 2-36) |
+
+**Example:**
+```sql
+| eval duration_str = tostring(durationInNanos / 1000000, 'commas')
+```
+
+---
+
+## System functions
+
+Utilities for type inspection and diagnostics.
+
+| Function | Description |
+|----------|-------------|
+| `typeof(<expr>)` | Returns the data type of an expression |
+
+**Example - Inspect field types:**
+```sql
+| eval body_type = typeof(body), severity_type = typeof(severityNumber)
+| head 1
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20body_type%20%3D%20typeof%28body%29%2C%20severity_type%20%3D%20typeof%28severityNumber%29%20%7C%20head%201')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+---
+
+## Further reading
+
+- **[Command Reference](/docs/ppl/commands/)** - All 50+ PPL commands
+- **[Observability Examples](/docs/ppl/examples/)** - Real-world OTel queries
+- **[PPL function source docs](https://github.com/opensearch-project/sql/tree/main/docs/user/ppl/functions)** - Detailed parameter docs for every function

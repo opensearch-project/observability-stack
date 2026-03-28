@@ -76,8 +76,8 @@ npx @opensearch-project/agent-health benchmark -f test-cases.json -a another-age
 
 ## Tips for good test cases
 
-- **Make prompts specific and unambiguous** — avoid vague instructions
-- **Include all necessary context data** — the agent shouldn't need to guess
-- **Define clear, measurable expected outcomes** — the judge needs concrete criteria
-- **Start with simple cases, add complexity gradually** — build confidence before testing edge cases
-- **Use labels for organization** — filter and group test cases by category, difficulty, or domain
+- **Make prompts specific and unambiguous** - avoid vague instructions
+- **Include all necessary context data** - the agent shouldn't need to guess
+- **Define clear, measurable expected outcomes** - the judge needs concrete criteria
+- **Start with simple cases, add complexity gradually** - build confidence before testing edge cases
+- **Use labels for organization** - filter and group test cases by category, difficulty, or domain

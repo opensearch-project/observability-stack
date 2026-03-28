@@ -3,13 +3,13 @@ title: "Build a Dashboard"
 description: "Create dashboards, add visualization panels, and arrange layouts for observability monitoring"
 ---
 
-This guide walks through creating a dashboard from scratch — adding panels, choosing visualization types, configuring queries, and arranging the layout.
+This guide walks through creating a dashboard from scratch - adding panels, choosing visualization types, configuring queries, and arranging the layout.
 
 ## Creating a new dashboard
 
 1. Navigate to **Dashboards** in the left navigation
 2. Select **Create** → **Dashboard**
-3. You start with an empty canvas — add panels to populate it
+3. You start with an empty canvas - add panels to populate it
 
 Alternatively, when you're in Discover and have a visualization you like, select **Save** → **Save to dashboard** → **New dashboard** to create a dashboard seeded with that visualization.
 
@@ -59,7 +59,7 @@ Some rules of thumb:
 - Comparing categories → bar chart
 - Single number that matters → metric or gauge
 - Distribution shape → heat map or histogram (bar chart with `bin`)
-- Proportions of a whole → pie chart (use sparingly — bar charts are usually clearer)
+- Proportions of a whole → pie chart (use sparingly - bar charts are usually clearer)
 
 ## Configuring panels
 
@@ -74,7 +74,7 @@ search earliest=-6h source = logs-otel-v1*
 | timechart span=5m count() by `resource.attributes.service.name`
 ```
 
-For metrics (PromQL — adjust metric names to match your environment):
+For metrics (PromQL - adjust metric names to match your environment):
 ```promql
 sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 ```
@@ -82,7 +82,7 @@ sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 ### Axes and formatting
 
 - Set axis labels and units (requests/sec, milliseconds, bytes, percentage)
-- Configure Y-axis scale (linear or logarithmic) — log scale is useful when values span orders of magnitude
+- Configure Y-axis scale (linear or logarithmic) - log scale is useful when values span orders of magnitude
 - Set min/max bounds to keep charts consistent across panels
 - Choose color schemes that distinguish series clearly
 
@@ -90,7 +90,7 @@ sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 
 - Position legends at the bottom, right, or hide them for single-series panels
 - Use legend values (min, max, avg, current) to add context without hovering
-- For dashboards with many panels, hiding legends saves space — use panel titles instead
+- For dashboards with many panels, hiding legends saves space - use panel titles instead
 
 ### Thresholds
 
@@ -100,7 +100,7 @@ Add horizontal threshold lines to panels to mark important boundaries:
 - Latency target (e.g., yellow line at 500ms, red at 1s)
 - Capacity limits (e.g., red line at 80% CPU)
 
-Thresholds make it immediately obvious when a metric crosses a boundary — no mental math required.
+Thresholds make it immediately obvious when a metric crosses a boundary - no mental math required.
 
 ## Layout and arrangement
 
@@ -109,10 +109,10 @@ Thresholds make it immediately obvious when a metric crosses a boundary — no m
 Panels snap to a grid. Resize by dragging the bottom-right corner of a panel. Rearrange by dragging the panel header.
 
 Layout tips:
-- Put the most important panels at the top — that's what people see first
+- Put the most important panels at the top - that's what people see first
 - Group related panels together (e.g., all latency panels in one row, all error panels in another)
 - Use full-width panels for time-series charts that benefit from horizontal space
-- Use narrow panels for metric values and gauges — they don't need much room
+- Use narrow panels for metric values and gauges - they don't need much room
 
 ### Recommended dashboard layouts
 
@@ -140,7 +140,7 @@ Layout tips:
 
 ## Time range controls
 
-The dashboard time picker in the top bar sets the time range for all panels simultaneously. This keeps everything aligned — when you're investigating a 2am incident, every panel shows the same window.
+The dashboard time picker in the top bar sets the time range for all panels simultaneously. This keeps everything aligned - when you're investigating a 2am incident, every panel shows the same window.
 
 Individual panels can override the dashboard time range if needed, but use this sparingly. Mismatched time ranges across panels create confusion.
 
@@ -166,10 +166,10 @@ The fastest way to build a dashboard is to start in Discover:
 3. Save it to a dashboard
 4. Repeat for each question you want the dashboard to answer
 
-This approach ensures every panel has a clear purpose — it answers a question you actually asked during investigation. Dashboards built this way tend to be more useful than ones designed abstractly.
+This approach ensures every panel has a clear purpose - it answers a question you actually asked during investigation. Dashboards built this way tend to be more useful than ones designed abstractly.
 
 ## Next steps
 
-- [Sharing Dashboards](/docs/dashboards/sharing/) — share, export, and best practices
-- [Discover Logs](/docs/investigate/discover-logs/) — build log queries to power dashboard panels
-- [Discover Metrics](/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels
+- [Sharing Dashboards](/docs/dashboards/sharing/) - share, export, and best practices
+- [Discover Logs](/docs/investigate/discover-logs/) - build log queries to power dashboard panels
+- [Discover Metrics](/docs/investigate/discover-metrics/) - build PromQL queries for metrics panels

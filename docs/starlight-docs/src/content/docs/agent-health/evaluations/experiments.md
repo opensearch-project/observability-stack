@@ -31,16 +31,16 @@ To compare agents, run the same experiment multiple times with different agent/m
 ## Running experiments from the CLI
 
 ```bash
-# Quick mode — auto-creates a benchmark from all stored test cases
+# Quick mode - auto-creates a benchmark from all stored test cases
 npx @opensearch-project/agent-health benchmark
 
-# Named mode — runs a specific existing benchmark
+# Named mode - runs a specific existing benchmark
 npx @opensearch-project/agent-health benchmark -n "Baseline" -a my-agent
 
-# File mode — imports test cases from JSON and runs them
+# File mode - imports test cases from JSON and runs them
 npx @opensearch-project/agent-health benchmark -f ./test-cases.json -a my-agent
 
-# With export — save results to file
+# With export - save results to file
 npx @opensearch-project/agent-health benchmark -f ./test-cases.json -n "My Run" -a my-agent --export results.json
 ```
 
