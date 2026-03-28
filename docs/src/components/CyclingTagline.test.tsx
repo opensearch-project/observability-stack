@@ -13,8 +13,8 @@ describe('CyclingTagline', () => {
 
   it('should render the first tagline initially', () => {
     render(<CyclingTagline />);
-    expect(screen.getByText('Services')).toBeInTheDocument();
-    expect(screen.getByText(/APM traces, service maps/)).toBeInTheDocument();
+    expect(screen.getByText('Traces')).toBeInTheDocument();
+    expect(screen.getByText(/Distributed tracing with auto-generated service maps/)).toBeInTheDocument();
   });
 
   it('should have cycling functionality with timers', () => {
