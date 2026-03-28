@@ -15,9 +15,9 @@ Agent Health's trace visualization is separate from the [Agent Traces](/docs/ai-
 
 Navigate to **Traces** in the sidebar for real-time trace monitoring:
 
-- **Live tailing** — auto-refresh traces every 10 seconds with pause/resume controls
-- **Agent filter** — filter traces by specific agent
-- **Text search** — search span names and attributes
+- **Live tailing** - auto-refresh traces every 10 seconds with pause/resume controls
+- **Agent filter** - filter traces by specific agent
+- **Text search** - search span names and attributes
 
 ## View modes
 
@@ -34,9 +34,9 @@ Click the **Maximize** button on any trace visualization to open full-screen mod
 
 The comparison view supports side-by-side trace analysis:
 
-- **Aligned view** — spans from different runs aligned by similarity
-- **Merged view** — combined flow visualization showing all traces
-- **Horizontal/Vertical orientation** — toggle layout for your preference
+- **Aligned view** - spans from different runs aligned by similarity
+- **Merged view** - combined flow visualization showing all traces
+- **Horizontal/Vertical orientation** - toggle layout for your preference
 
 ## Enabling trace collection
 

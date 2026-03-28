@@ -29,9 +29,9 @@ Settings are loaded in this order (later overrides earlier):
       |
 2. Environment variables (.env file)
       |
-3. JSON config file (agent-health.config.json) — auto-created
+3. JSON config file (agent-health.config.json) - auto-created
       |
-4. TypeScript config file (agent-health.config.ts) — optional, for custom agents/connectors
+4. TypeScript config file (agent-health.config.ts) - optional, for custom agents/connectors
 ```
 
 ## JSON config file
@@ -138,9 +138,9 @@ Required for the Bedrock LLM judge and Claude Code agent.
 |----------|-------------|---------|
 | `AWS_PROFILE` | AWS profile to use | `default` |
 | `AWS_REGION` | AWS region | `us-west-2` |
-| `AWS_ACCESS_KEY_ID` | Explicit access key (alternative to profile) | — |
-| `AWS_SECRET_ACCESS_KEY` | Explicit secret key | — |
-| `AWS_SESSION_TOKEN` | Session token (for temporary credentials) | — |
+| `AWS_ACCESS_KEY_ID` | Explicit access key (alternative to profile) | - |
+| `AWS_SECRET_ACCESS_KEY` | Explicit secret key | - |
+| `AWS_SESSION_TOKEN` | Session token (for temporary credentials) | - |
 
 ### OpenSearch Storage (optional)
 
@@ -148,9 +148,9 @@ Override the default file-based storage with an OpenSearch cluster.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENSEARCH_STORAGE_ENDPOINT` | Storage cluster URL | — |
-| `OPENSEARCH_STORAGE_USERNAME` | Username | — |
-| `OPENSEARCH_STORAGE_PASSWORD` | Password | — |
+| `OPENSEARCH_STORAGE_ENDPOINT` | Storage cluster URL | - |
+| `OPENSEARCH_STORAGE_USERNAME` | Username | - |
+| `OPENSEARCH_STORAGE_PASSWORD` | Password | - |
 | `OPENSEARCH_STORAGE_TLS_SKIP_VERIFY` | Skip TLS verification | `false` |
 
 ### OpenSearch Observability (optional)
@@ -159,9 +159,9 @@ For viewing agent traces and logs.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OPENSEARCH_LOGS_ENDPOINT` | Logs cluster URL | — |
-| `OPENSEARCH_LOGS_USERNAME` | Username | — |
-| `OPENSEARCH_LOGS_PASSWORD` | Password | — |
+| `OPENSEARCH_LOGS_ENDPOINT` | Logs cluster URL | - |
+| `OPENSEARCH_LOGS_USERNAME` | Username | - |
+| `OPENSEARCH_LOGS_PASSWORD` | Password | - |
 | `OPENSEARCH_LOGS_TRACES_INDEX` | Traces index pattern | `otel-v1-apm-span-*` |
 | `OPENSEARCH_LOGS_INDEX` | Logs index pattern | `ml-commons-logs-*` |
 
@@ -191,5 +191,5 @@ $ agent-health doctor
 
 ## Next steps
 
-- [Connectors](/docs/agent-health/configuration/connectors/) — create custom connectors for your agent type
-- [CLI Reference](/docs/agent-health/cli/) — all commands and options
+- [Connectors](/docs/agent-health/configuration/connectors/) - create custom connectors for your agent type
+- [CLI Reference](/docs/agent-health/cli/) - all commands and options

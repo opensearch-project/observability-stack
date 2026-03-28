@@ -28,7 +28,7 @@ agent-health [serve] [options]
 |--------|-------------|---------|
 | `-p, --port <n>` | Server port | `4001` |
 | `-e, --env-file <path>` | Load env file | `.env` |
-| `--no-browser` | Skip auto-open browser | — |
+| `--no-browser` | Skip auto-open browser | - |
 
 ```bash
 agent-health --port 8080 --env-file prod.env
@@ -94,14 +94,14 @@ agent-health benchmark [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-n, --name <name>` | Benchmark name or ID | — |
-| `-f, --file <path>` | JSON file of test cases to import and benchmark | — |
+| `-n, --name <name>` | Benchmark name or ID | - |
+| `-f, --file <path>` | JSON file of test cases to import and benchmark | - |
 | `-a, --agent <key>` | Agent key (repeatable) | First enabled agent |
 | `-m, --model <id>` | Model override | Agent default |
 | `-o, --output <fmt>` | Output: `table`, `json` | `table` |
-| `--export <path>` | Export results to file | — |
+| `--export <path>` | Export results to file | - |
 | `--format <type>` | Report format for `--export`: `json`, `html`, `pdf` | `json` |
-| `-v, --verbose` | Show per-test-case results and errors | — |
+| `-v, --verbose` | Show per-test-case results and errors | - |
 | `--stop-server` | Stop the server after benchmark completes | Keep running |
 
 **Modes:**
@@ -149,11 +149,11 @@ agent-health report -b <benchmark> [options]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-b, --benchmark <id>` | Benchmark name or ID **(required)** | — |
+| `-b, --benchmark <id>` | Benchmark name or ID **(required)** | - |
 | `-r, --runs <ids>` | Comma-separated run IDs | All runs |
 | `-f, --format <type>` | Report format: `json`, `html`, `pdf` | `html` |
 | `-o, --output <file>` | Output file path | Auto-generated |
-| `--stdout` | Write to stdout (JSON format only) | — |
+| `--stdout` | Write to stdout (JSON format only) | - |
 
 ```bash
 agent-health report -b "Baseline"                          # HTML report (all runs)

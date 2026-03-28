@@ -32,7 +32,7 @@ A "Golden Path" is the expected trajectory an agent should follow to successfull
 - What reasoning steps are expected
 - What the final response should contain
 
-The LLM judge doesn't require an exact match — it evaluates whether the agent's actual trajectory achieves the expected outcomes through reasonable steps, even if the specific path differs.
+The LLM judge doesn't require an exact match - it evaluates whether the agent's actual trajectory achieves the expected outcomes through reasonable steps, even if the specific path differs.
 
 ## LLM Judge output
 
@@ -64,5 +64,5 @@ AWS_SECRET_ACCESS_KEY=your_secret
 
 ## Next steps
 
-- [Test Cases](/docs/agent-health/evaluations/test-cases/) — create and manage evaluation scenarios
-- [Experiments](/docs/agent-health/evaluations/experiments/) — run batch evaluations and compare results
+- [Test Cases](/docs/agent-health/evaluations/test-cases/) - create and manage evaluation scenarios
+- [Experiments](/docs/agent-health/evaluations/experiments/) - run batch evaluations and compare results

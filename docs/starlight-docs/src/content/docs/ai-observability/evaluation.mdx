@@ -9,15 +9,15 @@ import { Aside } from '@astrojs/starlight/components';
 
 The Python SDK provides three evaluation capabilities that all emit data through the standard OTLP pipeline:
 
-- **`score()`** — attach quality scores to individual traces or spans
-- **`evaluate()`** — run an agent against a dataset with automated scorer functions
-- **`Experiment`** — upload pre-computed results from any evaluation framework
+- **`score()`** - attach quality scores to individual traces or spans
+- **`evaluate()`** - run an agent against a dataset with automated scorer functions
+- **`Experiment`** - upload pre-computed results from any evaluation framework
 
 All evaluation data lands in the same OpenSearch index as your traces, so you can query scores alongside agent spans.
 
 ---
 
-## `score()` — attach scores to traces
+## `score()` - attach scores to traces
 
 Submits an evaluation score as an OTEL span linked to the trace being scored.
 
@@ -74,7 +74,7 @@ def run(query: str) -> str:
 
 ---
 
-## `evaluate()` — run experiments
+## `evaluate()` - run experiments
 
 Executes a task function against each item in a dataset, runs scorer functions, and records everything as OTel experiment spans.
 
@@ -116,7 +116,7 @@ print(result.summary)
 | `name` | `str` | Experiment name. |
 | `task` | `Callable` | Function that takes input and returns output. Use `@observe` for full tracing. |
 | `data` | `list[dict]` | Test cases: `"input"` (required), `"expected"`, `"case_id"`, `"case_name"` (optional). |
-| `scores` | `list[Callable]` | Scorer functions — each receives `(input, output, expected)`. |
+| `scores` | `list[Callable]` | Scorer functions - each receives `(input, output, expected)`. |
 | `metadata` | `dict` | Attached to the root experiment span. |
 | `record_io` | `bool` | Record input/output/expected as span attributes. Default `False`. |
 
@@ -154,27 +154,27 @@ class EvalScore:
 
 ```mermaid
 flowchart TD
-    A["test_suite_run — experiment root"] --> B["test_case — case 1"]
-    A --> C["test_case — case 2"]
+    A["test_suite_run - experiment root"] --> B["test_case - case 1"]
+    A --> C["test_case - case 2"]
     B --> D["invoke_agent my_agent"]
     B --> E["evaluation result events"]
     D --> F["execute_tool ..."]
 ```
 
-Agent traces from the task become children of `test_case` spans — full waterfall from experiment to individual LLM calls.
+Agent traces from the task become children of `test_case` spans - full waterfall from experiment to individual LLM calls.
 
 ### Result types
 
 ```python
 result = evaluate(...)
 result.summary          # ExperimentSummary
-result.summary.scores   # dict[str, ScoreSummary] — avg, min, max, count per metric
-result.cases            # list[CaseResult] — per-case input, output, scores, status
+result.summary.scores   # dict[str, ScoreSummary] - avg, min, max, count per metric
+result.cases            # list[CaseResult] - per-case input, output, scores, status
 ```
 
 ---
 
-## `Experiment` — upload pre-computed results
+## `Experiment` - upload pre-computed results
 
 Use `Experiment` when you already have evaluation results from another framework (RAGAS, DeepEval, pytest, custom) and want to upload them as OTel spans.
 
@@ -233,7 +233,7 @@ print(f"V2: {result_b.summary.scores['accuracy'].avg:.2f}")
 
 ---
 
-## `OpenSearchTraceRetriever` — query stored traces
+## `OpenSearchTraceRetriever` - query stored traces
 
 Retrieves traces from OpenSearch for building evaluation pipelines. Requires the `[opensearch]` extra:
 
@@ -262,7 +262,7 @@ retriever = OpenSearchTraceRetriever(
 
 ### Methods
 
-**`list_root_spans()`** — find recent agent traces:
+**`list_root_spans()`** - find recent agent traces:
 
 ```python
 roots = retriever.list_root_spans(services=["my-agent"], max_results=20)
@@ -274,9 +274,9 @@ roots = retriever.list_root_spans(services=["my-agent"], max_results=20)
 | `since` | `datetime` | 15 min ago | Only traces started after this time. |
 | `max_results` | `int` | `50` | Maximum root spans to return. |
 
-Returns `list[SpanRecord]` — one per trace (the root span with no parent).
+Returns `list[SpanRecord]` - one per trace (the root span with no parent).
 
-**`get_traces()`** — fetch full trace with all spans:
+**`get_traces()`** - fetch full trace with all spans:
 
 ```python
 session = retriever.get_traces(roots[0].trace_id)
@@ -292,18 +292,18 @@ for trace in session.traces:
 
 Returns a `SessionRecord`.
 
-**`find_evaluated_trace_ids()`** — filter out already-scored traces:
+**`find_evaluated_trace_ids()`** - filter out already-scored traces:
 
 ```python
 evaluated = retriever.find_evaluated_trace_ids([s.trace_id for s in roots])
 to_score = [s for s in roots if s.trace_id not in evaluated]
 ```
 
-Returns `set[str]` — trace IDs that already have an evaluation span.
+Returns `set[str]` - trace IDs that already have an evaluation span.
 
 ### Return types
 
-**`SpanRecord`** — normalised view of one span:
+**`SpanRecord`** - normalised view of one span:
 
 ```python
 @dataclass
@@ -327,7 +327,7 @@ class SpanRecord:
     raw: dict = {}                       # Original OpenSearch document
 ```
 
-**`Message`** — a single user or assistant message:
+**`Message`** - a single user or assistant message:
 
 ```python
 @dataclass
@@ -336,7 +336,7 @@ class Message:
     content: str
 ```
 
-**`TraceRecord`** — all spans sharing a single trace ID:
+**`TraceRecord`** - all spans sharing a single trace ID:
 
 ```python
 @dataclass
@@ -345,7 +345,7 @@ class TraceRecord:
     spans: list[SpanRecord] = []
 ```
 
-**`SessionRecord`** — all traces for a session/conversation:
+**`SessionRecord`** - all traces for a session/conversation:
 
 ```python
 @dataclass
@@ -391,7 +391,7 @@ retriever = OpenSearchTraceRetriever(
 
 ## Related links
 
-- [Evaluation Integrations](/docs/ai-observability/evaluation-integrations/) — use DeepEval, RAGAS, MLflow, pytest with the observability stack
-- [Python SDK reference](/docs/send-data/ai-agents/python/) — `register`, `observe`, `enrich` documentation
-- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) — explore traces in OpenSearch Dashboards
-- [Agent Health — Experiments](/docs/agent-health/evaluations/experiments/) — UI and CLI-based experiment workflows
+- [Evaluation Integrations](/docs/ai-observability/evaluation-integrations/) - use DeepEval, RAGAS, MLflow, pytest with the observability stack
+- [Python SDK reference](/docs/send-data/ai-agents/python/) - `register`, `observe`, `enrich` documentation
+- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) - explore traces in OpenSearch Dashboards
+- [Agent Health - Experiments](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows

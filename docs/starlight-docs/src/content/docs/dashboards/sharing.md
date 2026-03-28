@@ -3,12 +3,12 @@ title: "Sharing Dashboards"
 description: "Share dashboards, export reports, and manage dashboard best practices"
 ---
 
-Once you've built a dashboard, share it with the people who need it — team members, on-call engineers, or stakeholders.
+Once you've built a dashboard, share it with the people who need it - team members, on-call engineers, or stakeholders.
 
 ## Share with team members
 
 Dashboards are accessible to anyone with the appropriate OpenSearch permissions. Share by:
-- Sending the dashboard URL directly — the URL includes the dashboard ID and current time range
+- Sending the dashboard URL directly - the URL includes the dashboard ID and current time range
 - Adding the dashboard to a team's bookmarked dashboards list
 - Referencing it in runbooks and incident response documentation
 
@@ -17,7 +17,7 @@ Dashboards are accessible to anyone with the appropriate OpenSearch permissions.
 For sharing a point-in-time view (e.g., during a post-incident review):
 1. Set the dashboard to the time range you want to capture
 2. Select **Share** → **Snapshot**
-3. The snapshot preserves the exact state — data, time range, and filters
+3. The snapshot preserves the exact state - data, time range, and filters
 
 Snapshots are read-only and don't update with new data. They're a record of what the dashboard looked like at a specific moment.
 
@@ -43,9 +43,9 @@ Import by navigating to **Dashboards** → **Import** and uploading the JSON fil
 
 ### Design for the audience
 
-- **On-call engineers:** prioritize real-time data, error rates, and latency. Keep it scannable — if something is wrong, it should be obvious in 5 seconds.
+- **On-call engineers:** prioritize real-time data, error rates, and latency. Keep it scannable - if something is wrong, it should be obvious in 5 seconds.
 - **Team leads:** include trend data, error rate trends, and week-over-week comparisons. These dashboards are checked daily, not during incidents.
-- **Stakeholders:** high-level summaries — availability percentage, request volume, key business metrics. Minimize technical detail.
+- **Stakeholders:** high-level summaries - availability percentage, request volume, key business metrics. Minimize technical detail.
 
 ### Keep dashboards focused
 
@@ -73,7 +73,7 @@ Export dashboard JSON and commit it to your repository. This gives you:
 
 ## Next steps
 
-- [Build a Dashboard](/docs/dashboards/build/) — create dashboards, add panels, and arrange layouts
-- [Discover Logs](/docs/investigate/discover-logs/) — build log queries for dashboard panels
-- [Discover Traces](/docs/investigate/discover-traces/) — build trace queries for dashboard panels
-- [Discover Metrics](/docs/investigate/discover-metrics/) — build PromQL queries for metrics panels
+- [Build a Dashboard](/docs/dashboards/build/) - create dashboards, add panels, and arrange layouts
+- [Discover Logs](/docs/investigate/discover-logs/) - build log queries for dashboard panels
+- [Discover Traces](/docs/investigate/discover-traces/) - build trace queries for dashboard panels
+- [Discover Metrics](/docs/investigate/discover-metrics/) - build PromQL queries for metrics panels

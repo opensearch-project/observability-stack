@@ -1,0 +1,142 @@
+---
+title: "fields"
+description: "Keep or remove fields from search results - control which columns appear in output."
+---
+
+## Description
+
+The `fields` command specifies which fields (columns) to include in or exclude from the search results. It operates in two modes:
+
+- **Include mode** (`+`, default) - keeps only the listed fields and drops everything else.
+- **Exclude mode** (`-`) - removes the listed fields and keeps everything else.
+
+Use `fields` to reduce clutter, focus on relevant data, and improve query performance by limiting the amount of data transferred.
+
+## Syntax
+
+```sql
+fields [+|-] <field-list>
+```
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `<field-list>` | Yes | A comma-delimited or space-delimited list of field names. Supports wildcard patterns (`*`). |
+| `+` or `-` | No | `+` (include mode, default) keeps only the listed fields. `-` (exclude mode) removes the listed fields from the output. |
+
+## Usage notes
+
+- **Reduces data transfer**: Selecting only the fields you need reduces the amount of data returned from OpenSearch, which can significantly improve query performance for wide indices with many fields.
+- **Wildcard patterns**: Use `*` to match field names by prefix (`severity*`), suffix (`*Id`), or substring (`*attr*`). Wildcards are expanded against the index schema.
+- **Field order**: The order of fields in the output matches the order you specify in the `fields` command.
+- **Automatic deduplication**: If a field is both explicitly listed and matched by a wildcard pattern, it appears only once in the output.
+- **Backtick-quoted field names**: OTel fields with dots in their names (e.g., `resource.attributes.service.name`) must be enclosed in backticks (`` ` ``) to prevent them from being interpreted as nested field access. For example: `` `resource.attributes.service.name` ``.
+- **Space or comma delimiters**: Fields can be separated by commas, spaces, or a mix of both. All three forms are equivalent: `fields a, b, c`, `fields a b c`, `fields a, b c`.
+- **Multiple fields commands**: You can chain `fields` commands. For example, first include a broad set, then exclude specific fields from that set.
+- **Full wildcard**: Use `fields *` or `` fields `*` `` to select all fields in the index schema, including fields with null values. Use the backtick form if the plain `*` does not return all expected fields.
+
+## Basic examples
+
+### Select specific fields
+
+Return only the timestamp, log body, and severity from log results:
+
+```sql
+source=logs-otel-v1*
+| fields time, body, severityText
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20time%2C%20body%2C%20severityText%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Exclude a field
+
+Start with a set of fields, then remove one:
+
+```sql
+source=logs-otel-v1*
+| fields time, body, severityText, traceId
+| fields - traceId
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20time%2C%20body%2C%20severityText%2C%20traceId%20%7C%20fields%20-%20traceId%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Space-delimited syntax
+
+Fields can be separated by spaces instead of commas:
+
+```sql
+source=logs-otel-v1*
+| fields time body severityText
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20time%20body%20severityText%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Prefix wildcard
+
+Select all fields whose names start with `severity`:
+
+```sql
+source=logs-otel-v1*
+| fields severity*
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20severity%2A%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Suffix wildcard
+
+Select all fields whose names end with `Id`:
+
+```sql
+source=logs-otel-v1*
+| fields *Id
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20%2AId%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## Extended examples
+
+### Select OTel log fields with backticks
+
+When working with OpenTelemetry data, field names contain dots. Use backticks to reference them correctly.
+
+```sql
+source=logs-otel-v1*
+| where severityText = 'ERROR'
+| fields time, body, severityText, `resource.attributes.service.name`, `attributes.gen_ai.operation.name`
+| head 20
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20fields%20time%2C%20body%2C%20severityText%2C%20%60resource.attributes.service.name%60%2C%20%60attributes.gen_ai.operation.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Exclude verbose fields for a clean log view
+
+Remove high-cardinality or noisy fields to focus on the essentials during an investigation. This is especially useful when browsing raw log data in Discover.
+
+```sql
+source=logs-otel-v1*
+| where severityNumber >= 17
+| fields - `attributes.event.domain`, `attributes.event.name`, instrumentationScope
+| head 50
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityNumber%20%3E%3D%2017%20%7C%20fields%20-%20%60attributes.event.domain%60%2C%20%60attributes.event.name%60%2C%20instrumentationScope%20%7C%20head%2050')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Wildcard to select attribute groups
+
+Use a wildcard pattern to grab all GenAI-related attributes at once:
+
+```sql
+source=logs-otel-v1*
+| where ISNOTNULL(`attributes.gen_ai.operation.name`)
+| fields time, body, `attributes.gen_ai*`
+| head 20
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20ISNOTNULL(%60attributes.gen_ai.operation.name%60)%20%7C%20fields%20time%2C%20body%2C%20%60attributes.gen_ai*%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## See also
+
+- [`search`](/docs/ppl/commands/search/) - The starting point of every PPL query
+- [`where`](/docs/ppl/commands/where/) - Filter results using boolean expressions
+- [PPL Commands](/docs/ppl/commands/) - Full command reference

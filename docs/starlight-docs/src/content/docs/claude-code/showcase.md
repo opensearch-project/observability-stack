@@ -28,7 +28,7 @@ source=otel-v1-apm-span-*
 **Follow-up:**
 
 ```
-> Compare the cost efficiency — which model has the best output-to-input ratio?
+> Compare the cost efficiency - which model has the best output-to-input ratio?
 ```
 
 ```sql
@@ -48,7 +48,7 @@ source=otel-v1-apm-span-*
 
 A real scenario: checkout errors are spiking. Use Claude to go from alert to root cause.
 
-**Step 1 — Detect the problem:**
+**Step 1 - Detect the problem:**
 
 ```
 > What is the current error rate for the checkout service?
@@ -65,7 +65,7 @@ clamp_min(sum(rate(http_server_duration_seconds_count{
 * 100
 ```
 
-**Step 2 — Find the failing operations:**
+**Step 2 - Find the failing operations:**
 
 ```
 > Show me the error spans from checkout sorted by time
@@ -79,7 +79,7 @@ source=otel-v1-apm-span-*
 | sort - startTime | head 20
 ```
 
-**Step 3 — Trace a specific failure:**
+**Step 3 - Trace a specific failure:**
 
 ```
 > Show me the full trace tree for that traceId
@@ -93,7 +93,7 @@ source=otel-v1-apm-span-*
 | sort startTime
 ```
 
-**Step 4 — Find correlated logs:**
+**Step 4 - Find correlated logs:**
 
 ```
 > Show me the logs for that trace
@@ -107,7 +107,7 @@ source=logs-otel-v1-*
 | sort `@timestamp`
 ```
 
-**Step 5 — Check if this is a new problem:**
+**Step 5 - Check if this is a new problem:**
 
 ```
 > What was the error rate trend for checkout over the last 6 hours?
@@ -138,7 +138,7 @@ source=otel-v1-apm-span-*
 | sort - invocations
 ```
 
-**Follow-up — Find slow orchestrations:**
+**Follow-up - Find slow orchestrations:**
 
 ```
 > Which Travel Planner invocations took longer than 30 seconds?
@@ -156,7 +156,7 @@ source=otel-v1-apm-span-*
 **Drill into a slow trace:**
 
 ```
-> Show me all spans in that trace — I want to see which sub-agent was slow
+> Show me all spans in that trace - I want to see which sub-agent was slow
 ```
 
 ```sql
@@ -195,7 +195,7 @@ source=otel-v1-apm-span-*
 | sort - calls
 ```
 
-**Follow-up — Check database performance:**
+**Follow-up - Check database performance:**
 
 ```
 > Show me the slowest database queries from checkout
@@ -230,7 +230,7 @@ Track SLO compliance and error budget consumption for SRE workflows.
 )
 ```
 
-**Follow-up — Check burn rate:**
+**Follow-up - Check burn rate:**
 
 ```
 > Are we burning error budget too fast? Show me the burn rate.
@@ -263,7 +263,7 @@ source=logs-otel-v1-*
 | sort - occurrences | head 20
 ```
 
-**Follow-up — Trend analysis:**
+**Follow-up - Trend analysis:**
 
 ```
 > How has the error volume changed hour by hour today?
@@ -294,7 +294,7 @@ topk(5,
     by (le, service_name)))
 ```
 
-**Follow-up — Drill into the slowest service:**
+**Follow-up - Drill into the slowest service:**
 
 ```
 > What operations on the frontend service are the slowest?
@@ -328,7 +328,7 @@ source=otel-v1-apm-span-*
 
 ## Tool Execution Analysis
 
-Debug AI agent tool calls — what's failing, what's slow, and why.
+Debug AI agent tool calls - what's failing, what's slow, and why.
 
 ```
 > Which tools are failing the most?
@@ -342,7 +342,7 @@ source=otel-v1-apm-span-*
 | sort - failures
 ```
 
-**Follow-up — Inspect a failing tool:**
+**Follow-up - Inspect a failing tool:**
 
 ```
 > Show me the arguments and results for the last 10 get_current_weather calls
@@ -364,7 +364,7 @@ source=otel-v1-apm-span-*
 Get a complete RED dashboard for every service in one investigation.
 
 ```
-> Give me a health dashboard — show rate, error rate, and p95 latency for all services
+> Give me a health dashboard - show rate, error rate, and p95 latency for all services
 ```
 
 Claude runs three PromQL queries simultaneously and presents a unified view:

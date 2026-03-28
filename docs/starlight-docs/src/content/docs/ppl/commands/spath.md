@@ -1,0 +1,177 @@
+---
+title: "spath"
+description: "Extract fields from structured JSON data - parse nested JSON within log bodies without re-indexing."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Experimental - since 3.3">
+This command is production-ready but its parameters may change based on community feedback.
+</Aside>
+
+The `spath` command extracts fields from structured JSON data stored in a text field. It operates in two modes:
+
+- **Path-based mode** -- When `path` is specified, extracts a single value at the given JSON path.
+- **Auto-extract mode** -- When `path` is omitted, extracts all fields from the JSON into a map.
+
+This is ideal for semi-structured log bodies that contain JSON payloads -- you can extract and query nested fields without re-indexing.
+
+<Aside type="note">
+The `spath` command runs on the coordinating node, not on data nodes. It processes data after retrieval, which can be slow on large result sets. For fields you need to filter frequently, consider indexing them directly. The input field must be a **string** containing valid JSON -- struct fields cannot be used directly.
+</Aside>
+
+## Syntax
+
+```sql
+spath input=<field> [output=<field>] [[path=]<json-path>]
+```
+
+## Arguments
+
+### Required
+
+| Argument | Description |
+|----------|-------------|
+| `input=<field>` | The field containing JSON data to parse. Must be a string field. |
+
+### Optional
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `output=<field>` | Value of `path` (path mode) or `input` (auto-extract) | Destination field for the extracted data. |
+| `path=<json-path>` | -- | The JSON path identifying data to extract. When omitted, runs in auto-extract mode. The `path=` keyword is optional; you can specify the path as a positional argument. |
+
+## JSON path syntax
+
+| Syntax | Description | Example |
+|--------|-------------|---------|
+| `field` | Top-level field | `status` |
+| `parent.child` | Dot notation for nested fields | `error.message` |
+| `list{0}` | Array element by index | `tags{0}` |
+| `list{}` | All array elements | `items{}` |
+| `"['special.name']"` | Escaped field names with dots or spaces | `"['a.b.c']"` |
+
+## Usage notes
+
+- The `spath` command always returns extracted values as **strings**. Use `eval` with `cast()` to convert to numeric types for aggregation.
+- The input field must contain a valid **JSON string**. Struct or map fields from the index schema cannot be used directly -- you must first convert them to a string representation.
+- In auto-extract mode, nested objects produce dotted keys (`user.name`), arrays produce `{}` suffix keys (`tags{}`), and all values are stringified.
+- Empty JSON objects (`{}`) return an empty map. Malformed JSON returns partial results from any fields parsed before the error.
+- In auto-extract mode, access individual values via dotted path navigation on the output field (e.g., `doc.user.name`). For keys containing `{}`, use backtick quoting.
+
+## Examples
+
+### Extract a field from a JSON string
+
+Extract the `status` field from a JSON string. This example uses `eval` to create a JSON string for demonstration, but in practice you would use this on a body field that already contains JSON:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"status": 200, "service": "frontend", "latency": 45}'
+| spath input=jsonStr path=status output=httpStatus
+```
+
+| httpStatus |
+|------------|
+| 200 |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22status%22%3A%20200%2C%20%22service%22%3A%20%22frontend%22%2C%20%22latency%22%3A%2045%7D!%27%20%7C%20spath%20input%3DjsonStr%20path%3Dstatus%20output%3DhttpStatus')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Extract nested object fields
+
+Traverse multiple levels of nesting using dot notation to extract deeply nested values:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"error": {"type": "timeout", "message": "upstream timed out"}}'
+| spath input=jsonStr path=error.message output=errorMsg
+```
+
+| errorMsg |
+|----------|
+| upstream timed out |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22error%22%3A%20%7B%22type%22%3A%20%22timeout%22%2C%20%22message%22%3A%20%22upstream%20timed%20out%22%7D%7D!%27%20%7C%20spath%20input%3DjsonStr%20path%3Derror.message%20output%3DerrorMsg')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Extract array elements
+
+Extract the first element and all elements from an array within JSON data:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"tags": ["frontend", "v2", "canary"]}'
+| spath input=jsonStr path=tags{0} output=firstTag
+| spath input=jsonStr path=tags{} output=allTags
+```
+
+| firstTag | allTags |
+|----------|---------|
+| frontend | ["frontend","v2","canary"] |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22tags%22%3A%20%5B%22frontend%22%2C%20%22v2%22%2C%20%22canary%22%5D%7D!%27%20%7C%20spath%20input%3DjsonStr%20path%3Dtags%7B0%7D%20output%3DfirstTag')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Cast extracted values for aggregation
+
+Extracted values are strings. Cast them before performing numeric operations:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"status": 200, "service": "frontend", "latency": 45}'
+| spath input=jsonStr path=latency output=latency
+| eval latency = cast(latency as double)
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22status%22%3A%20200%2C%20%22service%22%3A%20%22frontend%22%2C%20%22latency%22%3A%2045%7D!%27%20%7C%20spath%20input%3DjsonStr%20path%3Dstatus%20output%3DhttpStatus')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Auto-extract all fields from JSON
+
+Extract all fields from a JSON string into a map, then access individual values:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"status": 200, "service": "frontend"}'
+| spath input=jsonStr output=parsed
+```
+
+| parsed |
+|--------|
+| {service: frontend, status: 200} |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22status%22%3A%20200%2C%20%22service%22%3A%20%22frontend%22%7D!%27%20%7C%20spath%20input%3DjsonStr%20output%3Dparsed')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## Extended examples
+
+### Extract multiple error fields from a JSON payload
+
+Chain multiple `spath` commands to extract several fields from a nested error payload:
+
+```sql
+source=logs-otel-v1*
+| head 1
+| eval jsonStr = '{"error": {"type": "timeout", "message": "upstream timed out", "code": 504}}'
+| spath input=jsonStr path=error.type output=errorType
+| spath input=jsonStr path=error.message output=errorMsg
+| spath input=jsonStr path=error.code output=errorCode
+```
+
+| errorType | errorMsg | errorCode |
+|-----------|----------|-----------|
+| timeout | upstream timed out | 504 |
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201%20%7C%20eval%20jsonStr%20%3D%20!%27%7B%22error%22%3A%20%7B%22type%22%3A%20%22timeout%22%2C%20%22message%22%3A%20%22upstream%20timed%20out%22%2C%20%22code%22%3A%20504%7D%7D!%27%20%7C%20spath%20input%3DjsonStr%20path%3Derror.type%20output%3DerrorType%20%7C%20spath%20input%3DjsonStr%20path%3Derror.message%20output%3DerrorMsg%20%7C%20spath%20input%3DjsonStr%20path%3Derror.code%20output%3DerrorCode')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+<Aside type="note">
+The OTel demo data in this stack uses plain-text log bodies rather than JSON payloads. The examples above use `eval` to create JSON strings for demonstration. When your application emits JSON-encoded log bodies, you can use `spath input=body` directly without the `eval` step.
+</Aside>
+
+## See also
+
+- [parse](/docs/ppl/commands/parse/) -- extract fields using regex named capture groups
+- [grok](/docs/ppl/commands/grok/) -- extract fields using grok patterns
+- [rex](/docs/ppl/commands/rex/) -- regex extraction with sed-mode substitution
+- [eval](/docs/ppl/commands/eval/) -- create computed fields and type conversions

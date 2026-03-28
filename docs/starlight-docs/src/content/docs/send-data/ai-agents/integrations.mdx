@@ -9,7 +9,7 @@ Each example below shows a complete, runnable integration. All examples assume t
 
 ## Strands Agents
 
-[Strands Agents](https://github.com/strands-agents/sdk-python) is a model-driven agent framework from AWS. The SDK's auto-instrumentation captures Bedrock/OpenAI calls automatically — add `@observe` for agent-level visibility.
+[Strands Agents](https://github.com/strands-agents/sdk-python) is a model-driven agent framework from AWS. The SDK's auto-instrumentation captures Bedrock/OpenAI calls automatically - add `@observe` for agent-level visibility.
 
 ```bash
 pip install "opensearch-genai-observability-sdk-py[bedrock]" strands-agents strands-agents-bedrock
@@ -61,7 +61,7 @@ from strands import Agent
 from strands.models.bedrock import BedrockModel
 from strands.telemetry import StrandsTelemetry
 
-# Initialize Strands' built-in telemetry — automatically creates spans for:
+# Initialize Strands' built-in telemetry - automatically creates spans for:
 #   invoke_agent, execute_tool, chat (LLM calls)
 telemetry = StrandsTelemetry()
 
@@ -73,7 +73,7 @@ telemetry.tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
 @observe(op=Op.EXECUTE_TOOL)
 def fetch_hotel_ratings(city: str) -> str:
     """Fetch hotel ratings from an external API."""
-    # Custom API call — not covered by Strands auto-instrumentation
+    # Custom API call - not covered by Strands auto-instrumentation
     return f"4.5 stars average in {city}"
 
 model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
@@ -265,6 +265,6 @@ run("What is OpenSearch?")
 
 ## Related links
 
-- [Python SDK reference](/docs/send-data/ai-agents/python/) — full API documentation for `register`, `observe`, `enrich`
-- [Auto-instrumentation](/docs/send-data/ai-agents/python/#auto-instrumentation) — supported providers and extras
-- [Evaluation & Scoring](/docs/ai-observability/evaluation/) — score and evaluate your agent outputs
+- [Python SDK reference](/docs/send-data/ai-agents/python/) - full API documentation for `register`, `observe`, `enrich`
+- [Auto-instrumentation](/docs/send-data/ai-agents/python/#auto-instrumentation) - supported providers and extras
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - score and evaluate your agent outputs

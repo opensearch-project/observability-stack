@@ -11,8 +11,8 @@ Application Monitoring gives you a real-time view of how your services are perfo
 
 In OpenSearch Dashboards, navigate to **Observability** > **Application Monitoring**. The sidebar shows:
 
-- **Services** — catalog of all instrumented services with filtering, detail views, and correlation links
-- **Application Map** — interactive topology graph of service dependencies
+- **Services** - catalog of all instrumented services with filtering, detail views, and correlation links
+- **Application Map** - interactive topology graph of service dependencies
 
 ## Key capabilities
 
@@ -28,9 +28,9 @@ A filterable table of all instrumented services showing latency (P99), throughpu
 
 Drill into any service to see three tabs:
 
-- **Overview** — KPI cards (throughput, fault rate, error rate, availability, latency P99) with sparklines and trend arrows, latency by dependencies, requests by operations, and availability by operations charts.
-- **Operations** — table of all operations with expandable rows showing per-operation request, fault, error, and latency charts.
-- **Dependencies** — table of downstream dependencies with expandable rows showing per-dependency charts.
+- **Overview** - KPI cards (throughput, fault rate, error rate, availability, latency P99) with sparklines and trend arrows, latency by dependencies, requests by operations, and availability by operations charts.
+- **Operations** - table of all operations with expandable rows showing per-operation request, fault, error, and latency charts.
+- **Dependencies** - table of downstream dependencies with expandable rows showing per-dependency charts.
 
 ### Correlations
 

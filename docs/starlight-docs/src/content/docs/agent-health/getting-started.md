@@ -10,7 +10,7 @@ This guide walks you through using Agent Health to evaluate AI agents. The appli
 ## Prerequisites
 
 **Required:**
-- **Node.js 18+** — [download here](https://nodejs.org/)
+- **Node.js 18+** - [download here](https://nodejs.org/)
 - **npm** (comes with Node.js)
 
 **Optional (for production use):**
@@ -51,7 +51,7 @@ Agent Health includes a built-in Travel Planner multi-agent demo, along with a D
 
 - Simulates a multi-agent Travel Planner system with realistic trajectories
 - Agent types: Travel Coordinator, Weather Agent, Events Agent, Booking Agent, Budget Agent
-- No external endpoint required — select "Demo Agent" in the agent dropdown
+- No external endpoint required - select "Demo Agent" in the agent dropdown
 
 ### Demo Judge
 
@@ -125,7 +125,7 @@ Each step shows timestamp, duration, tool arguments (for actions), full tool out
 
 ## Next steps
 
-- [Connect your own agent](/docs/agent-health/configuration/) — configure Agent Health for your agent
-- [Create custom test cases](/docs/agent-health/evaluations/test-cases/) — build test cases for your domain
-- [Run experiments](/docs/agent-health/evaluations/experiments/) — batch evaluate across agents and models
-- [View traces](/docs/agent-health/traces/) — visualize OpenTelemetry traces from your agent
+- [Connect your own agent](/docs/agent-health/configuration/) - configure Agent Health for your agent
+- [Create custom test cases](/docs/agent-health/evaluations/test-cases/) - build test cases for your domain
+- [Run experiments](/docs/agent-health/evaluations/experiments/) - batch evaluate across agents and models
+- [View traces](/docs/agent-health/traces/) - visualize OpenTelemetry traces from your agent

@@ -1,0 +1,137 @@
+---
+title: "timechart"
+description: "Create time-based aggregations and charts - the go-to command for time-series visualization."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+<Aside type="caution" title="Experimental - since 3.3">
+This command is production-ready but its parameters may change based on community feedback.
+</Aside>
+
+The `timechart` command creates time-based aggregations by grouping data into time intervals, optionally splitting by a field, and applying an aggregation function to each bucket. Results are returned in an unpivoted format with separate rows for each time-field combination, making them ideal for dashboard panels and trend analysis.
+
+## Syntax
+
+```sql
+timechart [timefield=<field>] [span=<interval>] [limit=<N>] [useother=<bool>] [usenull=<bool>] [nullstr=<string>] <aggregation> [by <field>]
+```
+
+## Arguments
+
+### Required
+
+| Argument | Description |
+|----------|-------------|
+| `<aggregation>` | The aggregation function to apply to each time bucket. Only a single aggregation function is supported per `timechart` command. Supports all [stats](/docs/ppl/commands/stats/) aggregation functions plus the timechart-specific rate functions (`per_second`, `per_minute`, `per_hour`, `per_day`). |
+
+### Optional
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `timefield=<field>` | `@timestamp` | The timestamp field to use for time-based grouping. For OTel log indices, use `timefield=time`. |
+| `span=<interval>` | `1m` | Time interval for grouping. Supported units: `ms`, `s`, `m` (minute), `h`, `d`, `w`, `M` (month), `q`, `y`. Note: `m` and `M` are case-sensitive. |
+| `limit=<N>` | `10` | Maximum number of distinct values shown when using `by`. Values beyond the limit are grouped into `OTHER`. Set to `0` for unlimited. |
+| `useother=<bool>` | `true` | Whether to create an `OTHER` category for values beyond the `limit`. Only applies with `by`. |
+| `usenull=<bool>` | `true` | Whether to group documents with null `by` field values into a `NULL` category. When `false`, null-valued documents are excluded. |
+| `nullstr=<string>` | `"NULL"` | The category name for documents with null `by` field values. Only applies when `usenull=true`. |
+| `by <field>` | -- | Groups results by the specified field in addition to time intervals. |
+
+## Usage notes
+
+- Results only include time-field combinations that have data. Empty buckets are omitted rather than showing null or zero.
+- The top N values for `limit` are selected based on the **sum** of aggregation values across all time intervals.
+- Only a single aggregation function is supported per `timechart`. Use multiple `timechart` commands joined with `appendcol` if you need multiple aggregations.
+- The timechart-specific rate functions calculate normalized rates: `per_second(field) = sum(field) / span_in_seconds`, `per_minute(field) = sum(field) * 60 / span_in_seconds`, and so on.
+- In the Discover UI, the source index is set by the selected dataset, so start your query with `| timechart ...`.
+
+## Examples
+
+### Log volume per 5 minutes
+
+Count all log events in 5-minute windows:
+
+```sql
+source = logs-otel-v1*
+| timechart timefield=time span=5m count()
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count()')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Log volume by service over time
+
+Break down log volume by service name in 5-minute buckets:
+
+```sql
+source = logs-otel-v1*
+| timechart timefield=time span=5m count() by `resource.attributes.service.name`
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count()%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Error rate over time by service
+
+Count only error logs per service in 5-minute windows:
+
+```sql
+source = logs-otel-v1*
+| where severityText = 'ERROR'
+| timechart timefield=time span=5m count() by `resource.attributes.service.name`
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Top 3 services with the rest grouped as OTHER
+
+Limit the breakdown to the top 3 services by volume, grouping remaining services into `OTHER`:
+
+```sql
+source = logs-otel-v1*
+| timechart timefield=time span=5m limit=3 count() by `resource.attributes.service.name`
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20limit%3D3%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Exclude the OTHER category
+
+Show only the top 5 services without an `OTHER` bucket:
+
+```sql
+source = logs-otel-v1*
+| timechart timefield=time span=5m limit=5 useother=false count() by `resource.attributes.service.name`
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20limit%3D5%20useother%3Dfalse%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## Extended examples
+
+### Request latency percentiles over time (OTel traces)
+
+Calculate average span duration per minute, broken down by service, to visualize latency trends:
+
+```sql
+source = otel-v1-apm-span-*
+| timechart timefield=startTime span=1m avg(durationInNanos) by serviceName
+```
+
+[Try in Playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%20%3D%20otel-v1-apm-span-%2A%0A%7C%20timechart%20timefield%3DstartTime%20span%3D1m%20avg%28durationInNanos%29%20by%20serviceName')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)))
+
+This produces a time-series suitable for a dashboard line chart where each line represents a service's average latency over time.
+
+### Per-second event rate by severity (OTel logs)
+
+Use the `per_second` rate function to normalize event counts across different time windows, grouped by severity level:
+
+```sql
+source = logs-otel-v1*
+| timechart timefield=time span=1m per_second(severityNumber) by severityText
+```
+
+<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D1m%20per_second%28severityNumber%29%20by%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## See also
+
+- [stats](/docs/ppl/commands/stats/) -- general aggregation and grouping
+- [chart](/docs/ppl/commands/) -- row/column split aggregation for non-time-based charts
+- [trendline](/docs/ppl/commands/trendline/) -- moving averages over ordered data
+- [bin](/docs/ppl/commands/) -- bucket numeric or time values into intervals

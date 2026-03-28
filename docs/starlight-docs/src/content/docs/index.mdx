@@ -7,7 +7,7 @@ import { LinkCard, CardGrid, Tabs, TabItem, Aside } from '@astrojs/starlight/com
 import IconCard from '../../components/IconCard.astro';
 import IconCardGrid from '../../components/IconCardGrid.astro';
 
-OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observability platform** ([GitHub](https://github.com/opensearch-project/observability-stack)) for monitoring services, infrastructure, and AI agents. Install locally via Docker Compose — traces, logs, Prometheus metrics, service maps, and agent tracing out of the box.
+OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observability platform** ([GitHub](https://github.com/opensearch-project/observability-stack)) for monitoring services, infrastructure, and AI agents. Install locally via Docker Compose - traces, logs, Prometheus metrics, service maps, and agent tracing out of the box.
 
 <IconCardGrid>
   <IconCard title="Traces, Logs & Metrics" icon="/docs/icons/app_visualize.svg" items={["Collect via OTLP", "Log-trace correlation", "Search with PPL and PromQL"]} href="/docs/investigate/discover-logs/" />
@@ -20,7 +20,7 @@ OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observa
 
 <video src="https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/observability-stack-overview.mp4" controls></video>
 
-<LinkCard title="Live Playground" href="https://observability.playground.opensearch.org" description="Try the Observability Stack live — no installation required." />
+<LinkCard title="Live Playground" href="https://observability.playground.opensearch.org" description="Try the Observability Stack live - no installation required." />
 
 ## Quickstarts
 
@@ -29,18 +29,34 @@ OpenSearch Observability Stack is an **open-source, OpenTelemetry-native observa
 <LinkCard title="Trace an AI Agent" href="/docs/ai-observability/agent-tracing/" description="Instrument an AI agent with GenAI semantic conventions and visualize the execution graph." />
 
 <Aside type="tip">
-The stack optionally ships with [example services](https://github.com/opensearch-project/observability-stack/tree/main/examples) — a multi-agent travel planner, weather agent, and events agent that generate agent traces automatically. You can also enable the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/architecture/), a full microservices e-commerce app for realistic telemetry. Install, open Dashboards, and start exploring — no instrumentation needed.
+The stack optionally ships with [example services](https://github.com/opensearch-project/observability-stack/tree/main/examples) - a multi-agent travel planner, weather agent, and events agent that generate agent traces automatically. You can also enable the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/architecture/), a full microservices e-commerce app for realistic telemetry. Install, open Dashboards, and start exploring - no instrumentation needed.
 </Aside>
+
+## Query language: PPL
+
+The Observability Stack is powered by **Piped Processing Language (PPL)** - a pipe-based, human-readable query language purpose-built for observability. PPL is the native language for querying logs and traces, giving you a single, consistent syntax across signal types.
+
+```sql
+source = logs-otel-v1*
+| where severityNumber >= 17
+| stats count() as errors by `resource.attributes.service.name`
+| sort - errors
+```
+
+With **50+ commands** and **200+ built-in functions**, PPL covers everything from simple filtering to machine learning anomaly detection - all in a pipeline you can read top to bottom.
+
+<LinkCard title="Learn PPL" href="/docs/ppl/" description="Overview, command reference, function reference, and real-world observability examples with live playground links." />
 
 ## Why Observability Stack?
 
 - **Open source**: Fully open source, no vendor lock-in, self-host everything
 - **OpenTelemetry-native**: All data ingestion uses OTel protocols and [semantic conventions](https://opentelemetry.io/docs/specs/semconv/)
+- **PPL-native**: Pipe-based query language across logs and traces - no query DSL, no steep learning curve
 - **GenAI-first**: Purpose-built views for AI agent tracing using standard `gen_ai.*` attributes
-- **Local-first**: Runs entirely on your machine via Docker Compose — no cloud account required
+- **Local-first**: Runs entirely on your machine via Docker Compose - no cloud account required
 - **Production path**: Same components (OpenSearch, Prometheus, OTel Collector) scale to production
 
 ## Community
 
-- [GitHub](https://github.com/opensearch-project/observability-stack) — issues, PRs, and discussions
-- [Contributing guide](https://github.com/opensearch-project/observability-stack/blob/main/CONTRIBUTING.md) — how to contribute
+- [GitHub](https://github.com/opensearch-project/observability-stack) - issues, PRs, and discussions
+- [Contributing guide](https://github.com/opensearch-project/observability-stack/blob/main/CONTRIBUTING.md) - how to contribute
