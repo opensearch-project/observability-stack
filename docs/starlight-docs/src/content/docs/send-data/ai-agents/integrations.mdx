@@ -141,10 +141,10 @@ run("What is OpenSearch?")
 
 ## CrewAI
 
-[CrewAI](https://www.crewai.com/) orchestrates role-playing AI agents. Wrap crew execution with `@observe`.
+[CrewAI](https://www.crewai.com/) orchestrates role-playing AI agents. Wrap crew execution with `@observe`. The `[otel-instrumentors]` extra includes auto-instrumentation for CrewAI's internal LLM calls.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py crewai
+pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]" crewai
 ```
 
 ```python
@@ -200,7 +200,7 @@ pip install "opensearch-genai-observability-sdk-py[openai]" openai-agents
 
 ```python
 from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
-from agents import Agent, Runner
+from agents import Agent, Runner  # openai-agents package
 
 register(
     endpoint="http://localhost:4318/v1/traces",

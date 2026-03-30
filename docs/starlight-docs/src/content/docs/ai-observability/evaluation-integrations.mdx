@@ -3,7 +3,13 @@ title: "Evaluation Integrations"
 description: "Bridge external evaluation frameworks like DeepEval, RAGAS, MLflow, and pytest into the observability stack"
 ---
 
+import { Aside } from '@astrojs/starlight/components';
+
 The `Benchmark` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
+
+<Aside type="note">
+Third-party framework APIs change frequently. The examples below show the integration pattern — adapt imports and method calls to your installed version. The SDK side (`Benchmark`, `b.log()`, `evaluate()`, `EvalScore`) is stable.
+</Aside>
 
 ---
 
@@ -12,7 +18,7 @@ The `Benchmark` class bridges any evaluation framework into the observability st
 [DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection.
 
 ```bash
-pip install deepeval
+pip install opensearch-genai-observability-sdk-py deepeval
 ```
 
 ```python
@@ -20,7 +26,7 @@ from opensearch_genai_observability_sdk_py import register, Benchmark
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
-register(service_name="deepeval-experiment")
+register(service_name="deepeval-eval")
 
 # Define your test cases
 test_cases = [
@@ -64,6 +70,10 @@ with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
         )
 ```
 
+<Aside type="tip">
+DeepEval also has a `deepeval.evaluate()` function that runs all metrics at once. You can use either approach — the key is extracting the numeric scores and passing them to `b.log()`.
+</Aside>
+
 ---
 
 ## RAGAS
@@ -71,7 +81,7 @@ with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
 [RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness.
 
 ```bash
-pip install ragas
+pip install opensearch-genai-observability-sdk-py ragas datasets
 ```
 
 ```python
@@ -80,7 +90,7 @@ from ragas import evaluate as ragas_evaluate
 from ragas.metrics import faithfulness, answer_correctness, context_precision
 from datasets import Dataset
 
-register(service_name="ragas-experiment")
+register(service_name="ragas-eval")
 
 # Prepare your RAG evaluation dataset
 data = {
@@ -107,20 +117,21 @@ ragas_result = ragas_evaluate(
 )
 
 # Upload results to OpenSearch via Benchmark
+df = ragas_result.to_pandas()
 with Benchmark("ragas_eval", metadata={"framework": "ragas"}) as b:
-    for i, row in enumerate(ragas_result.to_pandas().itertuples()):
+    for i, row in df.iterrows():
         b.log(
             input=data["question"][i],
             output=data["answer"][i],
             expected=data["ground_truth"][i],
-            scores={
-                "faithfulness": row.faithfulness,
-                "answer_correctness": row.answer_correctness,
-                "context_precision": row.context_precision,
-            },
+            scores={col: row[col] for col in df.columns if col not in data},
             case_name=data["question"][i][:50],
         )
 ```
+
+<Aside type="note">
+RAGAS v0.2+ changed its dataset format and metric API. If you're on v0.2+, check the [RAGAS migration guide](https://docs.ragas.io/) for the updated `evaluate()` signature. The SDK-side `Benchmark.log()` call stays the same — only the RAGAS imports and `evaluate()` call change.
+</Aside>
 
 ---
 
@@ -129,41 +140,49 @@ with Benchmark("ragas_eval", metadata={"framework": "ragas"}) as b:
 [MLflow](https://mlflow.org/) tracks ML experiments. Export MLflow evaluation results into the observability stack:
 
 ```bash
-pip install mlflow
+pip install opensearch-genai-observability-sdk-py mlflow
 ```
 
 ```python
 from opensearch_genai_observability_sdk_py import register, Benchmark
 import mlflow
+import pandas as pd
 
-register(service_name="mlflow-experiment")
+register(service_name="mlflow-eval")
+
+# Prepare evaluation data as a DataFrame
+eval_df = pd.DataFrame([
+    {"inputs": "What is OpenSearch?", "ground_truth": "search engine"},
+    {"inputs": "What is OTEL?", "ground_truth": "observability framework"},
+])
 
 # Run MLflow evaluation
-eval_data = [
-    {"inputs": {"question": "What is OpenSearch?"}, "ground_truth": "search engine"},
-    {"inputs": {"question": "What is OTEL?"}, "ground_truth": "observability framework"},
-]
-
-mlflow_result = mlflow.evaluate(
-    model="openai:/gpt-4o",
-    data=eval_data,
-    model_type="question-answering",
-)
+with mlflow.start_run():
+    mlflow_result = mlflow.evaluate(
+        model="openai:/gpt-4o",
+        data=eval_df,
+        targets="ground_truth",
+        model_type="question-answering",
+    )
 
 # Upload to observability stack
+results_df = mlflow_result.tables["eval_results_table"]
 with Benchmark("mlflow_eval", metadata={"framework": "mlflow"}) as b:
-    for _, row in mlflow_result.tables["eval_results_table"].iterrows():
+    for _, row in results_df.iterrows():
         b.log(
-            input=row["inputs"],
-            output=row["outputs"],
+            input=row.get("inputs", ""),
+            output=row.get("outputs", ""),
             expected=row.get("ground_truth", ""),
             scores={
-                col: row[col]
-                for col in mlflow_result.metrics
-                if col in row and row[col] is not None
+                k: v for k, v in mlflow_result.metrics.items()
+                if isinstance(v, (int, float))
             },
         )
 ```
+
+<Aside type="note">
+MLflow's `evaluate()` API varies across versions. The `model_type` parameter was deprecated in MLflow 2.12+ in favor of `evaluators`. Check [MLflow evaluate docs](https://mlflow.org/docs/latest/llms/llm-evaluate/index.html) for your version.
+</Aside>
 
 ---
 
@@ -171,10 +190,23 @@ with Benchmark("mlflow_eval", metadata={"framework": "mlflow"}) as b:
 
 Use `evaluate()` directly in your test suite for CI/CD integration:
 
-```python
-from opensearch_genai_observability_sdk_py import register, evaluate, EvalScore
+```bash
+pip install opensearch-genai-observability-sdk-py pytest
+```
 
-register(service_name="pytest-eval")
+```python
+# conftest.py — initialize tracing once for all tests
+import pytest
+from opensearch_genai_observability_sdk_py import register
+
+@pytest.fixture(scope="session", autouse=True)
+def _init_tracing():
+    register(service_name="pytest-eval")
+```
+
+```python
+# test_agent.py
+from opensearch_genai_observability_sdk_py import evaluate, EvalScore
 
 def accuracy_scorer(input, output, expected) -> EvalScore:
     is_correct = expected.lower() in output.lower()
@@ -184,8 +216,8 @@ def accuracy_scorer(input, output, expected) -> EvalScore:
         label="pass" if is_correct else "fail",
     )
 
-def latency_scorer(input, output, expected) -> EvalScore:
-    return EvalScore(name="response_length", value=len(output))
+def response_length_scorer(input, output, expected) -> EvalScore:
+    return EvalScore(name="response_length", value=float(len(output)))
 
 def my_agent(input: str) -> str:
     # Replace with your agent logic
@@ -199,13 +231,13 @@ def test_agent_quality():
             {"input": "What is OpenSearch?", "expected": "search"},
             {"input": "What is OTEL?", "expected": "opentelemetry"},
         ],
-        scores=[accuracy_scorer, latency_scorer],
+        scores=[accuracy_scorer, response_length_scorer],
     )
     avg_accuracy = result.summary.scores["accuracy"].avg
     assert avg_accuracy >= 0.8, f"Accuracy dropped to {avg_accuracy}"
 ```
 
-Run with: `pytest test_agent.py` - results are recorded as OTel benchmark spans and available in OpenSearch Dashboards.
+Run with: `pytest test_agent.py` — results are recorded as OTel benchmark spans and available in OpenSearch Dashboards.
 
 ---
 
@@ -213,4 +245,4 @@ Run with: `pytest test_agent.py` - results are recorded as OTel benchmark spans 
 
 - [Evaluation & Scoring](/docs/ai-observability/evaluation/) - core `score()`, `evaluate()`, `Benchmark` API
 - [Python SDK reference](/docs/send-data/ai-agents/python/) - full SDK documentation
-- [Agent Health - Benchmarks](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows
+- [Agent Health - Experiments](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows
