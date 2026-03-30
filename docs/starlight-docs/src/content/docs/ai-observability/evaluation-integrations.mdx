@@ -3,7 +3,7 @@ title: "Evaluation Integrations"
 description: "Bridge external evaluation frameworks like DeepEval, RAGAS, MLflow, and pytest into the observability stack"
 ---
 
-The `Experiment` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
+The `Benchmark` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
 
 ---
 
@@ -16,7 +16,7 @@ pip install deepeval
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Experiment
+from opensearch_genai_observability_sdk_py import register, Benchmark
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
@@ -42,7 +42,7 @@ test_cases = [
 relevancy = AnswerRelevancyMetric(model="gpt-4o")
 faithfulness = FaithfulnessMetric(model="gpt-4o")
 
-with Experiment("deepeval_run", metadata={"framework": "deepeval"}) as exp:
+with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
     for case in test_cases:
         tc = LLMTestCase(
             input=case["input"],
@@ -52,7 +52,7 @@ with Experiment("deepeval_run", metadata={"framework": "deepeval"}) as exp:
         )
         relevancy.measure(tc)
         faithfulness.measure(tc)
-        exp.log(
+        b.log(
             input=case["input"],
             output=case["output"],
             expected=case["expected"],
@@ -75,7 +75,7 @@ pip install ragas
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Experiment
+from opensearch_genai_observability_sdk_py import register, Benchmark
 from ragas import evaluate as ragas_evaluate
 from ragas.metrics import faithfulness, answer_correctness, context_precision
 from datasets import Dataset
@@ -106,10 +106,10 @@ ragas_result = ragas_evaluate(
     metrics=[faithfulness, answer_correctness, context_precision],
 )
 
-# Upload results to OpenSearch via Experiment
-with Experiment("ragas_eval", metadata={"framework": "ragas"}) as exp:
+# Upload results to OpenSearch via Benchmark
+with Benchmark("ragas_eval", metadata={"framework": "ragas"}) as b:
     for i, row in enumerate(ragas_result.to_pandas().itertuples()):
-        exp.log(
+        b.log(
             input=data["question"][i],
             output=data["answer"][i],
             expected=data["ground_truth"][i],
@@ -133,7 +133,7 @@ pip install mlflow
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Experiment
+from opensearch_genai_observability_sdk_py import register, Benchmark
 import mlflow
 
 register(service_name="mlflow-experiment")
@@ -151,9 +151,9 @@ mlflow_result = mlflow.evaluate(
 )
 
 # Upload to observability stack
-with Experiment("mlflow_eval", metadata={"framework": "mlflow"}) as exp:
+with Benchmark("mlflow_eval", metadata={"framework": "mlflow"}) as b:
     for _, row in mlflow_result.tables["eval_results_table"].iterrows():
-        exp.log(
+        b.log(
             input=row["inputs"],
             output=row["outputs"],
             expected=row.get("ground_truth", ""),
@@ -205,12 +205,12 @@ def test_agent_quality():
     assert avg_accuracy >= 0.8, f"Accuracy dropped to {avg_accuracy}"
 ```
 
-Run with: `pytest test_agent.py` - results are recorded as OTel experiment spans and available in OpenSearch Dashboards.
+Run with: `pytest test_agent.py` - results are recorded as OTel benchmark spans and available in OpenSearch Dashboards.
 
 ---
 
 ## Related links
 
-- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - core `score()`, `evaluate()`, `Experiment` API
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - core `score()`, `evaluate()`, `Benchmark` API
 - [Python SDK reference](/docs/send-data/ai-agents/python/) - full SDK documentation
-- [Agent Health - Experiments](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows
+- [Agent Health - Benchmarks](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows

@@ -69,7 +69,7 @@ flowchart LR
 | **Auto-instrument LLMs** | `register(auto_instrument=True)` | OpenAI, Anthropic, Bedrock, LangChain, and 20+ libraries traced automatically |
 | **Score traces** | `score()` | Attaches evaluation scores to traces through the OTLP pipeline |
 | **Run experiments** | `evaluate()` | Runs a task against a dataset with scorer functions, records everything as OTel spans |
-| **Upload results** | `Experiment` | Uploads pre-computed eval results from RAGAS, DeepEval, pytest, or custom frameworks |
+| **Upload results** | `Benchmark` | Uploads pre-computed eval results from RAGAS, DeepEval, pytest, or custom frameworks |
 | **Query traces** | `OpenSearchTraceRetriever` | Retrieves stored traces from OpenSearch for evaluation pipelines |
 | **AWS production** | `AWSSigV4OTLPExporter` | SigV4-signed exports to OpenSearch Ingestion or OpenSearch Service |
 
@@ -196,6 +196,6 @@ flowchart LR
 ## What's next
 
 - [Python SDK reference](/docs/send-data/ai-agents/python/) - full API documentation for `register`, `observe`, `enrich`, and AWS auth
-- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - `score()`, `evaluate()`, `Experiment`, and `OpenSearchTraceRetriever` in depth
+- [Evaluation & Scoring](/docs/ai-observability/evaluation/) - `score()`, `evaluate()`, `Benchmark`, and `OpenSearchTraceRetriever` in depth
 - [Agent Tracing UI](/docs/ai-observability/agent-tracing/) - explore traces, graphs, and timelines in OpenSearch Dashboards
 - [Agent Health](/docs/agent-health/) - evaluate agents with Golden Path comparison, LLM judges, and batch experiments

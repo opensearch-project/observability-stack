@@ -11,7 +11,7 @@ The Python SDK provides three evaluation capabilities that all emit data through
 
 - **`score()`** - attach quality scores to individual traces or spans
 - **`evaluate()`** - run an agent against a dataset with automated scorer functions
-- **`Experiment`** - upload pre-computed results from any evaluation framework
+- **`Benchmark`** - upload pre-computed results from any evaluation framework
 
 All evaluation data lands in the same OpenSearch index as your traces, so you can query scores alongside agent spans.
 
@@ -76,7 +76,7 @@ def run(query: str) -> str:
 
 ## `evaluate()` - run experiments
 
-Executes a task function against each item in a dataset, runs scorer functions, and records everything as OTel experiment spans.
+Executes a task function against each item in a dataset, runs scorer functions, and records everything as OTel benchmark spans.
 
 ```python
 from opensearch_genai_observability_sdk_py import register, observe, evaluate, Op, EvalScore
@@ -113,11 +113,11 @@ print(result.summary)
 
 | Parameter | Type | Description |
 |---|---|---|
-| `name` | `str` | Experiment name. |
+| `name` | `str` | Benchmark name (`test.suite.name`). Stable across runs. |
 | `task` | `Callable` | Function that takes input and returns output. Use `@observe` for full tracing. |
 | `data` | `list[dict]` | Test cases: `"input"` (required), `"expected"`, `"case_id"`, `"case_name"` (optional). |
 | `scores` | `list[Callable]` | Scorer functions - each receives `(input, output, expected)`. |
-| `metadata` | `dict` | Attached to the root experiment span. |
+| `metadata` | `dict` | Attached to the root benchmark span. Reserved keys (`test.*`, `gen_ai.operation.name`) are filtered with a warning. |
 | `record_io` | `bool` | Record input/output/expected as span attributes. Default `False`. |
 
 ### Scorer functions
@@ -154,44 +154,48 @@ class EvalScore:
 
 ```mermaid
 flowchart TD
-    A["test_suite_run - experiment root"] --> B["test_case - case 1"]
+    A["test_suite_run - benchmark root"] --> B["test_case - case 1"]
     A --> C["test_case - case 2"]
     B --> D["invoke_agent my_agent"]
     B --> E["evaluation result events"]
     D --> F["execute_tool ..."]
 ```
 
-Agent traces from the task become children of `test_case` spans - full waterfall from experiment to individual LLM calls.
+Agent traces from the task become children of `test_case` spans - full waterfall from benchmark to individual LLM calls.
 
 ### Result types
 
 ```python
 result = evaluate(...)
-result.summary          # ExperimentSummary
+result.summary          # BenchmarkSummary
 result.summary.scores   # dict[str, ScoreSummary] - avg, min, max, count per metric
-result.cases            # list[CaseResult] - per-case input, output, scores, status
+result.cases            # list[TestCaseResult] - per-case input, output, scores, status
 ```
+
+`BenchmarkResult` contains:
+- `summary: BenchmarkSummary` — benchmark name, run ID, total cases, error count, duration, and per-metric `ScoreSummary` (avg, min, max, count)
+- `cases: list[TestCaseResult]` — per-case case_id, input, output, expected, scores dict, error, status, scorer_errors
 
 ---
 
-## `Experiment` - upload pre-computed results
+## `Benchmark` - upload pre-computed results
 
-Use `Experiment` when you already have evaluation results from another framework (RAGAS, DeepEval, pytest, custom) and want to upload them as OTel spans.
+Use `Benchmark` when you already have evaluation results from another framework (RAGAS, DeepEval, pytest, custom) and want to upload them as OTel spans.
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Experiment
+from opensearch_genai_observability_sdk_py import register, Benchmark
 
 register(service_name="eval-upload")
 
-with Experiment("ragas_eval_v2", metadata={"framework": "ragas"}) as exp:
-    exp.log(
+with Benchmark("ragas_eval_v2", metadata={"framework": "ragas"}) as b:
+    b.log(
         input="What is OpenSearch?",
         output="OpenSearch is an open-source search engine.",
         expected="search and analytics engine",
         scores={"faithfulness": 0.92, "relevance": 0.88},
         case_name="opensearch_definition",
     )
-    exp.log(
+    b.log(
         input="How does RAG work?",
         output="RAG retrieves documents then generates answers.",
         scores={"faithfulness": 0.95, "relevance": 0.91},
@@ -199,6 +203,22 @@ with Experiment("ragas_eval_v2", metadata={"framework": "ragas"}) as exp:
     )
 # summary printed on close
 ```
+
+You can also use `Benchmark` without a context manager:
+
+```python
+b = Benchmark(name="my-eval")
+b.log(input="q1", output="a1", scores={"accuracy": 1.0})
+summary = b.close()
+```
+
+### Constructor parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `str` | | Benchmark name (`test.suite.name`). Stable across runs. |
+| `metadata` | `dict` | `None` | Attached to the root span. Reserved keys (`test.*`, `gen_ai.operation.name`) are filtered with a warning. |
+| `record_io` | `bool` | `False` | Record input/output/expected as span attributes. |
 
 ### `log()` parameters
 
@@ -208,12 +228,12 @@ with Experiment("ragas_eval_v2", metadata={"framework": "ragas"}) as exp:
 | `output` | any | Agent output. |
 | `expected` | any | Ground truth. |
 | `scores` | `dict[str, float]` | Pre-computed scores. |
-| `metadata` | `dict` | Per-case metadata. |
+| `metadata` | `dict` | Per-case metadata. Reserved keys are filtered. |
 | `error` | `str` | Error message (sets status to `"fail"`). |
-| `case_id` | `str` | Explicit ID. Defaults to SHA256 of input. |
-| `case_name` | `str` | Human-readable name. |
-| `trace_id` | `str` | Creates OTel span link to an agent trace. |
-| `span_id` | `str` | Span-level linking (with `trace_id`). |
+| `case_id` | `str` | Explicit ID. Defaults to SHA256 hash of input. |
+| `case_name` | `str` | Human-readable name (`test.case.name`). |
+| `trace_id` | `str` | Creates OTel span link to an agent trace. Must be provided with `span_id`. |
+| `span_id` | `str` | Span-level linking. Must be provided with `trace_id`. |
 
 ---
 
@@ -394,4 +414,3 @@ retriever = OpenSearchTraceRetriever(
 - [Evaluation Integrations](/docs/ai-observability/evaluation-integrations/) - use DeepEval, RAGAS, MLflow, pytest with the observability stack
 - [Python SDK reference](/docs/send-data/ai-agents/python/) - `register`, `observe`, `enrich` documentation
 - [Agent Tracing UI](/docs/ai-observability/agent-tracing/) - explore traces in OpenSearch Dashboards
-- [Agent Health - Experiments](/docs/agent-health/evaluations/experiments/) - UI and CLI-based experiment workflows

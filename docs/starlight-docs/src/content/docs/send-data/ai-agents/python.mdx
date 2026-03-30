@@ -23,11 +23,12 @@ Auto-instrumentation for LLM providers is opt-in:
 pip install "opensearch-genai-observability-sdk-py[openai]"
 pip install "opensearch-genai-observability-sdk-py[anthropic]"
 pip install "opensearch-genai-observability-sdk-py[bedrock]"
+pip install "opensearch-genai-observability-sdk-py[google]"
 pip install "opensearch-genai-observability-sdk-py[langchain]"
 pip install "opensearch-genai-observability-sdk-py[llamaindex]"
 pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]"  # all providers
 pip install "opensearch-genai-observability-sdk-py[opensearch]"          # trace retrieval
-pip install "opensearch-genai-observability-sdk-py[all]"                 # everything
+pip install "opensearch-genai-observability-sdk-py[all]"                 # everything (instrumentors + dev)
 ```
 
 ## API overview
@@ -43,8 +44,12 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 | `score()` | Attach evaluation scores to traces | [This page](#score) |
 | `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
 | `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evaluate---run-experiments) |
-| `Experiment` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#experiment---upload-pre-computed-results) |
+| `Benchmark` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/ai-observability/evaluation/#benchmark---upload-pre-computed-results) |
 | `EvalScore` | Scorer return type | [Evaluation & Scoring](/docs/ai-observability/evaluation/#evalscore-dataclass) |
+| `BenchmarkResult` | Result from `evaluate()` | [Evaluation & Scoring](/docs/ai-observability/evaluation/#result-types) |
+| `BenchmarkSummary` | Aggregate score statistics | [Evaluation & Scoring](/docs/ai-observability/evaluation/#result-types) |
+| `TestCaseResult` | Per-case result | [Evaluation & Scoring](/docs/ai-observability/evaluation/#result-types) |
+| `ScoreSummary` | Per-metric statistics | [Evaluation & Scoring](/docs/ai-observability/evaluation/#result-types) |
 | `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/ai-observability/evaluation/#opensearchtraceretriever---query-stored-traces) |
 
 ## Quick start
@@ -84,7 +89,7 @@ register(
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `endpoint` | `str` | Data Prepper default | OTLP endpoint URL. Reads `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` if not set. |
+| `endpoint` | `str` | `http://localhost:21890/opentelemetry/v1/traces` | OTLP endpoint URL. Reads `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` if not set. |
 | `protocol` | `"http"` \| `"grpc"` | inferred from URL | Force transport. `grpc://` -> gRPC, `grpcs://` -> gRPC+TLS, else HTTP. |
 | `service_name` | `str` | `"default"` | Attached as `service.name`. Reads `OTEL_SERVICE_NAME`. |
 | `project_name` | `str` | | Alias for `service_name`. Reads `OPENSEARCH_PROJECT`. |
@@ -268,14 +273,12 @@ All parameters are optional. Only provided values are set.
 | OpenAI, OpenAI Agents | `[openai]` |
 | Anthropic | `[anthropic]` |
 | Amazon Bedrock | `[bedrock]` |
+| Google Generative AI + Vertex AI | `[google]` |
 | LangChain | `[langchain]` |
 | LlamaIndex | `[llamaindex]` |
-| Cohere | `[cohere]` |
-| Mistral | `[mistral]` |
-| Groq | `[groq]` |
-| Ollama | `[ollama]` |
-| Google Generative AI + Vertex AI | `[google]` |
-| All of the above + 20 more | `[otel-instrumentors]` |
+| All providers + frameworks | `[otel-instrumentors]` |
+
+`[otel-instrumentors]` includes all of the above plus Cohere, Mistral, Groq, Ollama, Together, Replicate, Writer, Voyage AI, Aleph Alpha, SageMaker, watsonx, Haystack, CrewAI, Agno, MCP, Transformers, ChromaDB, Pinecone, Qdrant, Weaviate, Milvus, LanceDB, and Marqo.
 
 ```python
 register(auto_instrument=False)  # to disable
@@ -310,7 +313,7 @@ score(name="accuracy", value=0.95, trace_id="abc123...", span_id="def456...",
 | `response_id` | `str` | LLM completion ID for correlation. |
 | `attributes` | `dict` | Additional span attributes. |
 
-For running evaluations at scale (`evaluate()`, `Experiment`, `OpenSearchTraceRetriever`), see [Evaluation & Scoring](/docs/ai-observability/evaluation/).
+For running evaluations at scale (`evaluate()`, `Benchmark`, `OpenSearchTraceRetriever`), see [Evaluation & Scoring](/docs/ai-observability/evaluation/).
 
 ---
 
@@ -341,11 +344,13 @@ SigV4 + gRPC is not supported. Use `https://` for AWS endpoints.
 
 | Variable | Description | Default |
 |---|---|---|
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | OTLP traces endpoint | |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint (appends `/v1/traces`) | Data Prepper default |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full OTLP traces endpoint URL (used as-is) | |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP endpoint URL (`/v1/traces` appended) | Data Prepper default |
+| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Protocol for traces (`http/protobuf`, `grpc`) | |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol for all signals (`http/protobuf`, `grpc`) | |
 | `OTEL_SERVICE_NAME` | Service name | `"default"` |
-| `OPENSEARCH_PROJECT` | Project name (fallback) | `"default"` |
 | `OTEL_SERVICE_VERSION` | Service version | |
+| `OPENSEARCH_PROJECT` | Project name (fallback for `service_name`) | `"default"` |
 
 ---
 
