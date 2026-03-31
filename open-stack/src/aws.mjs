@@ -685,9 +685,6 @@ export async function setupDashboards(cfg) {
   if (cfg.dashboardsAction === 'reuse') {
     printStep('OpenSearch UI');
     printSuccess(`Using existing Dashboards: ${cfg.dashboardsUrl}`);
-    if (!cfg.serverless) {
-      await createObservabilityWorkspace(cfg);
-    }
     return;
   }
 
@@ -705,11 +702,6 @@ export async function setupDashboards(cfg) {
     return;
   }
   printSuccess(`URL: ${cfg.dashboardsUrl}`);
-
-  // Create observability workspace (managed domains only — uses basic auth)
-  if (!cfg.serverless) {
-    await createObservabilityWorkspace(cfg);
-  }
 }
 
 async function createObservabilityWorkspace(cfg) {
