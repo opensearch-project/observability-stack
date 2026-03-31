@@ -262,9 +262,12 @@ export async function initOpenSearchUI(cfg) {
   // l. Overview dashboard
   await createOverviewDashboard(base, wsId, region);
 
-  // m. Set default dashboard
+  // m. Set default dashboard and default workspace
   await osuiPost(base, `/w/${wsId}/api/opensearch-dashboards/settings`, {
     changes: { 'observability:defaultDashboard': 'observability-overview-dashboard' },
+  }, region);
+  await osuiPost(base, '/api/opensearch-dashboards/settings', {
+    changes: { defaultWorkspace: wsId },
   }, region);
 
   console.error();
