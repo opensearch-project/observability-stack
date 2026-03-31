@@ -332,11 +332,16 @@ async function createAgentDashboard(base, wsId, tracesId, region) {
 
 async function createOverviewDashboard(base, wsId, region) {
   const w = `/w/${wsId}`;
+  const archImg = '![Architecture](https://raw.githubusercontent.com/opensearch-project/observability-stack/main/docs/observability-stack-arch-compose.excalidraw.png)';
   const md = `## Welcome to OpenSearch Observability Stack!
 
 Your entire stack, fully visible. APM traces, logs, Prometheus metrics, service maps, and AI agent tracing — unified in one open-source platform.
 
 [Observability Stack Website](https://observability.opensearch.org) | [GitHub](https://github.com/opensearch-project/observability-stack)
+
+### Architecture
+
+${archImg}
 
 ---
 
