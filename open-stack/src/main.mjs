@@ -196,6 +196,10 @@ export async function executePipeline(cfg) {
   // Set up OpenSearch UI and create Observability workspace
   await setupDashboards(cfg);
 
+  // Initialize Neo (workspaces, index patterns, correlations, dashboards)
+  const { initNeo } = await import('./neo-init.mjs');
+  await initNeo(cfg);
+
   // ── Final summary ───────────────────────────────────────────────────
   console.error();
   const pad = (l) => l.padEnd(35);

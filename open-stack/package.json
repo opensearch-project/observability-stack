@@ -8,6 +8,7 @@
     "start": "node bin/open-stack.mjs"
   },
   "dependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
     "@aws-sdk/client-amp": "^3.750.0",
     "@aws-sdk/client-eks": "^3.1019.0",
     "@aws-sdk/client-iam": "^3.750.0",
@@ -16,7 +17,9 @@
     "@aws-sdk/client-osis": "^3.750.0",
     "@aws-sdk/client-resource-groups-tagging-api": "^3.1019.0",
     "@aws-sdk/client-sts": "^3.750.0",
+    "@aws-sdk/signature-v4": "^3.370.0",
     "@inquirer/prompts": "^7.0.0",
+    "@smithy/protocol-http": "^5.3.12",
     "chalk": "^5.4.0",
     "commander": "^13.0.0",
     "ora": "^8.0.0"

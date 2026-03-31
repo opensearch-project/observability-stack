@@ -117,6 +117,12 @@ export async function checkRequirements(cfg) {
   }
 
   cfg.accountId = identity.Account;
+  // Extract the IAM role ARN from the caller identity for FGAC and Neo access
+  // identity.Arn is like arn:aws:sts::123:assumed-role/RoleName/session
+  const arnMatch = identity.Arn.match(/assumed-role\/([^/]+)\//);
+  if (arnMatch) {
+    cfg.callerRoleArn = `arn:aws:iam::${cfg.accountId}:role/${arnMatch[1]}`;
+  }
   printSuccess(`Authenticated — account ${cfg.accountId}`);
   printInfo(`Identity: ${identity.Arn}`);
 
@@ -404,10 +410,17 @@ const MANAGED_MASTER_PASS = 'Admin_password_123!@#';
 export async function mapOsiRoleInDomain(cfg) {
   if (cfg.serverless || !cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
 
-  printStep('Mapping OSI role in OpenSearch FGAC...');
+  printStep('Mapping roles in OpenSearch FGAC...');
 
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
   const auth = Buffer.from(`${MANAGED_MASTER_USER}:${MANAGED_MASTER_PASS}`).toString('base64');
+
+  // Map both the OSI pipeline role and the caller's role (for Neo UI access)
+  const callerRoleArn = cfg.callerRoleArn || '';
+  const backendRoles = [cfg.iamRoleArn];
+  if (callerRoleArn && callerRoleArn !== cfg.iamRoleArn) {
+    backendRoles.push(callerRoleArn);
+  }
 
   try {
     const resp = await fetch(url, {
@@ -417,7 +430,7 @@ export async function mapOsiRoleInDomain(cfg) {
         'Authorization': `Basic ${auth}`,
       },
       body: JSON.stringify([
-        { op: 'add', path: '/backend_roles', value: [cfg.iamRoleArn] },
+        { op: 'add', path: '/backend_roles', value: backendRoles },
       ]),
     });
 
@@ -605,6 +618,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       MinUnits: cfg.minOcu,
       MaxUnits: cfg.maxOcu,
       PipelineConfigurationBody: pipelineYaml,
+      PipelineRoleArn: cfg.iamRoleArn,
       Tags: stackTags(cfg.pipelineName),
     }));
     printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated`);
@@ -906,6 +920,10 @@ export async function createOpenSearchApplication(cfg) {
         {
           key: 'opensearchDashboards.dashboardAdmin.users',
           value: JSON.stringify(['*']),
+        },
+        {
+          key: 'opensearchDashboards.dashboardAdmin.groups',
+          value: JSON.stringify([cfg.iamRoleArn]),
         },
       ],
       iamIdentityCenterOptions: {
