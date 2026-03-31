@@ -10,6 +10,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
+import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -332,7 +333,7 @@ async function createAgentDashboard(base, wsId, tracesId, region) {
 
 async function createOverviewDashboard(base, wsId, region) {
   const w = `/w/${wsId}`;
-  const archImg = '![Architecture](https://raw.githubusercontent.com/opensearch-project/observability-stack/main/docs/observability-stack-arch-compose.excalidraw.png)';
+  const archImg = `![Architecture](data:image/png;base64,${ARCH_IMAGE_B64})`;
   const md = `## Welcome to OpenSearch Observability Stack!
 
 Your entire stack, fully visible. APM traces, logs, Prometheus metrics, service maps, and AI agent tracing — unified in one open-source platform.
