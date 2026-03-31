@@ -117,7 +117,7 @@ export async function checkRequirements(cfg) {
   }
 
   cfg.accountId = identity.Account;
-  // Extract the IAM role ARN from the caller identity for FGAC and Neo access
+  // Extract the IAM role ARN from the caller identity for FGAC and OpenSearch UI access
   // identity.Arn is like arn:aws:sts::123:assumed-role/RoleName/session
   const arnMatch = identity.Arn.match(/assumed-role\/([^/]+)\//);
   if (arnMatch) {
@@ -415,7 +415,7 @@ export async function mapOsiRoleInDomain(cfg) {
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
   const auth = Buffer.from(`${MANAGED_MASTER_USER}:${MANAGED_MASTER_PASS}`).toString('base64');
 
-  // Map both the OSI pipeline role and the caller's role (for Neo UI access)
+  // Map both the OSI pipeline role and the caller's role (for OpenSearch UI access)
   const callerRoleArn = cfg.callerRoleArn || '';
   const backendRoles = [cfg.iamRoleArn];
   if (callerRoleArn && callerRoleArn !== cfg.iamRoleArn) {

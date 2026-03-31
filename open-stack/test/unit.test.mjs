@@ -84,7 +84,7 @@ describe('buildAppDataSources', () => {
   });
 });
 
-// Test service map index pattern selection (from neo-init logic)
+// Test service map index pattern selection (from opensearch-ui-init logic)
 describe('service map index pattern', () => {
   it('AOS uses otel-v1-apm-service-map*', () => {
     const serverless = false;

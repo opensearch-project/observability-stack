@@ -1,7 +1,7 @@
 /**
- * Neo (OpenSearch Application) initialization module.
+ * OpenSearch UI initialization module.
  * Creates workspace, index patterns, correlations, saved queries, and dashboards
- * using SigV4-signed requests to the Neo saved objects API.
+ * using SigV4-signed requests to the OpenSearch UI saved objects API.
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
-async function neoRequest(method, url, body, region) {
+async function osuiRequest(method, url, body, region) {
   const isGet = method === 'GET' || method === 'DELETE';
   const bodyBytes = (!isGet && body) ? JSON.stringify(body) : '';
   const bodyHash = createHash('sha256').update(bodyBytes).digest('hex');
@@ -59,24 +59,24 @@ async function neoRequest(method, url, body, region) {
   catch { return { status: resp.status, data: text }; }
 }
 
-async function neoGet(base, path, region) {
-  return neoRequest('GET', `${base}${path}`, null, region);
+async function osuiGet(base, path, region) {
+  return osuiRequest('GET', `${base}${path}`, null, region);
 }
 
-async function neoPost(base, path, body, region) {
-  return neoRequest('POST', `${base}${path}`, body, region);
+async function osuiPost(base, path, body, region) {
+  return osuiRequest('POST', `${base}${path}`, body, region);
 }
 
-async function neoDelete(base, path, region) {
-  return neoRequest('DELETE', `${base}${path}`, null, region);
+async function osuiDelete(base, path, region) {
+  return osuiRequest('DELETE', `${base}${path}`, null, region);
 }
 
 // ── Init sequence ─────────────────────────────────────────────────────────────
 
-export async function initNeo(cfg) {
+export async function initOpenSearchUI(cfg) {
   const base = cfg.appEndpoint || cfg.dashboardsUrl;
   if (!base) {
-    printWarning('No OpenSearch Application endpoint — skipping Neo init');
+    printWarning('No OpenSearch Application endpoint — skipping OpenSearch UI init');
     return;
   }
   const region = cfg.region;
@@ -91,7 +91,7 @@ export async function initNeo(cfg) {
   const start = Date.now();
   while (Date.now() - start < maxWait) {
     try {
-      const r = await neoGet(base, '/api/status', region);
+      const r = await osuiGet(base, '/api/status', region);
       if (r.status === 200) { spinner.succeed('OpenSearch UI is ready'); break; }
     } catch { /* keep polling */ }
     await new Promise((res) => setTimeout(res, 5000));
@@ -100,7 +100,7 @@ export async function initNeo(cfg) {
   // b. Find auto-created data-source (may take a few seconds to appear)
   let dsId;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const dsResp = await neoGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
+    const dsResp = await osuiGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
     dsId = dsResp.data?.saved_objects?.[0]?.id;
     if (dsId) {
       printSuccess(`Data source: ${dsResp.data.saved_objects[0].attributes?.title} (${dsId})`);
@@ -113,7 +113,7 @@ export async function initNeo(cfg) {
   // c. Find auto-created data-connection (Prometheus)
   let dcId;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const dcResp = await neoGet(base, '/api/saved_objects/_find?type=data-connection&per_page=10', region);
+    const dcResp = await osuiGet(base, '/api/saved_objects/_find?type=data-connection&per_page=10', region);
     dcId = dcResp.data?.saved_objects?.[0]?.id;
     if (dcId) {
       printSuccess(`Data connection: ${dcResp.data.saved_objects[0].attributes?.connectionId} (${dcId})`);
@@ -125,13 +125,13 @@ export async function initNeo(cfg) {
 
   // d. Create workspace
   let wsId;
-  const wsListResp = await neoPost(base, '/api/workspaces/_list', {}, region);
+  const wsListResp = await osuiPost(base, '/api/workspaces/_list', {}, region);
   const existing = (wsListResp.data?.result?.workspaces || []).find((w) => w.name === 'Observability Stack');
   if (existing) {
     wsId = existing.id;
     printSuccess(`Workspace already exists: ${wsId}`);
   } else {
-    const wsResp = await neoPost(base, '/api/workspaces', {
+    const wsResp = await osuiPost(base, '/api/workspaces', {
       attributes: {
         name: 'Observability Stack',
         description: 'AI Agent observability workspace with logs, traces, and metrics',
@@ -145,13 +145,13 @@ export async function initNeo(cfg) {
 
   // e. Associate data-source + data-connection with workspace
   if (dsId) {
-    await neoPost(base, '/api/workspaces/_associate', {
+    await osuiPost(base, '/api/workspaces/_associate', {
       workspaceId: wsId,
       savedObjects: [{ type: 'data-source', id: dsId }],
     }, region);
   }
   if (dcId) {
-    await neoPost(base, '/api/workspaces/_associate', {
+    await osuiPost(base, '/api/workspaces/_associate', {
       workspaceId: wsId,
       savedObjects: [{ type: 'data-connection', id: dcId }],
     }, region);
@@ -171,7 +171,7 @@ export async function initNeo(cfg) {
   const patternIds = {};
   for (const p of patterns) {
     // Check if exists
-    const findResp = await neoGet(base,
+    const findResp = await osuiGet(base,
       `/w/${wsId}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=${encodeURIComponent(p.title)}`, region);
     const existingPat = (findResp.data?.saved_objects || []).find((o) => o.attributes?.title === p.title);
     if (existingPat) {
@@ -179,7 +179,7 @@ export async function initNeo(cfg) {
       printSuccess(`Index pattern exists: ${p.title}`);
       continue;
     }
-    const resp = await neoPost(base, `/w/${wsId}/api/saved_objects/index-pattern`, {
+    const resp = await osuiPost(base, `/w/${wsId}/api/saved_objects/index-pattern`, {
       attributes: p,
       references: dsId ? [{ id: dsId, name: 'dataSource', type: 'data-source' }] : [],
     }, region);
@@ -192,14 +192,14 @@ export async function initNeo(cfg) {
   const svcMapId = patternIds[svcMapPattern];
 
   // g. Set default index pattern
-  await neoPost(base, `/w/${wsId}/api/opensearch-dashboards/settings`, {
+  await osuiPost(base, `/w/${wsId}/api/opensearch-dashboards/settings`, {
     changes: { defaultIndex: logsId },
   }, region);
   printSuccess('Default index pattern set to logs');
 
   // h. Trace-to-logs correlation
   if (tracesId && logsId) {
-    await neoPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
+    await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
       attributes: {
         correlationType: 'trace-to-logs-otel-v1-apm-span*',
         title: 'trace-to-logs_otel-v1-apm-span*',
@@ -219,7 +219,7 @@ export async function initNeo(cfg) {
 
   // i. APM config correlation
   if (tracesId && svcMapId && dcId) {
-    await neoPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
+    await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
       attributes: {
         correlationType: `APM-Config-${wsId}`,
         title: 'apm-config',
@@ -248,7 +248,7 @@ export async function initNeo(cfg) {
     { id: 'token-usage', title: 'Token Usage by Model', query: 'source = otel-v1-apm-span* | where isnotnull(attributes.gen_ai.usage.input_tokens) | stats sum(attributes.gen_ai.usage.input_tokens) as input_tokens, sum(attributes.gen_ai.usage.output_tokens) as output_tokens by attributes.gen_ai.request.model' },
   ];
   for (const q of queries) {
-    await neoPost(base, `/w/${wsId}/api/saved_objects/query/${q.id}`, {
+    await osuiPost(base, `/w/${wsId}/api/saved_objects/query/${q.id}`, {
       attributes: { title: q.title, description: q.title, query: { query: q.query, language: 'PPL' } },
     }, region);
   }
@@ -263,7 +263,7 @@ export async function initNeo(cfg) {
   await createOverviewDashboard(base, wsId, region);
 
   // m. Set default dashboard
-  await neoPost(base, `/w/${wsId}/api/opensearch-dashboards/settings`, {
+  await osuiPost(base, `/w/${wsId}/api/opensearch-dashboards/settings`, {
     changes: { 'observability:defaultDashboard': 'observability-overview-dashboard' },
   }, region);
 
@@ -294,7 +294,7 @@ async function createAgentDashboard(base, wsId, tracesId, region) {
     ];
     if (v.split) aggs.push({ id: '3', type: 'terms', schema: 'group', params: { field: v.split, size: 5 } });
 
-    await neoPost(base, `/w/${wsId}/api/saved_objects/visualization/${v.id}`, {
+    await osuiPost(base, `/w/${wsId}/api/saved_objects/visualization/${v.id}`, {
       attributes: {
         title: v.title,
         visState: JSON.stringify({ title: v.title, type: v.type, params: { type: v.type, addTooltip: true, addLegend: true }, aggs }),
@@ -315,7 +315,7 @@ async function createAgentDashboard(base, wsId, tracesId, region) {
   }));
   const refs = vizIds.map((id, i) => ({ name: `panel_${i}`, type: 'visualization', id }));
 
-  await neoPost(base, `/w/${wsId}/api/saved_objects/dashboard/agent-observability-dashboard`, {
+  await osuiPost(base, `/w/${wsId}/api/saved_objects/dashboard/agent-observability-dashboard`, {
     attributes: {
       title: 'Agent Observability',
       description: 'Overview of AI agent performance, token usage, and tool execution',
@@ -374,7 +374,7 @@ Inspect individual AI agent invocations, tool calls, and LLM interactions.
 Monitor agent activity, token usage, and tool execution at a glance.
 `;
 
-  await neoPost(base, `/w/${wsId}/api/saved_objects/visualization/overview-markdown`, {
+  await osuiPost(base, `/w/${wsId}/api/saved_objects/visualization/overview-markdown`, {
     attributes: {
       title: '',
       visState: JSON.stringify({ title: '', type: 'markdown', params: { fontSize: 12, openLinksInNewTab: false, markdown: md }, aggs: [] }),
@@ -383,7 +383,7 @@ Monitor agent activity, token usage, and tool execution at a glance.
     },
   }, region);
 
-  await neoPost(base, `/w/${wsId}/api/saved_objects/dashboard/observability-overview-dashboard`, {
+  await osuiPost(base, `/w/${wsId}/api/saved_objects/dashboard/observability-overview-dashboard`, {
     attributes: {
       title: 'Observability Stack Overview',
       description: 'Landing page with links to all observability features',
