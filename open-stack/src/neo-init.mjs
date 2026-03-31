@@ -14,23 +14,29 @@ import { printStep, printSuccess, printWarning, printInfo, createSpinner } from 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
 async function neoRequest(method, url, body, region) {
-  const bodyBytes = body ? JSON.stringify(body) : '{}';
+  const isGet = method === 'GET' || method === 'DELETE';
+  const bodyBytes = (!isGet && body) ? JSON.stringify(body) : '';
   const bodyHash = createHash('sha256').update(bodyBytes).digest('hex');
   const parsed = new URL(url);
+
+  // Query params must be in the `query` property for correct SigV4 signing
+  const query = {};
+  parsed.searchParams.forEach((v, k) => { query[k] = v; });
 
   const request = new HttpRequest({
     method,
     protocol: parsed.protocol,
     hostname: parsed.hostname,
     port: parsed.port ? Number(parsed.port) : undefined,
-    path: parsed.pathname + parsed.search,
+    path: parsed.pathname,
+    query,
     headers: {
       host: parsed.hostname,
       'Content-Type': 'application/json',
       'osd-xsrf': 'osd-fetch',
       'x-amz-content-sha256': bodyHash,
     },
-    body: bodyBytes,
+    body: bodyBytes || undefined,
   });
 
   const signer = new SignatureV4({
@@ -44,7 +50,7 @@ async function neoRequest(method, url, body, region) {
   const resp = await fetch(url, {
     method,
     headers: signed.headers,
-    body: method !== 'GET' ? bodyBytes : undefined,
+    body: isGet ? undefined : bodyBytes,
   });
 
   const text = await resp.text();
