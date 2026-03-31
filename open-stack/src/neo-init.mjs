@@ -90,16 +90,31 @@ export async function initNeo(cfg) {
     await new Promise((res) => setTimeout(res, 5000));
   }
 
-  // b. Find auto-created data-source
-  const dsResp = await neoGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
-  const dsId = dsResp.data?.saved_objects?.[0]?.id;
-  if (dsId) printSuccess(`Data source: ${dsResp.data.saved_objects[0].attributes?.title} (${dsId})`);
-  else printWarning('No data source found');
+  // b. Find auto-created data-source (may take a few seconds to appear)
+  let dsId;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const dsResp = await neoGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
+    dsId = dsResp.data?.saved_objects?.[0]?.id;
+    if (dsId) {
+      printSuccess(`Data source: ${dsResp.data.saved_objects[0].attributes?.title} (${dsId})`);
+      break;
+    }
+    if (attempt < 5) await new Promise((res) => setTimeout(res, 10000));
+  }
+  if (!dsId) printWarning('No data source found — index patterns will not be linked');
 
   // c. Find auto-created data-connection (Prometheus)
-  const dcResp = await neoGet(base, '/api/saved_objects/_find?type=data-connection&per_page=10', region);
-  const dcId = dcResp.data?.saved_objects?.[0]?.id;
-  if (dcId) printSuccess(`Data connection: ${dcResp.data.saved_objects[0].attributes?.connectionId} (${dcId})`);
+  let dcId;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const dcResp = await neoGet(base, '/api/saved_objects/_find?type=data-connection&per_page=10', region);
+    dcId = dcResp.data?.saved_objects?.[0]?.id;
+    if (dcId) {
+      printSuccess(`Data connection: ${dcResp.data.saved_objects[0].attributes?.connectionId} (${dcId})`);
+      break;
+    }
+    if (attempt < 5) await new Promise((res) => setTimeout(res, 10000));
+  }
+  if (!dcId) printWarning('No data connection found — APM config will be incomplete');
 
   // d. Create workspace
   let wsId;
