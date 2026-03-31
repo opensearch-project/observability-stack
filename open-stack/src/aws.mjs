@@ -980,10 +980,31 @@ function buildAppDataSources(cfg) {
         dataSourceArn: `arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${collectionId}`,
       });
     }
-  } else if (cfg.osDomainName) {
-    dataSources.push({
-      dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName}`,
-    });
+  } else if (!cfg.serverless) {
+    // For managed domains, derive the domain name from the endpoint URL if reusing,
+    // otherwise use cfg.osDomainName (which may be set by applySimpleDefaults)
+    let domainName = cfg.osDomainName;
+    if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
+      const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
+      if (m) domainName = m[1];
+    }
+    if (domainName) {
+      dataSources.push({
+        dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
+      });
+    }
+  } else if (cfg.opensearchEndpoint) {
+    // Extract domain name from endpoint URL: https://search-DOMAIN-xxx.region.es.amazonaws.com
+    const m = cfg.opensearchEndpoint.match(/search-([^-]+-[^.]+)\./);
+    if (m) {
+      // The full domain name is between "search-" and the random suffix before the region
+      const domainName = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/)?.[1];
+      if (domainName) {
+        dataSources.push({
+          dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
+        });
+      }
+    }
   }
   if (cfg.dqsDataSourceArn) {
     dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
