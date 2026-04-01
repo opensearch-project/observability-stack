@@ -9,7 +9,7 @@ export const DEFAULTS = {
   osEngineVersion: 'OpenSearch_3.5',
   minOcu: 1,
   maxOcu: 4,
-  serviceMapWindow: '10s',
+  serviceMapWindow: '30s',
 };
 
 /**
