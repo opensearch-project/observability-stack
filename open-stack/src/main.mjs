@@ -108,8 +108,8 @@ export async function executePipeline(cfg) {
     console.error();
   }
 
-  // Map OSI role in managed domain FGAC (no-op for serverless)
-  if (!cfg.serverless && cfg.opensearchEndpoint && cfg.iamRoleArn) {
+  // Map OSI role in managed domain FGAC
+  if (cfg.opensearchEndpoint && cfg.iamRoleArn) {
     await mapOsiRoleInDomain(cfg);
     console.error();
   }
@@ -202,10 +202,7 @@ function printSummary(cfg) {
   if (cfg.osAction === 'reuse') {
     osEntries.push(['Action', 'reuse existing']);
     osEntries.push(['Endpoint', cfg.opensearchEndpoint]);
-    osEntries.push(['Type', cfg.serverless ? 'Serverless' : 'Managed domain']);
-  } else if (cfg.serverless) {
-    osEntries.push(['Action', 'create new Serverless collection']);
-    osEntries.push(['Collection name', cfg.osDomainName]);
+    osEntries.push(['Type', 'Managed domain']);
   } else {
     osEntries.push(['Action', 'create new managed domain']);
     osEntries.push(['Domain name', cfg.osDomainName]);

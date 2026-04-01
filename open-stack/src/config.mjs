@@ -27,7 +27,6 @@ export function createDefaultConfig() {
     osInstanceCount: DEFAULTS.osInstanceCount,
     osVolumeSize: DEFAULTS.osVolumeSize,
     osEngineVersion: DEFAULTS.osEngineVersion,
-    serverless: null,
     iamAction: '',
     iamRoleArn: '',
     iamRoleName: '',

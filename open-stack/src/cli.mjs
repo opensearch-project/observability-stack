@@ -40,7 +40,6 @@ export function parseCli(argv) {
     .option('--os-instance-count <n>', 'Number of data nodes', DEFAULTS.osInstanceCount)
     .option('--os-volume-size <gb>', 'EBS volume size in GB', DEFAULTS.osVolumeSize)
     .option('--os-engine-version <ver>', 'Engine version', DEFAULTS.osEngineVersion)
-    .option('--serverless', 'Target is OpenSearch Serverless (default in simple mode)')
     .option('--managed', 'Target is OpenSearch managed domain');
 
   // IAM
@@ -108,24 +107,6 @@ function optsToConfig(opts) {
   if (opts.dashboardsUrl) dashboardsAction = 'reuse';
   else dashboardsAction = 'create';
 
-  // Auto-detect serverless from endpoint URL when not explicitly set
-  if (opts.serverless && opts.managed) {
-    throw new Error('--serverless and --managed are mutually exclusive');
-  }
-
-  let serverless;
-  if (opts.managed) {
-    serverless = false;
-  } else if (opts.serverless) {
-    serverless = true;
-  } else if (opts.opensearchEndpoint && /\.aoss\.amazonaws\.com/i.test(opts.opensearchEndpoint)) {
-    serverless = true;
-  } else if (opts.opensearchEndpoint) {
-    serverless = false;
-  } else {
-    serverless = null; // let applySimpleDefaults decide
-  }
-
   return {
     mode,
     pipelineName: opts.pipelineName,
@@ -137,7 +118,6 @@ function optsToConfig(opts) {
     osInstanceCount: Number(opts.osInstanceCount),
     osVolumeSize: Number(opts.osVolumeSize),
     osEngineVersion: opts.osEngineVersion,
-    serverless,
     iamAction,
     iamRoleArn: opts.iamRoleArn || '',
     iamRoleName: opts.iamRoleName || '',
@@ -170,7 +150,6 @@ function optsToConfig(opts) {
 export function applySimpleDefaults(cfg) {
   if (!cfg.osAction) cfg.osAction = 'create';
   if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
-  if (cfg.serverless === null) cfg.serverless = true;
   if (!cfg.iamAction) cfg.iamAction = 'create';
   if (!cfg.iamRoleName) cfg.iamRoleName = `${cfg.pipelineName}-osi-role`;
   if (!cfg.apsAction) cfg.apsAction = 'create';
@@ -186,9 +165,7 @@ export function applySimpleDefaults(cfg) {
  */
 export function fillDryRunPlaceholders(cfg) {
   if (cfg.osAction === 'create' && !cfg.opensearchEndpoint) {
-    cfg.opensearchEndpoint = cfg.serverless
-      ? `https://<collection-id>.${cfg.region}.aoss.amazonaws.com`
-      : `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
+    cfg.opensearchEndpoint = `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
   }
   if (cfg.iamAction === 'create' && !cfg.iamRoleArn) {
     cfg.iamRoleArn = `arn:aws:iam::${cfg.accountId || '123456789012'}:role/${cfg.iamRoleName}`;

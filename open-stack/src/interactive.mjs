@@ -72,7 +72,6 @@ async function stepCore(cfg, session) {
   if (cfg.mode === 'simple') {
     cfg.osAction = 'create';
     cfg.osDomainName = cfg.pipelineName;
-    cfg.serverless = true;
     cfg.iamAction = 'create';
     cfg.iamRoleName = `${cfg.pipelineName}-osi-role`;
     cfg.apsAction = 'create';
@@ -83,7 +82,7 @@ async function stepCore(cfg, session) {
     cfg.appName = cfg.pipelineName;
     console.error();
     printInfo(`Will create:`);
-    printSubStep(`OpenSearch Serverless collection: ${theme.accent(cfg.osDomainName)}`);
+    printSubStep(`OpenSearch domain: ${theme.accent(cfg.osDomainName)}`);
     printSubStep(`IAM role: ${theme.accent(cfg.iamRoleName)}`);
     printSubStep(`APS workspace: ${theme.accent(cfg.apsWorkspaceAlias)}`);
     printSubStep(`DQS role: ${theme.accent(cfg.dqsRoleName)}`);
@@ -113,7 +112,7 @@ async function stepOpenSearch(cfg) {
       cfg.osAction = 'reuse';
 
       const domains = await fetchWithSpinner(
-        'Loading OpenSearch domains & collections',
+        'Loading OpenSearch domains',
         () => listDomains(cfg.region),
       );
 
@@ -122,75 +121,56 @@ async function stepOpenSearch(cfg) {
           name: d.endpoint
             ? `${d.name} ${theme.muted(`\u2014 ${d.endpoint} (${d.engineVersion})`)}`
             : `${d.name} ${theme.muted(`\u2014 provisioning... (${d.engineVersion})`)}`,
-          value: { endpoint: d.endpoint, serverless: d.serverless },
+          value: { endpoint: d.endpoint },
           disabled: !d.endpoint ? '(no endpoint yet)' : false,
         }));
         choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
 
-        const selected = await eSelect({ message: 'Select domain or collection', choices });
+        const selected = await eSelect({ message: 'Select domain', choices });
         if (selected === GoBack) continue;
         if (selected === CUSTOM_INPUT) {
           const ep = await promptEndpoint();
           if (ep === GoBack) continue;
           cfg.opensearchEndpoint = ep;
-          cfg.serverless = isServerlessEndpoint(ep);
         } else {
           cfg.opensearchEndpoint = selected.endpoint;
-          cfg.serverless = selected.serverless;
         }
       } else {
-        printInfo('No domains or collections found \u2014 enter endpoint manually');
+        printInfo('No domains found \u2014 enter endpoint manually');
         const ep = await promptEndpoint();
         if (ep === GoBack) continue;
         cfg.opensearchEndpoint = ep;
-        cfg.serverless = isServerlessEndpoint(ep);
       }
-
-      printSubStep(`Detected type: ${cfg.serverless ? theme.accent('OpenSearch Serverless') : theme.accent('Managed OpenSearch domain')}`);
     } else {
       cfg.osAction = 'create';
 
-      const osType = await eSelect({
-        message: 'OpenSearch type',
-        choices: [
-          { name: `Serverless ${theme.muted('\u2014 fully managed, auto-scales')}`, value: 'serverless' },
-          { name: `Managed domain ${theme.muted('\u2014 configure instance type, count, and storage')}`, value: 'managed' },
-        ],
-        default: cfg.serverless === true ? 'serverless' : cfg.serverless === false ? 'managed' : 'serverless',
-      });
-      if (osType === GoBack) continue;
-      cfg.serverless = osType === 'serverless';
-
-      const nameMsg = cfg.serverless ? 'Collection name' : 'Domain name';
-      const domainName = await eInput({ message: nameMsg, default: cfg.osDomainName || cfg.pipelineName });
+      const domainName = await eInput({ message: 'Domain name', default: cfg.osDomainName || cfg.pipelineName });
       if (domainName === GoBack) continue;
       cfg.osDomainName = domainName;
 
-      if (!cfg.serverless) {
-        const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
-        if (instType === GoBack) continue;
-        cfg.osInstanceType = instType;
+      const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
+      if (instType === GoBack) continue;
+      cfg.osInstanceType = instType;
 
-        const instCount = await eInput({
-          message: 'Instance count',
-          default: String(cfg.osInstanceCount || DEFAULTS.osInstanceCount),
-          validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 1 || 'Must be a positive integer',
-        });
-        if (instCount === GoBack) continue;
-        cfg.osInstanceCount = Number(instCount);
+      const instCount = await eInput({
+        message: 'Instance count',
+        default: String(cfg.osInstanceCount || DEFAULTS.osInstanceCount),
+        validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 1 || 'Must be a positive integer',
+      });
+      if (instCount === GoBack) continue;
+      cfg.osInstanceCount = Number(instCount);
 
-        const volSize = await eInput({
-          message: 'EBS volume size (GB)',
-          default: String(cfg.osVolumeSize || DEFAULTS.osVolumeSize),
-          validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 10 || 'Must be at least 10 GB',
-        });
-        if (volSize === GoBack) continue;
-        cfg.osVolumeSize = Number(volSize);
+      const volSize = await eInput({
+        message: 'EBS volume size (GB)',
+        default: String(cfg.osVolumeSize || DEFAULTS.osVolumeSize),
+        validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 10 || 'Must be at least 10 GB',
+      });
+      if (volSize === GoBack) continue;
+      cfg.osVolumeSize = Number(volSize);
 
-        const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
-        if (engineVer === GoBack) continue;
-        cfg.osEngineVersion = engineVer;
-      }
+      const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
+      if (engineVer === GoBack) continue;
+      cfg.osEngineVersion = engineVer;
     }
     return;
   }
@@ -503,11 +483,4 @@ function promptUrl(message) {
   });
 }
 
-/**
- * Detect serverless from endpoint URL pattern.
- * Serverless endpoints: https://<id>.<region>.aoss.amazonaws.com
- * Managed endpoints:    https://search-<name>.<region>.es.amazonaws.com
- */
-function isServerlessEndpoint(endpoint) {
-  return /\.aoss\.amazonaws\.com/i.test(endpoint);
-}
+

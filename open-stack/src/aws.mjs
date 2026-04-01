@@ -13,14 +13,6 @@ import {
   ListApplicationsCommand,
 } from '@aws-sdk/client-opensearch';
 import {
-  OpenSearchServerlessClient,
-  ListCollectionsCommand as ListServerlessCollectionsCommand,
-  CreateCollectionCommand,
-  BatchGetCollectionCommand,
-  CreateSecurityPolicyCommand,
-  CreateAccessPolicyCommand,
-} from '@aws-sdk/client-opensearchserverless';
-import {
   IAMClient,
   GetRoleCommand,
   CreateRoleCommand,
@@ -136,166 +128,10 @@ export async function checkRequirements(cfg) {
   console.error();
 }
 
-// ── OpenSearch (managed domain OR serverless collection) ────────────────────
+// ── OpenSearch (managed domain) ─────────────────────────────────────────────
 
 export async function createOpenSearch(cfg) {
-  if (cfg.serverless) {
-    return createServerlessCollection(cfg);
-  }
   return createManagedDomain(cfg);
-}
-
-async function createServerlessCollection(cfg) {
-  const collectionName = cfg.osDomainName;
-  printStep(`Creating OpenSearch Serverless collection '${collectionName}'...`);
-  console.error();
-
-  const client = new OpenSearchServerlessClient({ region: cfg.region });
-
-  // Check if collection already exists
-  try {
-    const resp = await client.send(new BatchGetCollectionCommand({ names: [collectionName] }));
-    const existing = resp.collectionDetails?.[0];
-    if (existing) {
-      if (existing.collectionEndpoint) {
-        cfg.opensearchEndpoint = existing.collectionEndpoint;
-        printSuccess(`Collection '${collectionName}' already exists: ${cfg.opensearchEndpoint}`);
-        return;
-      }
-      printSuccess(`Collection '${collectionName}' already exists — waiting for endpoint`);
-    }
-  } catch { /* not found — proceed to create */ }
-
-  // Create required security policies before the collection
-  if (!cfg.opensearchEndpoint) {
-    await ensureServerlessPolicies(client, collectionName, cfg);
-
-    try {
-      await client.send(new CreateCollectionCommand({
-        name: collectionName,
-        type: 'TIMESERIES',
-        tags: stackTags(cfg.pipelineName).map((t) => ({ key: t.Key, value: t.Value })),
-      }));
-      printSuccess('Collection creation initiated — waiting for endpoint');
-    } catch (err) {
-      if (err.name !== 'ConflictException') {
-        printError('Failed to create OpenSearch Serverless collection');
-        console.error();
-        if (/AccessDenied|not authorized/i.test(err.message)) {
-          console.error(`  ${chalk.bold('Permission denied.')} Your IAM identity needs ${chalk.bold('aoss:CreateCollection')}.`);
-        } else {
-          console.error(`  ${chalk.dim(err.message)}`);
-        }
-        console.error();
-        throw new Error('Failed to create OpenSearch Serverless collection');
-      }
-    }
-  }
-
-  // Poll for endpoint
-  const spinner = createSpinner('Provisioning Serverless collection...');
-  spinner.start();
-  const maxWait = 300_000; // 5 min (serverless is faster than managed)
-  const start = Date.now();
-
-  while (Date.now() - start < maxWait) {
-    try {
-      const resp = await client.send(new BatchGetCollectionCommand({ names: [collectionName] }));
-      const coll = resp.collectionDetails?.[0];
-      if (coll?.collectionEndpoint) {
-        cfg.opensearchEndpoint = coll.collectionEndpoint;
-        spinner.succeed(`Collection ready: ${cfg.opensearchEndpoint}`);
-        return;
-      }
-      if (coll?.status === 'FAILED') {
-        spinner.fail('Collection creation failed');
-        printInfo(`Status: ${coll.status}`);
-        throw new Error('OpenSearch Serverless collection creation failed');
-      }
-    } catch { /* keep polling */ }
-    await sleepWithTicker(10_000, spinner, start,
-      (s) => `Provisioning Serverless collection... (${fmtElapsed(s)} elapsed)`);
-  }
-
-  spinner.fail('Timed out waiting for Serverless collection');
-  throw new Error('Timed out waiting for Serverless collection');
-}
-
-/**
- * Create encryption, network, and data-access policies required by Serverless.
- * Each policy is idempotent — ConflictException (already exists) is ignored.
- */
-async function ensureServerlessPolicies(client, collectionName, cfg) {
-  const policyName = `${collectionName}-policy`;
-
-  // 1. Encryption policy (required before collection creation)
-  try {
-    await client.send(new CreateSecurityPolicyCommand({
-      name: `${collectionName}-enc`,
-      type: 'encryption',
-      policy: JSON.stringify({
-        Rules: [{ ResourceType: 'collection', Resource: [`collection/${collectionName}`] }],
-        AWSOwnedKey: true,
-      }),
-    }));
-    printSuccess('Encryption policy created');
-  } catch (err) {
-    if (err.name !== 'ConflictException') throw err;
-    printSuccess('Encryption policy already exists');
-  }
-
-  // 2. Network policy (public access for simplicity — matches managed domain defaults)
-  try {
-    await client.send(new CreateSecurityPolicyCommand({
-      name: `${collectionName}-net`,
-      type: 'network',
-      policy: JSON.stringify([{
-        Rules: [
-          { ResourceType: 'collection', Resource: [`collection/${collectionName}`] },
-          { ResourceType: 'dashboard', Resource: [`collection/${collectionName}`] },
-        ],
-        AllowFromPublic: true,
-      }]),
-    }));
-    printSuccess('Network policy created');
-  } catch (err) {
-    if (err.name !== 'ConflictException') throw err;
-    printSuccess('Network policy already exists');
-  }
-
-  // 3. Data access policy — grant the OSI pipeline role + current caller access
-  const principals = [`arn:aws:iam::${cfg.accountId}:root`];
-  if (cfg.iamRoleArn) {
-    principals.push(cfg.iamRoleArn);
-  } else if (cfg.iamRoleName) {
-    principals.push(`arn:aws:iam::${cfg.accountId}:role/${cfg.iamRoleName}`);
-  }
-
-  try {
-    await client.send(new CreateAccessPolicyCommand({
-      name: policyName,
-      type: 'data',
-      policy: JSON.stringify([{
-        Rules: [
-          {
-            ResourceType: 'index',
-            Resource: [`index/${collectionName}/*`],
-            Permission: ['aoss:CreateIndex', 'aoss:UpdateIndex', 'aoss:DescribeIndex', 'aoss:ReadDocument', 'aoss:WriteDocument'],
-          },
-          {
-            ResourceType: 'collection',
-            Resource: [`collection/${collectionName}`],
-            Permission: ['aoss:CreateCollectionItems', 'aoss:UpdateCollectionItems', 'aoss:DescribeCollectionItems'],
-          },
-        ],
-        Principal: principals,
-      }]),
-    }));
-    printSuccess('Data access policy created');
-  } catch (err) {
-    if (err.name !== 'ConflictException') throw err;
-    printSuccess('Data access policy already exists');
-  }
 }
 
 async function createManagedDomain(cfg) {
@@ -404,7 +240,7 @@ const MANAGED_MASTER_PASS = 'Admin_password_123!@#';
  * managed domain but has no permissions to create indices or write data.
  */
 export async function mapOsiRoleInDomain(cfg) {
-  if (cfg.serverless || !cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
+  if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
@@ -490,7 +326,7 @@ export async function createIamRole(cfg) {
     throw new Error('Failed to create IAM role');
   }
 
-  // Permissions policy — includes both managed (es:*) and serverless (aoss:*) access
+  // Permissions policy
   const statements = [
     {
       Effect: 'Allow',
@@ -503,15 +339,6 @@ export async function createIamRole(cfg) {
       Resource: `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/*`,
     },
   ];
-
-  // Add AOSS permissions for serverless collections
-  if (cfg.serverless) {
-    statements.push({
-      Effect: 'Allow',
-      Action: ['aoss:BatchGetCollection', 'aoss:APIAccessAll'],
-      Resource: `arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/*`,
-    });
-  }
 
   const permissionsPolicy = JSON.stringify({
     Version: '2012-10-17',
@@ -687,8 +514,6 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
 /**
  * Set up OpenSearch UI: derive the URL and create an Observability workspace.
  * Skipped when dashboardsAction is 'reuse' (user provided their own URL).
- * For managed domains, uses basic auth to call the Dashboards API.
- * For serverless, provides the URL only (workspace setup via AWS console).
  */
 export async function setupDashboards(cfg) {
   if (!cfg.opensearchEndpoint) return;
@@ -975,38 +800,17 @@ async function fetchAppEndpoint(client, cfg) {
  */
 function buildAppDataSources(cfg) {
   const dataSources = [];
-  if (cfg.serverless) {
-    const collectionId = extractServerlessCollectionId(cfg.opensearchEndpoint);
-    if (collectionId) {
-      dataSources.push({
-        dataSourceArn: `arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${collectionId}`,
-      });
-    }
-  } else if (!cfg.serverless) {
-    // For managed domains, derive the domain name from the endpoint URL if reusing,
-    // otherwise use cfg.osDomainName (which may be set by applySimpleDefaults)
-    let domainName = cfg.osDomainName;
-    if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
-      const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
-      if (m) domainName = m[1];
-    }
-    if (domainName) {
-      dataSources.push({
-        dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
-      });
-    }
-  } else if (cfg.opensearchEndpoint) {
-    // Extract domain name from endpoint URL: https://search-DOMAIN-xxx.region.es.amazonaws.com
-    const m = cfg.opensearchEndpoint.match(/search-([^-]+-[^.]+)\./);
-    if (m) {
-      // The full domain name is between "search-" and the random suffix before the region
-      const domainName = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/)?.[1];
-      if (domainName) {
-        dataSources.push({
-          dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
-        });
-      }
-    }
+  // Derive the domain name from the endpoint URL if reusing,
+  // otherwise use cfg.osDomainName (which may be set by applySimpleDefaults)
+  let domainName = cfg.osDomainName;
+  if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
+    const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
+    if (m) domainName = m[1];
+  }
+  if (domainName) {
+    dataSources.push({
+      dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
+    });
   }
   if (cfg.dqsDataSourceArn) {
     dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
@@ -1034,26 +838,15 @@ async function associateDataSourcesWithApp(cfg, client) {
   }
 }
 
-/**
- * Extract serverless collection ID from endpoint URL.
- * Endpoint format: https://<id>.<region>.aoss.amazonaws.com
- */
-function extractServerlessCollectionId(endpoint) {
-  const match = endpoint?.match(/https?:\/\/([^.]+)\./);
-  return match?.[1] || '';
-}
-
 // ── Resource listing (for interactive reuse selection) ──────────────────────
 
 /**
- * List all OpenSearch endpoints in the given region — both managed domains
- * and serverless collections.
- * Returns [{ name, endpoint, engineVersion, serverless }].
+ * List all OpenSearch managed domain endpoints in the given region.
+ * Returns [{ name, endpoint, engineVersion }].
  */
 export async function listDomains(region) {
   const results = [];
 
-  // 1. Managed domains
   try {
     const client = new OpenSearchClient({ region });
     const { DomainNames } = await client.send(new ListDomainNamesCommand({}));
@@ -1067,28 +860,10 @@ export async function listDomains(region) {
           name: d.DomainName,
           endpoint: d.Endpoint ? `https://${d.Endpoint}` : '',
           engineVersion: d.EngineVersion || '',
-          serverless: false,
         });
       }
     }
-  } catch { /* managed listing failed — continue */ }
-
-  // 2. Serverless collections
-  try {
-    const aoss = new OpenSearchServerlessClient({ region });
-    const resp = await aoss.send(new ListServerlessCollectionsCommand({}));
-    for (const c of resp.collectionSummaries || []) {
-      const endpoint = c.arn
-        ? `https://${c.id}.${region}.aoss.amazonaws.com`
-        : '';
-      results.push({
-        name: c.name,
-        endpoint: c.status === 'ACTIVE' ? endpoint : '',
-        engineVersion: 'Serverless',
-        serverless: true,
-      });
-    }
-  } catch { /* serverless listing failed — continue */ }
+  } catch { /* listing failed */ }
 
   return results;
 }
@@ -1267,7 +1042,6 @@ export async function getStackResources(region, stackName) {
  */
 function arnToType(arn) {
   if (/^arn:aws:osis:/.test(arn)) return 'OSI Pipeline';
-  if (/^arn:aws:aoss:.*:collection\//.test(arn)) return 'OpenSearch Serverless';
   if (/^arn:aws:es:.*:domain\//.test(arn)) return 'OpenSearch Domain';
   if (/^arn:aws:iam:.*:role\//.test(arn)) return 'IAM Role';
   if (/^arn:aws:aps:.*:workspace\//.test(arn)) return 'APS Workspace';
@@ -1370,17 +1144,6 @@ export async function describeResource(region, resource) {
       if (p.CreatedAt) entries.push(['Created', p.CreatedAt.toISOString()]);
       if (p.LastUpdatedAt) entries.push(['Last Updated', p.LastUpdatedAt.toISOString()]);
       if (p.PipelineConfigurationBody) rawConfig = p.PipelineConfigurationBody;
-    } else if (type === 'OpenSearch Serverless') {
-      const client = new OpenSearchServerlessClient({ region });
-      const resp = await client.send(new BatchGetCollectionCommand({ ids: [name] }));
-      const c = (resp.collectionDetails || [])[0] || {};
-      if (c.status) entries.push(['Status', c.status]);
-      if (c.type) entries.push(['Type', c.type]);
-      if (c.collectionEndpoint) entries.push(['Collection Endpoint', c.collectionEndpoint]);
-      if (c.dashboardEndpoint) entries.push(['Dashboard Endpoint', c.dashboardEndpoint]);
-      if (c.description) entries.push(['Description', c.description]);
-      if (c.createdDate) entries.push(['Created', new Date(c.createdDate).toISOString()]);
-      if (c.lastModifiedDate) entries.push(['Last Modified', new Date(c.lastModifiedDate).toISOString()]);
     } else if (type === 'OpenSearch Domain') {
       const client = new OpenSearchClient({ region });
       const resp = await client.send(new DescribeDomainCommand({ DomainName: name }));
