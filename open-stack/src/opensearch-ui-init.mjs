@@ -159,7 +159,7 @@ export async function initOpenSearchUI(cfg) {
   printSuccess('Data sources associated with workspace');
 
   // f. Create index patterns with dataSource reference
-  const svcMapPattern = cfg.serverless ? 'otel-v2-apm-service-map*' : 'otel-v1-apm-service-map*';
+  const svcMapPattern = 'otel-v2-apm-service-map*';
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
 
   const patterns = [

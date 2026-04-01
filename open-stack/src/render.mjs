@@ -45,7 +45,7 @@ function serviceMapSinkConfig(cfg) {
         template_content: '${SERVICE_MAP_TEMPLATE_CONTENT}'`;
   }
   return `\
-        index_type: trace-analytics-service-map`;
+        index_type: otel-v2-apm-service-map`;
 }
 
 // ── Pipeline renderer ────────────────────────────────────────────────────────
