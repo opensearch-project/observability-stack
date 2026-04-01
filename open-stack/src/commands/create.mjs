@@ -97,6 +97,15 @@ function renderArchitectureDiagram(cfg) {
   // ── Assemble lines ────────────────────────────────────────────────────
   const out = [''];
 
+  // EC2 Demo box (above OTLP)
+  const ec2 = box([p('EC2 Instance'), m('OTel Demo + Agents')], 21);
+  const ec2Off = Math.max(0, C_OTLP - ec2.mid);
+  out.push(sp(ec2Off) + ec2.top);
+  for (const l of ec2.lines) out.push(sp(ec2Off) + l);
+  out.push(sp(ec2Off) + ec2.botC);
+  out.push(connector(W, [[ec2Off + ec2.mid, '│']]));
+  out.push(connector(W, [[ec2Off + ec2.mid, '▼']]));
+
   // OTLP box
   out.push(sp(otlpOff) + otlp.top);
   for (const l of otlp.lines) out.push(sp(otlpOff) + l);
