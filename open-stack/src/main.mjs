@@ -229,6 +229,9 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('Direct Query Service Role:'))} ${cfg.dqsRoleArn || 'n/a'}`,
     ...(cfg.demoInstanceId ? [`${theme.label(pad('Demo EC2 Instance:'))} ${cfg.demoInstanceId}`] : []),
     '',
+    `${theme.success.bold('→ Open your dashboards:')}`,
+    `  ${cfg.dashboardsUrl}`,
+    '',
   ], { color: 'primary', padding: 2 });
 
 }
