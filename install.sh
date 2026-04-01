@@ -116,17 +116,25 @@ Observability Stack Installer
 Usage: install.sh [OPTIONS]
 
 Options:
-  --simulate   Preview the installer output without actually installing
-  --skip-pull  Skip building and pulling container images (uses cached images)
-  --help       Show this help message
+  --deployment-target=TARGET  Deployment target: local (default) or aws
+  --simulate                  Preview the installer output without actually installing
+  --skip-pull                 Skip building and pulling container images (uses cached images)
+  --help                      Show this help message
 
 Examples:
   curl -fsSL https://raw.githubusercontent.com/.../install.sh | bash
   ./install.sh --simulate
   ./install.sh --skip-pull
+
+  # AWS managed stack deployment
+  ./install.sh --deployment-target=aws --pipeline-name my-stack --region us-east-1
+  ./install.sh --deployment-target=aws   # interactive TUI mode
 EOF
     exit 0
 }
+
+DEPLOYMENT_TARGET="local"
+AWS_CLI_ARGS=()
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -142,7 +150,16 @@ while [[ $# -gt 0 ]]; do
             SKIP_PULL=true
             shift
             ;;
+        --deployment-target=*)
+            DEPLOYMENT_TARGET="${1#*=}"
+            shift
+            ;;
+        --deployment-target)
+            DEPLOYMENT_TARGET="$2"
+            shift 2
+            ;;
         *)
+            AWS_CLI_ARGS+=("$1")
             shift
             ;;
     esac
@@ -918,12 +935,47 @@ run_simulated_installer() {
 }
 
 # Main installation flow
+# Run AWS managed stack installer
+run_aws_installer() {
+    echo -e "${PURPLE}${BOLD}AWS deployment target selected. Setting up CLI installer...${RESET}\n"
+
+    # Check Node.js 18+
+    if ! command -v node &> /dev/null; then
+        print_error "Node.js 18+ is required for AWS deployment."
+        echo ""
+        echo "  Install Node.js:"
+        echo "    macOS:   brew install node"
+        echo "    Linux:   curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash - && sudo apt-get install -y nodejs"
+        echo "    Any:     https://nodejs.org/en/download"
+        exit 1
+    fi
+
+    NODE_VERSION=$(node --version | sed 's/v//' | cut -d. -f1)
+    if [ "$NODE_VERSION" -lt 18 ]; then
+        print_error "Node.js 18+ required (found v${NODE_VERSION}). Please upgrade: https://nodejs.org/en/download"
+        exit 1
+    fi
+
+    # Clone repo and install deps
+    echo -e "  Cloning repository..."
+    TMPDIR=$(mktemp -d)
+    git clone --depth 1 "$REPO_URL" "$TMPDIR" --quiet
+    cd "$TMPDIR/aws/cli-installer"
+    npm install --silent 2>/dev/null
+
+    # Forward args to CLI (auto-add --managed)
+    echo ""
+    node bin/cli-installer.mjs --managed "${AWS_CLI_ARGS[@]}"
+}
+
 main() {
     print_header
     
     echo -e "${PURPLE}${BOLD}Starting installation...${RESET}\n"
 
-    if [ "$SIMULATE_MODE" = true ]; then
+    if [ "$DEPLOYMENT_TARGET" = "aws" ]; then
+        run_aws_installer
+    elif [ "$SIMULATE_MODE" = true ]; then
         run_simulated_installer
     else
         run_manual_installer
