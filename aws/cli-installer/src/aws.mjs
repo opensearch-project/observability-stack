@@ -45,8 +45,48 @@ import {
   createSpinner,
 } from './ui.mjs';
 import chalk from 'chalk';
+import { randomBytes } from 'node:crypto';
+import {
+  SecretsManagerClient,
+  CreateSecretCommand,
+  GetSecretValueCommand,
+  DeleteSecretCommand,
+} from '@aws-sdk/client-secrets-manager';
 
 // ── Tagging ─────────────────────────────────────────────────────────────────
+
+const SECRET_PREFIX = 'open-stack';
+const MASTER_USER = 'admin';
+
+function generatePassword() {
+  return randomBytes(16).toString('base64url') + '!A1';
+}
+
+async function storeMasterPassword(region, pipelineName, password) {
+  const sm = new SecretsManagerClient({ region });
+  const secretName = `${SECRET_PREFIX}/${pipelineName}/master-password`;
+  try {
+    await sm.send(new CreateSecretCommand({
+      Name: secretName,
+      SecretString: password,
+      Description: `OpenSearch master password for ${pipelineName}`,
+    }));
+  } catch (e) {
+    if (e.name === 'ResourceExistsException') {
+      // Update existing
+      const { PutSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+      await sm.send(new PutSecretValueCommand({ SecretId: secretName, SecretString: password }));
+    } else throw e;
+  }
+}
+
+async function getMasterPassword(region, pipelineName) {
+  const sm = new SecretsManagerClient({ region });
+  const { SecretString } = await sm.send(new GetSecretValueCommand({
+    SecretId: `${SECRET_PREFIX}/${pipelineName}/master-password`,
+  }));
+  return SecretString;
+}
 
 const TAG_KEY = 'open-stack';
 
@@ -164,6 +204,7 @@ async function createManagedDomain(cfg) {
     });
 
     try {
+      cfg._masterPassword = generatePassword();
       await client.send(new CreateDomainCommand({
         DomainName: cfg.osDomainName,
         EngineVersion: cfg.osEngineVersion,
@@ -183,14 +224,15 @@ async function createManagedDomain(cfg) {
           Enabled: true,
           InternalUserDatabaseEnabled: true,
           MasterUserOptions: {
-            MasterUserName: 'admin',
-            MasterUserPassword: 'Admin_password_123!@#',
+            MasterUserName: MASTER_USER,
+            MasterUserPassword: cfg._masterPassword,
           },
         },
         AccessPolicies: accessPolicy,
         TagList: stackTags(cfg.pipelineName),
       }));
       printSuccess('Domain creation initiated — waiting for endpoint');
+      await storeMasterPassword(cfg.region, cfg.pipelineName, cfg._masterPassword);
     } catch (createErr) {
       printError('Failed to create OpenSearch domain');
       console.error();
@@ -231,38 +273,48 @@ async function createManagedDomain(cfg) {
 
 // ── FGAC role mapping for managed domains ────────────────────────────────
 
-const MANAGED_MASTER_USER = 'admin';
-const MANAGED_MASTER_PASS = 'Admin_password_123!@#';
-
-/**
- * Map the OSI pipeline's IAM role to the all_access backend role in OpenSearch's
- * fine-grained access control. Without this, the pipeline can connect to the
- * managed domain but has no permissions to create indices or write data.
- */
 export async function mapOsiRoleInDomain(cfg) {
   if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
+  // Retrieve master password from Secrets Manager
+  let masterPass;
+  try {
+    masterPass = await getMasterPassword(cfg.region, cfg.pipelineName);
+  } catch (e) {
+    printWarning(`Could not retrieve master password: ${e.message}`);
+    printInfo('FGAC mapping skipped. You may need to manually map IAM roles in OpenSearch Security.');
+    return;
+  }
+
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
-  const auth = Buffer.from(`${MANAGED_MASTER_USER}:${MANAGED_MASTER_PASS}`).toString('base64');
+  const auth = Buffer.from(`${MASTER_USER}:${masterPass}`).toString('base64');
 
   // Map both the OSI pipeline role and the caller's role (for OpenSearch UI access)
   const callerRoleArn = cfg.callerRoleArn || '';
-  const backendRoles = [cfg.iamRoleArn];
+  const newRoles = [cfg.iamRoleArn];
   if (callerRoleArn && callerRoleArn !== cfg.iamRoleArn) {
-    backendRoles.push(callerRoleArn);
+    newRoles.push(callerRoleArn);
   }
 
   try {
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
+
+    // GET existing mapping and merge to avoid overwriting other stacks' roles
+    const getResp = await fetch(url, { headers });
+    let existing = [];
+    if (getResp.ok) {
+      const data = await getResp.json();
+      existing = data?.all_access?.backend_roles || [];
+    }
+    const merged = [...new Set([...existing, ...newRoles])];
+
     const resp = await fetch(url, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`,
-      },
+      headers,
       body: JSON.stringify([
-        { op: 'add', path: '/backend_roles', value: backendRoles },
+        { op: 'add', path: '/backend_roles', value: merged },
       ]),
     });
 
@@ -537,70 +589,6 @@ export async function setupDashboards(cfg) {
     return;
   }
   printSuccess(`URL: ${cfg.dashboardsUrl}`);
-}
-
-async function createObservabilityWorkspace(cfg) {
-  if (!cfg.dashboardsUrl) return;
-  const dashboardsBase = cfg.dashboardsUrl.replace(/\/+$/, '');
-  const url = `${dashboardsBase}/api/workspaces`;
-  const auth = Buffer.from(`${MANAGED_MASTER_USER}:${MANAGED_MASTER_PASS}`).toString('base64');
-
-  // Check if an observability workspace already exists
-  try {
-    const listResp = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'osd-xsrf': 'true',
-        'Authorization': `Basic ${auth}`,
-      },
-    });
-
-    if (listResp.ok) {
-      const data = await listResp.json();
-      const existing = (data.result?.workspaces || []).find(
-        (w) => w.name === 'Observability'
-      );
-      if (existing) {
-        printSuccess(`Observability workspace already exists (id: ${existing.id})`);
-        return;
-      }
-    }
-  } catch { /* proceed to create */ }
-
-  try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'osd-xsrf': 'true',
-        'Authorization': `Basic ${auth}`,
-      },
-      body: JSON.stringify({
-        attributes: {
-          name: 'Observability',
-          description: 'Observability workspace for traces, logs, and metrics',
-          features: ['use-case-observability'],
-        },
-      }),
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      const workspaceId = data.result?.id;
-      if (workspaceId) {
-        printSuccess(`Observability workspace created (id: ${workspaceId})`);
-      } else {
-        printSuccess('Observability workspace created');
-      }
-    } else {
-      const body = await resp.text();
-      printWarning(`Could not create Observability workspace (${resp.status}): ${body}`);
-      printInfo('You can create one manually in OpenSearch UI → Workspaces');
-    }
-  } catch (err) {
-    printWarning(`Could not create Observability workspace: ${err.message}`);
-    printInfo('You can create one manually in OpenSearch UI → Workspaces');
-  }
 }
 
 // ── Direct Query Data Source (AMP → OpenSearch) ─────────────────────────────

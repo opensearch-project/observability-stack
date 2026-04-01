@@ -74,6 +74,19 @@ export async function destroy(cfg) {
     }
   }
 
+  // 6. Secrets Manager (master password)
+  try {
+    const { SecretsManagerClient, DeleteSecretCommand } = await import('@aws-sdk/client-secrets-manager');
+    const sm = new SecretsManagerClient({ region });
+    await sm.send(new DeleteSecretCommand({
+      SecretId: `open-stack/${pipelineName}/master-password`,
+      ForceDeleteWithoutRecovery: true,
+    }));
+    printSuccess('Master password secret deleted');
+  } catch (e) {
+    if (e.name !== 'ResourceNotFoundException') printWarning(`Secret cleanup: ${e.message}`);
+  }
+
   console.error();
   printSuccess('Destroy complete');
   printInfo('Note: OpenSearch domain and AMP workspace were preserved (shared resources)');
