@@ -157,7 +157,7 @@ async function createManagedDomain(cfg) {
       Version: '2012-10-17',
       Statement: [{
         Effect: 'Allow',
-        Principal: { AWS: '*' },
+        Principal: { AWS: `arn:aws:iam::${cfg.accountId}:root` },
         Action: 'es:*',
         Resource: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName}/*`,
       }],
