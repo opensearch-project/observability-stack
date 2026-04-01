@@ -83,6 +83,13 @@ export async function run() {
       return;
     }
 
+    // Destroy subcommand
+    if (cfg._command === 'destroy') {
+      const { destroy } = await import('./destroy.mjs');
+      await destroy(cfg);
+      return;
+    }
+
     // Apply simple-mode defaults for anything not explicitly set
     if (!cfg.mode) cfg.mode = 'simple';
     if (cfg.mode === 'simple') applySimpleDefaults(cfg);

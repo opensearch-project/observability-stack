@@ -11,6 +11,7 @@ export function parseCli(argv) {
 
   // Demo subcommand — separate parser to avoid option conflicts
   if (argv[2] === 'demo') return parseDemoArgs(argv);
+  if (argv[2] === 'destroy') return parseDestroyArgs(argv);
 
   const program = new Command()
     .name('open-stack')
@@ -88,6 +89,17 @@ function parseDemoArgs(argv) {
   program.parse(argv.slice(1));
   const opts = program.opts();
   return { _command: 'demo', ...opts, nodeCount: Number(opts.nodeCount) };
+}
+
+function parseDestroyArgs(argv) {
+  const program = new Command()
+    .name('open-stack destroy')
+    .description('Tear down all AWS resources created by open-stack for a given pipeline name')
+    .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
+    .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION);
+
+  program.parse(argv.slice(1));
+  return { _command: 'destroy', ...program.opts() };
 }
 
 /**
