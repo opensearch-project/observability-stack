@@ -231,6 +231,7 @@ export async function executePipeline(cfg) {
     '',
     `${theme.success.bold('→ Open your dashboards:')}`,
     `  ${cfg.dashboardsUrl}`,
+    ...(cfg.demoInstanceId ? [``, `  ${theme.muted('Demo data may take 10-15 minutes to appear.')}`] : []),
     '',
   ], { color: 'primary', padding: 2 });
 
