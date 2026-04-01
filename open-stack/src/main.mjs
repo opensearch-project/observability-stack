@@ -200,6 +200,12 @@ export async function executePipeline(cfg) {
   const { initOpenSearchUI } = await import('./opensearch-ui-init.mjs');
   await initOpenSearchUI(cfg);
 
+  // Launch EC2 demo workloads (unless --skip-demo)
+  if (!cfg.skipDemo && cfg.ingestEndpoints?.length) {
+    const { launchDemoInstance } = await import('./ec2-demo.mjs');
+    await launchDemoInstance(cfg);
+  }
+
   // ── Final summary ───────────────────────────────────────────────────
   console.error();
   const pad = (l) => l.padEnd(35);
@@ -214,6 +220,7 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
     `${theme.label(pad('Direct Query Service Datasource:'))} ${cfg.dqsDataSourceArn || 'n/a'}`,
     `${theme.label(pad('Direct Query Service Role:'))} ${cfg.dqsRoleArn || 'n/a'}`,
+    ...(cfg.demoInstanceId ? [`${theme.label(pad('Demo EC2 Instance:'))} ${cfg.demoInstanceId}`] : []),
     '',
   ], { color: 'primary', padding: 2 });
 

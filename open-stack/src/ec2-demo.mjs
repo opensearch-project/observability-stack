@@ -220,6 +220,8 @@ async function createDemoInstanceProfile(iam, cfg) {
   return profileName;
 }
 
+export { tags as _tags, tagSpec as _tagSpec, buildUserData as _buildUserData };
+
 export async function launchDemoInstance(cfg) {
   printStep('Launching EC2 demo instance...');
 

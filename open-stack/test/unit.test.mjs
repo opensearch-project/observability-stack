@@ -114,3 +114,75 @@ describe('caller role ARN extraction', () => {
     assert.equal(match, null);
   });
 });
+
+// ── EC2 demo unit tests ──────────────────────────────────────────────────────
+
+import { _tags, _tagSpec, _buildUserData } from '../src/ec2-demo.mjs';
+
+describe('EC2 demo tags', () => {
+  it('includes pipeline tag and Name tag', () => {
+    const result = _tags('my-stack');
+    assert.equal(result[0].Key, 'open-stack:pipeline-name');
+    assert.equal(result[0].Value, 'my-stack');
+    assert.equal(result[1].Key, 'Name');
+    assert.equal(result[1].Value, 'my-stack-demo');
+  });
+
+  it('includes extra tags', () => {
+    const result = _tags('my-stack', { Env: 'test' });
+    assert.equal(result.length, 3);
+    assert.equal(result[2].Key, 'Env');
+  });
+});
+
+describe('EC2 demo tagSpec', () => {
+  it('wraps tags in ResourceType spec', () => {
+    const result = _tagSpec('instance', 'my-stack');
+    assert.equal(result[0].ResourceType, 'instance');
+    assert.ok(result[0].Tags.length >= 2);
+  });
+});
+
+describe('EC2 demo buildUserData', () => {
+  const cfg = {
+    pipelineName: 'test-pipeline',
+    region: 'us-west-2',
+    ingestEndpoints: ['test-pipeline-abc123.us-west-2.osis.amazonaws.com'],
+  };
+
+  it('returns base64 encoded string', () => {
+    const result = _buildUserData(cfg);
+    const decoded = Buffer.from(result, 'base64').toString();
+    assert.ok(decoded.startsWith('#!/bin/bash'));
+  });
+
+  it('contains correct OSIS endpoint with pipeline name in path', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('test-pipeline-abc123.us-west-2.osis.amazonaws.com/test-pipeline/v1/logs'));
+    assert.ok(decoded.includes('test-pipeline-abc123.us-west-2.osis.amazonaws.com/test-pipeline/v1/traces'));
+    assert.ok(decoded.includes('test-pipeline-abc123.us-west-2.osis.amazonaws.com/test-pipeline/v1/metrics'));
+  });
+
+  it('contains sigv4auth with correct region', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('region: "us-west-2"'));
+    assert.ok(decoded.includes('service: osis'));
+  });
+
+  it('contains docker compose managed file', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('docker-compose.managed.yml'));
+  });
+
+  it('does not reference local backend compose files', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(!decoded.includes('docker-compose.local-opensearch'));
+  });
+
+  it('installs docker, git, compose, and buildx', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('dnf install -y docker git'));
+    assert.ok(decoded.includes('docker-compose'));
+    assert.ok(decoded.includes('docker-buildx'));
+  });
+});

@@ -66,7 +66,8 @@ export function parseCli(argv) {
   // Output
   program
     .option('-o, --output <file>', 'Write pipeline YAML to file instead of stdout')
-    .option('--dry-run', 'Generate config only; do not create AWS resources');
+    .option('--dry-run', 'Generate config only; do not create AWS resources')
+    .option('--skip-demo', 'Skip launching EC2 demo workloads');
 
   program.parse(argv);
 
@@ -163,6 +164,7 @@ function optsToConfig(opts) {
     appEndpoint: '',
     outputFile: opts.output || '',
     dryRun: opts.dryRun || false,
+    skipDemo: opts.skipDemo || false,
     accountId: '',
   };
 }
