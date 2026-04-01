@@ -1,4 +1,4 @@
-name: CLI Unit Tests
+name: CLI Installer Unit Tests
 
 on:
   push:
