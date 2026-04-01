@@ -1,4 +1,4 @@
-# open-stack CLI
+# Observability Stack AWS CLI
 
 Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain, OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
 
@@ -7,9 +7,9 @@ Deploy the [Observability Stack](https://github.com/opensearch-project/observabi
 ```bash
 git clone git@github.com:kylehounslow/observability-stack.git
 cd observability-stack && git checkout feat/aws-cli-installer
-cd open-stack && npm install
+cd aws/cli-installer && npm install
 
-node bin/open-stack.mjs --managed \
+node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1
 ```
@@ -34,14 +34,14 @@ All resources are tagged with `open-stack:pipeline-name` for identification and 
 
 **Create everything from scratch:**
 ```bash
-node bin/open-stack.mjs --managed \
+node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1
 ```
 
 **Reuse existing OpenSearch domain / AMP workspace:**
 ```bash
-node bin/open-stack.mjs --managed \
+node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1 \
   --opensearch-endpoint https://search-your-domain-xxx.us-east-1.es.amazonaws.com \
@@ -50,7 +50,7 @@ node bin/open-stack.mjs --managed \
 
 **Skip EC2 demo** (just pipeline + UI, no demo workloads):
 ```bash
-node bin/open-stack.mjs --managed \
+node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1 \
   --skip-demo
@@ -58,13 +58,13 @@ node bin/open-stack.mjs --managed \
 
 **Interactive mode** (TUI wizard):
 ```bash
-node bin/open-stack.mjs
+node bin/cli-installer.mjs
 ```
 
 ## Destroy
 
 ```bash
-node bin/open-stack.mjs destroy \
+node bin/cli-installer.mjs destroy \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1
 ```
@@ -89,8 +89,8 @@ Deletes: EC2 instance, OpenSearch Application, DQS datasource, OSIS pipeline, IA
 ### Repository Layout
 
 ```
-open-stack/
-├── bin/open-stack.mjs          # Entry point
+aws/cli-installer/
+├── bin/cli-installer.mjs          # Entry point
 ├── src/
 │   ├── main.mjs                # CLI orchestration + executePipeline flow
 │   ├── cli.mjs                 # Argument parsing + config
@@ -111,7 +111,7 @@ open-stack/
 ### Running Tests
 
 ```bash
-cd open-stack
+cd aws/cli-installer
 node --test test/unit.test.mjs
 ```
 

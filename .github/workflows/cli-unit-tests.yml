@@ -3,10 +3,10 @@ name: CLI Unit Tests
 on:
   push:
     paths:
-      - 'open-stack/**'
+      - 'aws/cli-installer/**'
   pull_request:
     paths:
-      - 'open-stack/**'
+      - 'aws/cli-installer/**'
 
 jobs:
   test:
@@ -17,8 +17,8 @@ jobs:
         with:
           node-version: '18'
       - name: Install dependencies
-        working-directory: open-stack
+        working-directory: aws/cli-installer
         run: npm ci
       - name: Run unit tests
-        working-directory: open-stack
+        working-directory: aws/cli-installer
         run: node --test test/unit.test.mjs

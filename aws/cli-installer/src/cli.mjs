@@ -13,7 +13,7 @@ export function parseCli(argv) {
   if (argv[2] === 'destroy') return parseDestroyArgs(argv);
 
   const program = new Command()
-    .name('open-stack')
+    .name('observability-stack-aws-cli')
     .description(
       'Create and manage your observability stack on AWS:\n' +
       'OpenSearch, Prometheus, IAM roles, and ingestion pipelines.'
@@ -75,8 +75,8 @@ export function parseCli(argv) {
 
 function parseDestroyArgs(argv) {
   const program = new Command()
-    .name('open-stack destroy')
-    .description('Tear down all AWS resources created by open-stack for a given pipeline name')
+    .name('observability-stack-aws-cli destroy')
+    .description('Tear down all AWS resources created by the CLI for a given pipeline name')
     .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
     .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION);
 

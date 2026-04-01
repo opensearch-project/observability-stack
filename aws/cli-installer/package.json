@@ -1,9 +1,9 @@
 {
-  "name": "@joshualiamzn/open-stack",
+  "name": "@opensearch-project/observability-stack-aws-cli",
   "version": "0.0.2",
   "description": "CLI for the Observability Stack",
   "type": "module",
-  "bin": "./bin/open-stack.mjs",
+  "bin": "./bin/cli-installer.mjs",
   "scripts": {
     "start": "node bin/open-stack.mjs"
   },

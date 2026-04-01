@@ -1,5 +1,5 @@
 /**
- * Destroy all AWS resources created by open-stack for a given pipeline name.
+ * Destroy all AWS resources created by the CLI for a given pipeline name.
  * Deletes in reverse dependency order: EC2 → Application → DQS → OSIS → IAM → (preserves AOS/AMP).
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';

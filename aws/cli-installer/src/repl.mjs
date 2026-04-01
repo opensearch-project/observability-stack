@@ -48,7 +48,7 @@ export async function startRepl() {
 
   while (true) {
     const cmd = await eSelect({
-      message: theme.primary(`open-stack [${session.region}]`),
+      message: theme.primary(`obs-stack [${session.region}]`),
       choices: COMMAND_CHOICES,
       clearPromptOnDone: true,
     });

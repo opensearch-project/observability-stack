@@ -969,7 +969,7 @@ export async function tagResource(region, arn, stackName) {
 }
 
 /**
- * List all open-stack stacks in a region by querying the Resource Groups Tagging API.
+ * List all stacks in a region by querying the Resource Groups Tagging API.
  * Returns [{ name, resources: [{ arn, type }] }] grouped by stack name.
  */
 export async function listStacks(region) {
