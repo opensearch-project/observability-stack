@@ -1,7 +1,6 @@
 import { runCreateWizard } from '../interactive.mjs';
 import { applySimpleDefaults, validateConfig } from '../cli.mjs';
 import { executePipeline } from '../main.mjs';
-import { promptDemoAfterCreate } from './demo.mjs';
 import { printError, printStep, theme, GoBack, eConfirm } from '../ui.mjs';
 
 // ── Architecture diagram ────────────────────────────────────────────────────
@@ -214,12 +213,4 @@ export async function runCreate(session) {
 
   // Live path
   await executePipeline(cfg);
-
-  // Offer to create demo EKS services
-  try {
-    await promptDemoAfterCreate(session, cfg.pipelineName);
-  } catch (err) {
-    // Demo is optional — don't fail the create flow
-    console.error(`  ${theme.muted(`Demo setup skipped: ${err.message}`)}`);
-  }
 }

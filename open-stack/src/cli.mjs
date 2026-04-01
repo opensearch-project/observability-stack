@@ -10,7 +10,6 @@ export function parseCli(argv) {
   if (argv.length <= 2) return null;
 
   // Demo subcommand — separate parser to avoid option conflicts
-  if (argv[2] === 'demo') return parseDemoArgs(argv);
   if (argv[2] === 'destroy') return parseDestroyArgs(argv);
 
   const program = new Command()
@@ -73,22 +72,6 @@ export function parseCli(argv) {
   program.parse(argv);
 
   return optsToConfig(program.opts());
-}
-
-function parseDemoArgs(argv) {
-  const program = new Command()
-    .name('open-stack demo')
-    .description('Create an EKS cluster and install the observability stack + OTel demo')
-    .option('--cluster-name <name>', 'EKS cluster name', 'open-stack-demo')
-    .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION)
-    .option('--pipeline <name>', 'Existing OSI pipeline name to connect')
-    .option('--node-count <n>', 'Number of EKS nodes', '3')
-    .option('--instance-type <type>', 'EKS node instance type', 'm8i.large')
-    .option('--skip-otel-demo', 'Skip installing the OpenTelemetry Demo app');
-
-  program.parse(argv.slice(1));
-  const opts = program.opts();
-  return { _command: 'demo', ...opts, nodeCount: Number(opts.nodeCount) };
 }
 
 function parseDestroyArgs(argv) {

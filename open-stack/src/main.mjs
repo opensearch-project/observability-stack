@@ -22,52 +22,6 @@ import {
   theme,
 } from './ui.mjs';
 
-async function runDemoCommand(cfg) {
-  const { STSClient, GetCallerIdentityCommand } = await import('@aws-sdk/client-sts');
-  const { checkDemoPrerequisites, createEksCluster, installHelmChart, installOtelDemo } = await import('./eks.mjs');
-  const { getPipelineEndpoint } = await import('./aws.mjs');
-
-  if (!cfg.region) throw new Error('--region is required (or set AWS_REGION)');
-  if (!cfg.pipeline) throw new Error('--pipeline is required');
-
-  const sts = new STSClient({ region: cfg.region });
-  const identity = await sts.send(new GetCallerIdentityCommand({}));
-
-  checkDemoPrerequisites();
-
-  const otlpEndpoint = await getPipelineEndpoint(cfg.region, cfg.pipeline);
-  if (!otlpEndpoint) throw new Error(`No OTLP endpoint found for pipeline: ${cfg.pipeline}`);
-  printSuccess(`Pipeline endpoint: ${otlpEndpoint}`);
-
-  await createEksCluster({
-    clusterName: cfg.clusterName,
-    region: cfg.region,
-    nodeCount: cfg.nodeCount,
-    instanceType: cfg.instanceType,
-    stackName: cfg.pipeline,
-    accountId: identity.Account,
-  });
-
-  console.error();
-  await installHelmChart({ otlpEndpoint });
-
-  if (!cfg.skipOtelDemo) {
-    console.error();
-    await installOtelDemo({ otlpEndpoint });
-  }
-
-  console.error();
-  printBox([
-    '',
-    `${theme.success.bold(`${STAR} Demo Services Deployed! ${STAR}`)}`,
-    '',
-    `${theme.label('Cluster:')}    ${cfg.clusterName}`,
-    `${theme.label('Region:')}     ${cfg.region}`,
-    `${theme.label('Pipeline:')}   ${cfg.pipeline}`,
-    '',
-  ], { color: 'primary', padding: 2 });
-}
-
 export async function run() {
   try {
     // Parse CLI or run interactive REPL
@@ -75,12 +29,6 @@ export async function run() {
     if (!cfg) {
       const { startRepl } = await import('./repl.mjs');
       return startRepl();
-    }
-
-    // Demo subcommand
-    if (cfg._command === 'demo') {
-      await runDemoCommand(cfg);
-      return;
     }
 
     // Destroy subcommand
