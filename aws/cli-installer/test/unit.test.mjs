@@ -160,3 +160,66 @@ describe('EC2 demo buildUserData', () => {
     assert.ok(decoded.includes('docker-buildx'));
   });
 });
+
+// ── renderPipeline tests ─────────────────────────────────────────────────────
+
+import { renderPipeline } from '../src/render.mjs';
+
+describe('renderPipeline', () => {
+  const cfg = {
+    pipelineName: 'test-stack',
+    opensearchEndpoint: 'https://search-test-abc.us-east-1.es.amazonaws.com',
+    region: 'us-east-1',
+    iamRoleArn: 'arn:aws:iam::123456789012:role/test-osi-role',
+    prometheusUrl: 'https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-123/api/v1/remote_write',
+    serviceMapWindow: '30s',
+  };
+
+  const yaml = renderPipeline(cfg);
+
+  it('contains OTLP paths with pipeline name', () => {
+    assert.ok(yaml.includes("logs_path: '/test-stack/v1/logs'"));
+    assert.ok(yaml.includes("traces_path: '/test-stack/v1/traces'"));
+    assert.ok(yaml.includes("metrics_path: '/test-stack/v1/metrics'"));
+  });
+
+  it('contains OpenSearch endpoint in sinks', () => {
+    assert.ok(yaml.includes(cfg.opensearchEndpoint));
+  });
+
+  it('contains IAM role ARN in sinks', () => {
+    const matches = yaml.match(/sts_role_arn/g);
+    assert.ok(matches && matches.length >= 2, 'should have sts_role_arn in multiple sinks');
+  });
+
+  it('contains Prometheus URL in metrics and service-map sinks', () => {
+    const matches = yaml.match(new RegExp(cfg.prometheusUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'));
+    assert.equal(matches.length, 2, 'prometheus URL should appear in metrics + service-map sinks');
+  });
+
+  it('uses index_type for logs sink', () => {
+    assert.ok(yaml.includes('index_type: log-analytics-plain'));
+  });
+
+  it('uses index_type for traces sink', () => {
+    assert.ok(yaml.includes('index_type: trace-analytics-plain-raw'));
+  });
+
+  it('uses index_type for service map sink', () => {
+    assert.ok(yaml.includes('index_type: otel-v2-apm-service-map'));
+  });
+
+  it('contains service map window duration', () => {
+    assert.ok(yaml.includes('window_duration: 30s'));
+  });
+
+  it('routes logs, traces, and metrics from otlp-pipeline', () => {
+    assert.ok(yaml.includes("'getEventType() == \"LOG\"'"));
+    assert.ok(yaml.includes("'getEventType() == \"TRACE\"'"));
+    assert.ok(yaml.includes("'getEventType() == \"METRIC\"'"));
+  });
+
+  it('is valid YAML structure (starts with version)', () => {
+    assert.ok(yaml.startsWith("version: '2'"));
+  });
+});
