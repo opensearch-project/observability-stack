@@ -599,36 +599,50 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   const client = new OSISClient({ region: cfg.region });
 
   // Check if pipeline already exists
+  let skipCreate = false;
   try {
-    await client.send(new GetPipelineCommand({ PipelineName: cfg.pipelineName }));
-    printWarning(`Pipeline '${cfg.pipelineName}' already exists — skipping creation`);
-    printInfo('To update, delete the existing pipeline first or use a different name');
-    return;
+    const resp = await client.send(new GetPipelineCommand({ PipelineName: cfg.pipelineName }));
+    const status = resp.Pipeline?.Status;
+    if (status === 'ACTIVE') {
+      cfg.ingestEndpoints = resp.Pipeline?.IngestEndpointUrls || [];
+      printSuccess(`Pipeline '${cfg.pipelineName}' already exists (ACTIVE)`);
+      for (const url of cfg.ingestEndpoints) printInfo(`Ingestion endpoint: https://${url}`);
+      return;
+    }
+    if (status === 'CREATING') {
+      printInfo(`Pipeline '${cfg.pipelineName}' is already being created — waiting...`);
+      skipCreate = true;
+    } else {
+      printWarning(`Pipeline '${cfg.pipelineName}' exists with status ${status} — skipping creation`);
+      return;
+    }
   } catch (err) {
     if (err.name !== 'ResourceNotFoundException') throw err;
   }
 
-  try {
-    await client.send(new CreatePipelineCommand({
-      PipelineName: cfg.pipelineName,
-      MinUnits: cfg.minOcu,
-      MaxUnits: cfg.maxOcu,
-      PipelineConfigurationBody: pipelineYaml,
-      PipelineRoleArn: cfg.iamRoleArn,
-      Tags: stackTags(cfg.pipelineName),
-    }));
-    printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated`);
-  } catch (err) {
-    printError('Failed to create OSI pipeline');
-    console.error();
-    if (/AccessDenied|not authorized/i.test(err.message)) {
-      console.error(`  ${chalk.bold('Permission denied.')} Your IAM identity needs ${chalk.bold('osis:CreatePipeline')}.`);
-      console.error(`  ${chalk.dim(err.message)}`);
-    } else {
-      console.error(`  ${chalk.dim(err.message)}`);
+  if (!skipCreate) {
+    try {
+      await client.send(new CreatePipelineCommand({
+        PipelineName: cfg.pipelineName,
+        MinUnits: cfg.minOcu,
+        MaxUnits: cfg.maxOcu,
+        PipelineConfigurationBody: pipelineYaml,
+        PipelineRoleArn: cfg.iamRoleArn,
+        Tags: stackTags(cfg.pipelineName),
+      }));
+      printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated`);
+    } catch (err) {
+      printError('Failed to create OSI pipeline');
+      console.error();
+      if (/AccessDenied|not authorized/i.test(err.message)) {
+        console.error(`  ${chalk.bold('Permission denied.')} Your IAM identity needs ${chalk.bold('osis:CreatePipeline')}.`);
+        console.error(`  ${chalk.dim(err.message)}`);
+      } else {
+        console.error(`  ${chalk.dim(err.message)}`);
+      }
+      console.error();
+      throw new Error('Failed to create OSI pipeline');
     }
-    console.error();
-    throw new Error('Failed to create OSI pipeline');
   }
 
   // Wait for pipeline to become active

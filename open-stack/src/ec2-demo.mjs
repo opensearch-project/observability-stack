@@ -226,6 +226,20 @@ export async function launchDemoInstance(cfg) {
   printStep('Launching EC2 demo instance...');
 
   const ec2 = new EC2Client({ region: cfg.region });
+
+  // Check for existing running instance
+  const { Reservations } = await ec2.send(new DescribeInstancesCommand({
+    Filters: [
+      { Name: `tag:${TAG_KEY}`, Values: [cfg.pipelineName] },
+      { Name: 'instance-state-name', Values: ['running', 'pending'] },
+    ],
+  }));
+  const existing = (Reservations || []).flatMap(r => r.Instances);
+  if (existing.length) {
+    cfg.demoInstanceId = existing[0].InstanceId;
+    printSuccess(`Demo instance already running: ${cfg.demoInstanceId}`);
+    return cfg.demoInstanceId;
+  }
   const iam = new IAMClient({ region: cfg.region });
   const ssm = new SSMClient({ region: cfg.region });
 

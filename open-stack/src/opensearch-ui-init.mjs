@@ -199,7 +199,13 @@ export async function initOpenSearchUI(cfg) {
 
   // h. Trace-to-logs correlation
   if (tracesId && logsId) {
-    await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
+    const corrFind = await osuiGet(base, `/w/${wsId}/api/saved_objects/_find?type=correlations&per_page=50`, region);
+    const existingCorrs = corrFind.data?.saved_objects || [];
+    const hasTraceToLogs = existingCorrs.some(c => c.attributes?.correlationType?.startsWith('trace-to-logs'));
+    if (hasTraceToLogs) {
+      printSuccess('Trace-to-logs correlation exists');
+    } else {
+      await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
       attributes: {
         correlationType: 'trace-to-logs-otel-v1-apm-span*',
         title: 'trace-to-logs_otel-v1-apm-span*',
@@ -215,11 +221,18 @@ export async function initOpenSearchUI(cfg) {
       ],
     }, region);
     printSuccess('Trace-to-logs correlation created');
+    }
   }
 
   // i. APM config correlation
   if (tracesId && svcMapId && dcId) {
-    await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
+    const corrFind2 = await osuiGet(base, `/w/${wsId}/api/saved_objects/_find?type=correlations&per_page=50`, region);
+    const existingCorrs2 = corrFind2.data?.saved_objects || [];
+    const hasApmConfig = existingCorrs2.some(c => c.attributes?.correlationType?.startsWith('APM-Config'));
+    if (hasApmConfig) {
+      printSuccess('APM config correlation exists');
+    } else {
+      await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
       attributes: {
         correlationType: `APM-Config-${wsId}`,
         title: 'apm-config',
@@ -237,6 +250,7 @@ export async function initOpenSearchUI(cfg) {
       ],
     }, region);
     printSuccess('APM config correlation created');
+    }
   }
 
   // j. Saved queries
