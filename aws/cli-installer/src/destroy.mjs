@@ -3,10 +3,66 @@
  * Deletes in reverse dependency order: EC2 → Application → DQS → OSIS → IAM → (preserves AOS/AMP).
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
-import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand } from '@aws-sdk/client-opensearch';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
+
+async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
+  try {
+    const { ApplicationSummaries } = await os.send(new ListApplicationsCommand({}));
+    const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
+    if (!app) return;
+
+    const { dataSources } = await os.send(new GetApplicationCommand({ id: app.id }));
+    const domainArn = (dataSources || []).find(d => d.dataSourceArn?.includes(':domain/'))?.dataSourceArn;
+    if (!domainArn) return;
+
+    const domainName = domainArn.split('/').pop();
+    const { DomainStatus } = await os.send(new DescribeDomainCommand({ DomainName: domainName }));
+    if (!DomainStatus?.Endpoint) return;
+
+    // Get password from Secrets Manager or flag
+    let masterPass = opensearchPassword || '';
+    if (!masterPass) {
+      try {
+        const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+        const sm = new SecretsManagerClient({ region });
+        const { SecretString } = await sm.send(new GetSecretValueCommand({
+          SecretId: `open-stack/${pipelineName}/master-password`,
+        }));
+        masterPass = SecretString;
+      } catch { /* no secret found */ }
+    }
+    if (!masterPass) {
+      printWarning('No master password available. FGAC cleanup skipped. Pass --opensearch-password to clean up role mappings.');
+      return;
+    }
+
+    const endpoint = `https://${DomainStatus.Endpoint}`;
+    const url = `${endpoint}/_plugins/_security/api/rolesmapping/all_access`;
+    const auth = Buffer.from(`admin:${masterPass}`).toString('base64');
+    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
+
+    const getResp = await fetch(url, { headers });
+    if (!getResp.ok) return;
+
+    const data = await getResp.json();
+    const existing = data?.all_access?.backend_roles || [];
+    const filtered = existing.filter(r => !r.includes(pipelineName));
+
+    if (filtered.length !== existing.length) {
+      await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
+      });
+      printSuccess('FGAC backend role mappings cleaned up');
+    }
+  } catch (e) {
+    printWarning(`FGAC cleanup: ${e.message}`);
+  }
+}
 
 export async function destroy(cfg) {
   const { pipelineName, region } = cfg;
@@ -18,8 +74,11 @@ export async function destroy(cfg) {
   // 1. EC2 demo instance + SG + instance profile
   await teardownDemoInstance(cfg);
 
-  // 2. OpenSearch Application
+  // 2. Clean up FGAC backend role mappings (before deleting Application)
   const os = new OpenSearchClient({ region });
+  await cleanupFgacRoles(region, pipelineName, cfg.opensearchPassword, os);
+
+  // 3. OpenSearch Application
   try {
     const { ApplicationSummaries } = await os.send(new ListApplicationsCommand({}));
     const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
