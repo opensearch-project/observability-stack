@@ -287,9 +287,9 @@ export async function mapOsiRoleInDomain(cfg) {
     try {
       masterPass = await getMasterPassword(cfg.region, cfg.pipelineName);
     } catch (e) {
-      printWarning('No master password available. Provide --opensearch-password when reusing an existing domain.');
-      printInfo('FGAC mapping skipped. You may need to manually map IAM roles in OpenSearch Security.');
-      return;
+      printError('No master password available.');
+      printInfo('Provide --opensearch-password to supply the domain master password.');
+      throw new Error('FGAC mapping requires a master password. Cannot continue.');
     }
   }
 

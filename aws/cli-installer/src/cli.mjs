@@ -207,6 +207,9 @@ export function validateConfig(cfg) {
   if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
     errors.push('--opensearch-endpoint required when reusing OpenSearch');
   }
+  if (cfg.osAction === 'reuse' && !cfg.opensearchPassword) {
+    errors.push('--opensearch-password required when reusing an existing OpenSearch domain (needed for FGAC mapping)');
+  }
   if (cfg.iamAction === 'reuse' && !cfg.iamRoleArn) {
     errors.push('--iam-role-arn required when reusing IAM role');
   }
