@@ -3,7 +3,7 @@
  * Deletes in reverse dependency order: EC2 → Application → DQS → OSIS → IAM → (preserves AOS/AMP).
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
-import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
@@ -150,7 +150,34 @@ export async function destroy(cfg) {
     if (e.name !== 'ResourceNotFoundException') printWarning(`Secret cleanup: ${e.message}`);
   }
 
+  // 7. OpenSearch domain (if tagged with this stack)
+  try {
+    const { ResourceGroupsTaggingAPIClient, GetResourcesCommand } = await import('@aws-sdk/client-resource-groups-tagging-api');
+    const tagging = new ResourceGroupsTaggingAPIClient({ region });
+    const { ResourceTagMappingList } = await tagging.send(new GetResourcesCommand({
+      TagFilters: [{ Key: 'observability-stack', Values: [pipelineName] }],
+      ResourceTypeFilters: ['es:domain'],
+    }));
+    for (const r of ResourceTagMappingList || []) {
+      const domainName = r.ResourceARN.split('/').pop();
+      await os.send(new DeleteDomainCommand({ DomainName: domainName }));
+      printSuccess(`OpenSearch domain '${domainName}' deletion initiated`);
+    }
+  } catch (e) { printWarning(`Domain cleanup: ${e.message}`); }
+
+  // 8. AMP workspace (if tagged with this stack)
+  try {
+    const { AmpClient, ListWorkspacesCommand, DeleteWorkspaceCommand } = await import('@aws-sdk/client-amp');
+    const amp = new AmpClient({ region });
+    const { workspaces } = await amp.send(new ListWorkspacesCommand({ alias: pipelineName }));
+    for (const w of workspaces || []) {
+      if (w.alias === pipelineName) {
+        await amp.send(new DeleteWorkspaceCommand({ workspaceId: w.workspaceId }));
+        printSuccess(`AMP workspace '${w.alias}' deleted`);
+      }
+    }
+  } catch (e) { printWarning(`AMP cleanup: ${e.message}`); }
+
   console.error();
   printSuccess('Destroy complete');
-  printInfo('Note: OpenSearch domain and AMP workspace were preserved (shared resources)');
 }
