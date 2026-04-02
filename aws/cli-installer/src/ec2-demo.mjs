@@ -198,7 +198,7 @@ async function createDemoInstanceProfile(iam, cfg) {
 
   const ingestPolicy = JSON.stringify({
     Version: '2012-10-17',
-    Statement: [{ Effect: 'Allow', Action: 'osis:Ingest', Resource: `arn:aws:osis:${cfg.region}:*:pipeline/${cfg.pipelineName}` }],
+    Statement: [{ Effect: 'Allow', Action: 'osis:Ingest', Resource: `arn:aws:osis:${cfg.region}:${cfg.accountId}:pipeline/${cfg.pipelineName}` }],
   });
 
   try {

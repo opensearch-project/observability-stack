@@ -5,9 +5,8 @@ Deploy the [Observability Stack](https://github.com/opensearch-project/observabi
 ## Quick Start
 
 ```bash
-git clone git@github.com:kylehounslow/observability-stack.git
-cd observability-stack && git checkout feat/aws-cli-installer
-cd aws/cli-installer && npm install
+git clone https://github.com/opensearch-project/observability-stack.git
+cd observability-stack/aws/cli-installer && npm install
 
 node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
