@@ -33,6 +33,7 @@ export function parseCli(argv) {
   // OpenSearch — reuse
   program
     .option('--opensearch-endpoint <url>', 'Reuse an existing OpenSearch endpoint')
+    .option('--opensearch-user <user>', 'OpenSearch master username', 'admin')
     .option('--opensearch-password <password>', 'Master password for existing OpenSearch domain (for FGAC mapping)');
   // OpenSearch — create
   program
@@ -114,6 +115,7 @@ function optsToConfig(opts) {
     region: opts.region || '',
     osAction,
     opensearchEndpoint: opts.opensearchEndpoint || '',
+    opensearchUser: opts.opensearchUser || 'admin',
     opensearchPassword: opts.opensearchPassword || '',
     osDomainName: opts.osDomainName || '',
     osInstanceType: opts.osInstanceType,

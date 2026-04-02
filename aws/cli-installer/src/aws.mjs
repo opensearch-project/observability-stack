@@ -56,7 +56,6 @@ import {
 // ── Tagging ─────────────────────────────────────────────────────────────────
 
 const SECRET_PREFIX = 'open-stack';
-const MASTER_USER = 'admin';
 
 function generatePassword() {
   return randomBytes(16).toString('base64url') + '!A1';
@@ -224,7 +223,7 @@ async function createManagedDomain(cfg) {
           Enabled: true,
           InternalUserDatabaseEnabled: true,
           MasterUserOptions: {
-            MasterUserName: MASTER_USER,
+            MasterUserName: cfg.opensearchUser || 'admin',
             MasterUserPassword: cfg._masterPassword,
           },
         },
@@ -291,7 +290,7 @@ export async function mapOsiRoleInDomain(cfg) {
   }
 
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
-  const auth = Buffer.from(`${MASTER_USER}:${masterPass}`).toString('base64');
+  const auth = Buffer.from(`${cfg.opensearchUser || 'admin'}:${masterPass}`).toString('base64');
 
   // Map both the OSI pipeline role and the caller's role (for OpenSearch UI access)
   const callerRoleArn = cfg.callerRoleArn || '';
