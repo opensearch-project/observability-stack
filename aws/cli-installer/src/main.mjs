@@ -181,7 +181,7 @@ export async function executePipeline(cfg) {
       `${pad('')} ${theme.muted(`└─ Connect: aws ssm start-session --target ${cfg.demoInstanceId} --region ${cfg.region}`)}`,
     ] : []),
     '',
-    `${theme.success.bold('→ Open your dashboards:')}`,
+    `${theme.success.bold('→ Open your dashboards')} ${theme.muted('(requires signing into your AWS account)')}`,
     `  ${cfg.dashboardsUrl}`,
     ...(cfg.demoInstanceId ? [``, `  ${theme.muted('Demo data may take 10-15 minutes to appear.')}`] : []),
     '',
