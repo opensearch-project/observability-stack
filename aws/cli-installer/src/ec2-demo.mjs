@@ -20,7 +20,7 @@ import {
 } from '@aws-sdk/client-ssm';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 
-const TAG_KEY = 'open-stack:pipeline-name';
+const TAG_KEY = 'observability-stack:pipeline-name';
 const INSTANCE_TYPE = 't3.xlarge';
 
 function tags(pipelineName, extra = {}) {

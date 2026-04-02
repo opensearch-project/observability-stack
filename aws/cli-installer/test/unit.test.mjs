@@ -96,7 +96,7 @@ import { _tags, _tagSpec, _buildUserData } from '../src/ec2-demo.mjs';
 describe('EC2 demo tags', () => {
   it('includes pipeline tag and Name tag', () => {
     const result = _tags('my-stack');
-    assert.equal(result[0].Key, 'open-stack:pipeline-name');
+    assert.equal(result[0].Key, 'observability-stack:pipeline-name');
     assert.equal(result[0].Value, 'my-stack');
     assert.equal(result[1].Key, 'Name');
     assert.equal(result[1].Value, 'my-stack-demo');

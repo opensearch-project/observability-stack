@@ -7,7 +7,7 @@ export async function runList(session) {
   const stacks = await loadStacks(session.region);
 
   if (stacks.length === 0) {
-    printInfo('No open-stack stacks found in this region.');
+    printInfo('No stacks found in this region.');
     console.error();
     return;
   }

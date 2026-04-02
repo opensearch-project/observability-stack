@@ -28,7 +28,7 @@ Takes ~15 minutes. When complete, the CLI prints a dashboard URL — open it and
 | IAM roles | Pipeline role (OSIS → OpenSearch + AMP) and DQS role |
 | EC2 instance (t3.xlarge) | Runs OTel Demo + example agents (29 containers generating telemetry) |
 
-All resources are tagged with `open-stack:pipeline-name` for identification and cleanup.
+All resources are tagged with `observability-stack:pipeline-name` for identification and cleanup.
 
 ## Usage
 

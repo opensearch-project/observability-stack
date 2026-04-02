@@ -29,7 +29,7 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
         const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
         const sm = new SecretsManagerClient({ region });
         const { SecretString } = await sm.send(new GetSecretValueCommand({
-          SecretId: `open-stack/${pipelineName}/master-password`,
+          SecretId: `observability-stack/${pipelineName}/master-password`,
         }));
         masterPass = SecretString;
       } catch { /* no secret found */ }
@@ -142,7 +142,7 @@ export async function destroy(cfg) {
     const { SecretsManagerClient, DeleteSecretCommand } = await import('@aws-sdk/client-secrets-manager');
     const sm = new SecretsManagerClient({ region });
     await sm.send(new DeleteSecretCommand({
-      SecretId: `open-stack/${pipelineName}/master-password`,
+      SecretId: `observability-stack/${pipelineName}/master-password`,
       ForceDeleteWithoutRecovery: true,
     }));
     printSuccess('Master password secret deleted');

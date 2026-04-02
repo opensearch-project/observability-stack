@@ -171,7 +171,7 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('OSI Pipeline:'))} ${cfg.ingestEndpoints?.length ? `https://${cfg.ingestEndpoints[0]}` : cfg.pipelineName}`,
     `${theme.label(pad('OSI Pipeline Role:'))} ${cfg.iamRoleArn}`,
     `${theme.label(pad('OpenSearch:'))} ${cfg.opensearchEndpoint}`,
-    `${theme.label(pad('OpenSearch Master Password:'))} Secrets Manager: open-stack/${cfg.pipelineName}/master-password`,
+    `${theme.label(pad('OpenSearch Master Password:'))} Secrets Manager: observability-stack/${cfg.pipelineName}/master-password`,
     `${theme.label(pad('OpenSearch UI:'))} ${cfg.dashboardsUrl}`,
     `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
     `${theme.label(pad('Direct Query Service Datasource:'))} ${cfg.dqsDataSourceArn || 'n/a'}`,

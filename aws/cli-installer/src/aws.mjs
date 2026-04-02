@@ -55,7 +55,7 @@ import {
 
 // ── Tagging ─────────────────────────────────────────────────────────────────
 
-const SECRET_PREFIX = 'open-stack';
+const SECRET_PREFIX = 'observability-stack';
 
 function generatePassword() {
   return randomBytes(16).toString('base64url') + '!A1';
@@ -88,7 +88,7 @@ async function getMasterPassword(region, pipelineName) {
   return SecretString;
 }
 
-const TAG_KEY = 'open-stack';
+const TAG_KEY = 'observability-stack';
 
 function stackTags(stackName) {
   return [{ Key: TAG_KEY, Value: stackName }];
