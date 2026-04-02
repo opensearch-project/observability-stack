@@ -290,7 +290,7 @@ export async function mapOsiRoleInDomain(cfg) {
     }
   }
 
-  const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
+  const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping`;
   const auth = Buffer.from(`${cfg.opensearchUser || 'admin'}:${masterPass}`).toString('base64');
 
   // Map both the OSI pipeline role and the caller's role (for OpenSearch UI access)
@@ -300,35 +300,38 @@ export async function mapOsiRoleInDomain(cfg) {
     newRoles.push(callerRoleArn);
   }
 
+  // Map to both all_access and security_manager for full permissions (including PPL)
+  const rolesToMap = ['all_access', 'security_manager'];
+
   try {
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
 
-    // GET existing mapping and merge to avoid overwriting other stacks' roles
-    const getResp = await fetch(url, { headers });
-    let existing = [];
-    if (getResp.ok) {
-      const data = await getResp.json();
-      existing = data?.all_access?.backend_roles || [];
-    }
-    const merged = [...new Set([...existing, ...newRoles])];
+    for (const role of rolesToMap) {
+      const roleUrl = `${url}/${role}`;
+      const getResp = await fetch(roleUrl, { headers });
+      let existing = [];
+      if (getResp.ok) {
+        const data = await getResp.json();
+        existing = data?.[role]?.backend_roles || [];
+      }
+      const merged = [...new Set([...existing, ...newRoles])];
 
-    const resp = await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify([
-        { op: 'add', path: '/backend_roles', value: merged },
-      ]),
-    });
+      const resp = await fetch(roleUrl, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify([
+          { op: 'add', path: '/backend_roles', value: merged },
+        ]),
+      });
 
-    if (resp.ok) {
-      printSuccess(`OSI role mapped to all_access in OpenSearch`);
-    } else {
-      const body = await resp.text();
-      printWarning(`FGAC mapping returned ${resp.status}: ${body}`);
-      printInfo('You may need to manually map the IAM role in OpenSearch UI → Security → Roles');
+      if (!resp.ok) {
+        const body = await resp.text();
+        printWarning(`FGAC mapping for ${role} returned ${resp.status}: ${body}`);
+      }
     }
+    printSuccess('Roles mapped to all_access and security_manager in OpenSearch');
   } catch (err) {
-    printWarning(`Could not map OSI role in FGAC: ${err.message}`);
+    printWarning(`Could not map roles in FGAC: ${err.message}`);
     printInfo('You may need to manually map the IAM role in OpenSearch UI → Security → Roles');
   }
 }
