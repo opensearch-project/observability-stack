@@ -193,11 +193,14 @@ async function createManagedDomain(cfg) {
   } catch (err) {
     if (err.name !== 'ResourceNotFoundException') throw err;
 
+    // Open access policy — FGAC (fine-grained access control) handles authorization.
+    // A scoped Principal (e.g. account root) blocks basic auth requests, which
+    // prevents the Security API from working for FGAC role mapping.
     const accessPolicy = JSON.stringify({
       Version: '2012-10-17',
       Statement: [{
         Effect: 'Allow',
-        Principal: { AWS: `arn:aws:iam::${cfg.accountId}:root` },
+        Principal: { AWS: '*' },
         Action: 'es:*',
         Resource: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName}/*`,
       }],
