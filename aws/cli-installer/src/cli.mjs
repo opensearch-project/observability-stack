@@ -54,9 +54,16 @@ export function parseCli(argv) {
     .option('--prometheus-url <url>', 'Reuse an existing APS remote-write URL')
     .option('--aps-workspace-alias <name>', 'Alias for new APS workspace');
 
-  // Dashboards
+  // DQS (Direct Query Service)
   program
-    .option('--dashboards-url <url>', 'Reuse an existing OpenSearch UI URL');
+    .option('--dqs-role-arn <arn>', 'Reuse an existing DQS Prometheus IAM role')
+    .option('--dqs-role-name <name>', 'Name for new DQS Prometheus IAM role')
+    .option('--dqs-data-source-name <name>', 'Name for the Direct Query data source');
+
+  // Dashboards / Application
+  program
+    .option('--dashboards-url <url>', 'Reuse an existing OpenSearch UI URL')
+    .option('--app-name <name>', 'Name for new OpenSearch Application');
 
   // Pipeline tuning
   program
@@ -135,11 +142,11 @@ function optsToConfig(opts) {
     serviceMapWindow: opts.serviceMapWindow,
     dashboardsAction,
     dashboardsUrl: opts.dashboardsUrl || '',
-    dqsRoleName: '',
-    dqsRoleArn: '',
-    dqsDataSourceName: '',
+    dqsRoleName: opts.dqsRoleName || '',
+    dqsRoleArn: opts.dqsRoleArn || '',
+    dqsDataSourceName: opts.dqsDataSourceName || '',
     dqsDataSourceArn: '',
-    appName: '',
+    appName: opts.appName || '',
     appId: '',
     appEndpoint: '',
     outputFile: opts.output || '',

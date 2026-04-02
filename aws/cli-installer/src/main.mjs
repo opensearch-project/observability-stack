@@ -248,6 +248,7 @@ function printSummary(cfg) {
   // Direct Query & Application
   const dqEntries = [];
   if (cfg.dqsRoleName) dqEntries.push(['DQS role', cfg.dqsRoleName]);
+  else if (cfg.dqsRoleArn) dqEntries.push(['DQS role ARN', cfg.dqsRoleArn]);
   if (cfg.dqsDataSourceName) dqEntries.push(['Data source name', cfg.dqsDataSourceName]);
   if (cfg.appName) dqEntries.push(['Application name', cfg.appName]);
 

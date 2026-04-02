@@ -22,6 +22,8 @@ export function createDefaultConfig() {
     region: '',
     osAction: '',
     opensearchEndpoint: '',
+    opensearchUser: 'admin',
+    opensearchPassword: '',
     osDomainName: '',
     osInstanceType: DEFAULTS.osInstanceType,
     osInstanceCount: DEFAULTS.osInstanceCount,
@@ -49,6 +51,7 @@ export function createDefaultConfig() {
     ingestEndpoints: [],
     outputFile: '',
     dryRun: false,
+    skipDemo: false,
     accountId: '',
   };
 }

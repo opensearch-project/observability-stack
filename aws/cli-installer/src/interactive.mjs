@@ -142,6 +142,14 @@ async function stepOpenSearch(cfg) {
         cfg.opensearchEndpoint = ep;
       }
 
+      // Prompt for master username
+      const user = await eInput({
+        message: 'OpenSearch master username',
+        default: cfg.opensearchUser || 'admin',
+      });
+      if (user === GoBack) continue;
+      cfg.opensearchUser = user;
+
       // Prompt for master password (needed for FGAC mapping)
       const pass = await eInput({
         message: 'OpenSearch master password (for FGAC role mapping)',
@@ -432,7 +440,7 @@ export async function runCreateWizard(session = null) {
 
   if (!session) printHeader();
 
-  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepDqsRole, stepDqsDataSource, stepApp, stepTuning];
+  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepConnectedDataSourceRole, stepConnectedDataSource, stepApp, stepTuning];
   const visited = [];
   let i = 0;
 
