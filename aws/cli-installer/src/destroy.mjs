@@ -4,7 +4,7 @@
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
 import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand } from '@aws-sdk/client-opensearch';
-import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand } from '@aws-sdk/client-iam';
+import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
 
@@ -125,6 +125,10 @@ export async function destroy(cfg) {
       const { PolicyNames } = await iam.send(new ListRolePoliciesCommand({ RoleName: roleName }));
       for (const p of PolicyNames || []) {
         await iam.send(new DeleteRolePolicyCommand({ RoleName: roleName, PolicyName: p }));
+      }
+      const { AttachedPolicies } = await iam.send(new ListAttachedRolePoliciesCommand({ RoleName: roleName }));
+      for (const p of AttachedPolicies || []) {
+        await iam.send(new DetachRolePolicyCommand({ RoleName: roleName, PolicyArn: p.PolicyArn }));
       }
       await iam.send(new DeleteRoleCommand({ RoleName: roleName }));
       printSuccess(`IAM role ${roleName} deleted`);
