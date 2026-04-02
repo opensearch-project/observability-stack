@@ -70,11 +70,12 @@ async function storeMasterPassword(region, pipelineName, password) {
       SecretString: password,
       Description: `OpenSearch master password for ${pipelineName}`,
     }));
+    printSuccess(`Master password stored in Secrets Manager (${secretName})`);
   } catch (e) {
     if (e.name === 'ResourceExistsException') {
-      // Update existing
       const { PutSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
       await sm.send(new PutSecretValueCommand({ SecretId: secretName, SecretString: password }));
+      printSuccess(`Master password updated in Secrets Manager (${secretName})`);
     } else throw e;
   }
 }
