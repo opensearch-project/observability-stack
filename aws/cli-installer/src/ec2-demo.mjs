@@ -313,6 +313,12 @@ export async function teardownDemoInstance(cfg) {
     await iam.send(new RemoveRoleFromInstanceProfileCommand({ InstanceProfileName: roleName, RoleName: roleName }));
     await iam.send(new DeleteInstanceProfileCommand({ InstanceProfileName: roleName }));
     await iam.send(new DeleteRolePolicyCommand({ RoleName: roleName, PolicyName: 'osis-ingest' }));
+    // Detach any managed policies
+    const { ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } = await import('@aws-sdk/client-iam');
+    const { AttachedPolicies } = await iam.send(new ListAttachedRolePoliciesCommand({ RoleName: roleName }));
+    for (const p of AttachedPolicies || []) {
+      await iam.send(new DetachRolePolicyCommand({ RoleName: roleName, PolicyArn: p.PolicyArn }));
+    }
     await iam.send(new DeleteRoleCommand({ RoleName: roleName }));
     printSuccess('Instance profile and role deleted');
   } catch (e) {
