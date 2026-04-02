@@ -207,6 +207,15 @@ async function createDemoInstanceProfile(iam, cfg) {
 
   await iam.send(new PutRolePolicyCommand({ RoleName: roleName, PolicyName: 'osis-ingest', PolicyDocument: ingestPolicy }));
 
+  // Attach SSM managed policy for debugging access
+  const { AttachRolePolicyCommand } = await import('@aws-sdk/client-iam');
+  try {
+    await iam.send(new AttachRolePolicyCommand({
+      RoleName: roleName,
+      PolicyArn: 'arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore',
+    }));
+  } catch (e) { /* already attached */ }
+
   try {
     await iam.send(new CreateInstanceProfileCommand({ InstanceProfileName: profileName, Tags: tags(cfg.pipelineName) }));
     await iam.send(new AddRoleToInstanceProfileCommand({ InstanceProfileName: profileName, RoleName: roleName }));
