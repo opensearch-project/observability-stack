@@ -176,7 +176,10 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
     `${theme.label(pad('Direct Query Service Datasource:'))} ${cfg.dqsDataSourceArn || 'n/a'}`,
     `${theme.label(pad('Direct Query Service Role:'))} ${cfg.dqsRoleArn || 'n/a'}`,
-    ...(cfg.demoInstanceId ? [`${theme.label(pad('Demo EC2 Instance:'))} ${cfg.demoInstanceId}`] : []),
+    ...(cfg.demoInstanceId ? [
+      `${theme.label(pad('Demo EC2 Instance:'))} ${cfg.demoInstanceId}`,
+      `${pad('')} ${theme.muted(`└─ Connect: aws ssm start-session --target ${cfg.demoInstanceId} --region ${cfg.region}`)}`,
+    ] : []),
     '',
     `${theme.success.bold('→ Open your dashboards:')}`,
     `  ${cfg.dashboardsUrl}`,
