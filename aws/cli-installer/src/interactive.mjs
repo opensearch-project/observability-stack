@@ -141,6 +141,14 @@ async function stepOpenSearch(cfg) {
         if (ep === GoBack) continue;
         cfg.opensearchEndpoint = ep;
       }
+
+      // Prompt for master password (needed for FGAC mapping)
+      const pass = await eInput({
+        message: 'OpenSearch master password (for FGAC role mapping)',
+        validate: (v) => v.trim().length > 0 || 'Password is required to configure access',
+      });
+      if (pass === GoBack) continue;
+      cfg.opensearchPassword = pass;
     } else {
       cfg.osAction = 'create';
 

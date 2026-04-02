@@ -278,14 +278,16 @@ export async function mapOsiRoleInDomain(cfg) {
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
-  // Retrieve master password from Secrets Manager
-  let masterPass;
-  try {
-    masterPass = await getMasterPassword(cfg.region, cfg.pipelineName);
-  } catch (e) {
-    printWarning(`Could not retrieve master password: ${e.message}`);
-    printInfo('FGAC mapping skipped. You may need to manually map IAM roles in OpenSearch Security.');
-    return;
+  // Retrieve master password — from flag (reuse) or Secrets Manager (created by CLI)
+  let masterPass = cfg.opensearchPassword || '';
+  if (!masterPass) {
+    try {
+      masterPass = await getMasterPassword(cfg.region, cfg.pipelineName);
+    } catch (e) {
+      printWarning('No master password available. Provide --opensearch-password when reusing an existing domain.');
+      printInfo('FGAC mapping skipped. You may need to manually map IAM roles in OpenSearch Security.');
+      return;
+    }
   }
 
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping/all_access`;
