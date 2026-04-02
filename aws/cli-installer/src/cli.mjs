@@ -196,6 +196,12 @@ export function validateConfig(cfg) {
   const errors = [];
 
   if (!cfg.pipelineName) errors.push('--pipeline-name is required');
+  if (cfg.pipelineName && cfg.pipelineName.length > 28) {
+    errors.push(`--pipeline-name must be 28 characters or fewer (got ${cfg.pipelineName.length}). This limit is imposed by OSIS pipeline naming.`);
+  }
+  if (cfg.pipelineName && !/^[a-z][a-z0-9-]*$/.test(cfg.pipelineName)) {
+    errors.push('--pipeline-name must start with a lowercase letter and contain only lowercase letters, numbers, and hyphens');
+  }
   if (!cfg.region) errors.push('--region is required');
 
   if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
