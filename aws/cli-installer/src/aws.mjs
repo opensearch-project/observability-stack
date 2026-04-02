@@ -250,9 +250,9 @@ async function createManagedDomain(cfg) {
   }
 
   // Poll for endpoint
-  const spinner = createSpinner('Provisioning OpenSearch domain (15-20 min)...');
+  const spinner = createSpinner('Provisioning OpenSearch domain (20-30 min)...');
   spinner.start();
-  const maxWait = 1200_000; // 20 min
+  const maxWait = 1800_000; // 30 min
   const interval = 10_000;
   const start = Date.now();
 
@@ -535,7 +535,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   // Wait for pipeline to become active
   const spinner = createSpinner('Waiting for pipeline to activate...');
   spinner.start();
-  const maxWait = 900_000; // 15 min
+  const maxWait = 1200_000; // 20 min
   const start = Date.now();
 
   while (Date.now() - start < maxWait) {
