@@ -145,11 +145,20 @@ export async function checkRequirements(cfg) {
   }
 
   cfg.accountId = identity.Account;
-  // Extract the IAM role ARN from the caller identity for FGAC and OpenSearch UI access
-  // identity.Arn is like arn:aws:sts::123:assumed-role/RoleName/session
-  const arnMatch = identity.Arn.match(/assumed-role\/([^/]+)\//);
-  if (arnMatch) {
-    cfg.callerRoleArn = `arn:aws:iam::${cfg.accountId}:role/${arnMatch[1]}`;
+  // Extract the caller's IAM principal for FGAC mapping.
+  // Handles: assumed-role, IAM user, federated user, and root.
+  const arn = identity.Arn;
+  const assumedMatch = arn.match(/assumed-role\/([^/]+)\//);
+  const userMatch = arn.match(/:user\/(.+)$/);
+  const fedMatch = arn.match(/:federated-user\/(.+)$/);
+  if (assumedMatch) {
+    cfg.callerPrincipal = { arn: `arn:aws:iam::${cfg.accountId}:role/${assumedMatch[1]}`, type: 'role' };
+  } else if (userMatch) {
+    cfg.callerPrincipal = { arn, type: 'user' };
+  } else if (fedMatch) {
+    cfg.callerPrincipal = { arn, type: 'user' };
+  } else if (arn.endsWith(':root')) {
+    cfg.callerPrincipal = { arn, type: 'user' };
   }
   printSuccess(`Authenticated — account ${cfg.accountId}`);
   printInfo(`Identity: ${identity.Arn}`);
@@ -296,11 +305,16 @@ export async function mapOsiRoleInDomain(cfg) {
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping`;
   const auth = Buffer.from(`${cfg.opensearchUser || 'admin'}:${masterPass}`).toString('base64');
 
-  // Map both the OSI pipeline role and the caller's role (for OpenSearch UI access)
-  const callerRoleArn = cfg.callerRoleArn || '';
-  const newRoles = [cfg.iamRoleArn];
-  if (callerRoleArn && callerRoleArn !== cfg.iamRoleArn) {
-    newRoles.push(callerRoleArn);
+  // Map both the OSI pipeline role and the caller's principal (for OpenSearch UI access)
+  const callerPrincipal = cfg.callerPrincipal; // { arn, type: 'role'|'user' }
+  const newBackendRoles = [cfg.iamRoleArn];
+  const newUsers = [];
+  if (callerPrincipal && callerPrincipal.arn !== cfg.iamRoleArn) {
+    if (callerPrincipal.type === 'role') {
+      newBackendRoles.push(callerPrincipal.arn);
+    } else {
+      newUsers.push(callerPrincipal.arn);
+    }
   }
 
   // Map to both all_access and security_manager for full permissions (including PPL)
@@ -312,19 +326,25 @@ export async function mapOsiRoleInDomain(cfg) {
     for (const role of rolesToMap) {
       const roleUrl = `${url}/${role}`;
       const getResp = await fetch(roleUrl, { headers });
-      let existing = [];
+      let existingBackendRoles = [];
+      let existingUsers = [];
       if (getResp.ok) {
         const data = await getResp.json();
-        existing = data?.[role]?.backend_roles || [];
+        existingBackendRoles = data?.[role]?.backend_roles || [];
+        existingUsers = data?.[role]?.users || [];
       }
-      const merged = [...new Set([...existing, ...newRoles])];
+      const mergedBackendRoles = [...new Set([...existingBackendRoles, ...newBackendRoles])];
+      const mergedUsers = [...new Set([...existingUsers, ...newUsers])];
+
+      const ops = [{ op: 'add', path: '/backend_roles', value: mergedBackendRoles }];
+      if (newUsers.length) {
+        ops.push({ op: 'add', path: '/users', value: mergedUsers });
+      }
 
       const resp = await fetch(roleUrl, {
         method: 'PATCH',
         headers,
-        body: JSON.stringify([
-          { op: 'add', path: '/backend_roles', value: merged },
-        ]),
+        body: JSON.stringify(ops),
       });
 
       if (!resp.ok) {
