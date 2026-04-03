@@ -451,3 +451,129 @@ export function printTable(headers, rows) {
   console.error(`  ${theme.muted(BOX.bl + BOX.h.repeat(totalWidth + 2) + BOX.br)}`);
   console.error();
 }
+
+// ── ASCII Art Animations ─────────────────────────────────────────────────────
+
+// Owl searching through data — for OpenSearch domain provisioning
+const OPENSEARCH_FRAMES = [
+  [
+    '        {o,o}    ◇ searching...',
+    '        |)__)    ◇ ◇',
+    '        -"-"-    ◇ ◇ ◇',
+    '       /|   |\\              ',
+    '      ˢᵉᵃʳᶜʰⁱⁿᵍ ᵗʰᵉ ⁱⁿᵈᵉˣ ',
+  ],
+  [
+    '        {O,o}      ◈ indexing...',
+    '        |)__)      ◈ ◈',
+    '        -"-"-      ◈ ◈ ◈',
+    '       /|   |\\              ',
+    '      ˢᶜᵃⁿⁿⁱⁿᵍ ᶜˡᵘˢᵗᵉʳˢ   ',
+  ],
+  [
+    '        {o,O}        ◆ mapping...',
+    '        |)__)        ◆ ◆',
+    '        -"-"-        ◆ ◆ ◆',
+    '       /|   |\\              ',
+    '      ᵐᵃᵖᵖⁱⁿᵍ ˢʰᵃʳᵈˢ      ',
+  ],
+  [
+    '        {O,O}  ★ found it!',
+    '        |)__)  ★ ★',
+    '        -"-"-  ★ ★ ★',
+    '       /|   |\\              ',
+    '      ᵃˡᵐᵒˢᵗ ʳᵉᵃᵈʸ...     ',
+  ],
+];
+
+// Fish swimming back and forth through the pipeline
+const FISH_RIGHT = '><(((º>';
+const FISH_LEFT = '<º)))><';
+const PIPE_WIDTH = 36;
+const PIPE_CAPTIONS = [
+  'ᵈᵃᵗᵃ ᶠˡᵒʷⁱⁿᵍ ᵗʰʳᵒᵘᵍʰ',
+  'ᵇᵘⁱˡᵈⁱⁿᵍ ᵗʰᵉ ˢᵗʳᵉᵃᵐ',
+  'ᶜᵒⁿⁿᵉᶜᵗⁱⁿᵍ ⁿᵒᵈᵉˢ',
+  'ᵃˡᵐᵒˢᵗ ᵗʰᵉʳᵉ...',
+];
+
+function buildPipelineFrame(pos, goingRight) {
+  const fish = goingRight ? FISH_RIGHT : FISH_LEFT;
+  const lane = ' '.repeat(PIPE_WIDTH);
+  const row = lane.slice(0, pos) + fish + lane.slice(pos + fish.length);
+  const pipe = '═'.repeat(PIPE_WIDTH);
+  const caption = PIPE_CAPTIONS[Math.floor(pos / (PIPE_WIDTH / PIPE_CAPTIONS.length)) % PIPE_CAPTIONS.length];
+  return [
+    `  ${pipe}`,
+    `  ${row}`,
+    `  ${pipe}`,
+    `  ${caption}`,
+  ];
+}
+
+/**
+ * Create an ASCII art animator that renders frames below the spinner.
+ * Stops the spinner and takes over status display to prevent flicker.
+ * Call .start(spinner) to begin, .stop() to clean up.
+ * @param {'opensearch'|'pipeline'} type - Which animation to show
+ */
+export function createAsciiAnimation(type) {
+  const isOpenSearch = type === 'opensearch';
+  const colorFn = isOpenSearch ? theme.accent : theme.primary;
+  let timer = null;
+  let lineCount = 0;
+  let statusFn = null;
+
+  // Pipeline state
+  let fishPos = 0;
+  let goingRight = true;
+  const maxPos = PIPE_WIDTH - FISH_RIGHT.length;
+
+  // OpenSearch state
+  let osFrame = 0;
+
+  function getFrame() {
+    if (isOpenSearch) return OPENSEARCH_FRAMES[(osFrame++) % OPENSEARCH_FRAMES.length];
+    const frame = buildPipelineFrame(fishPos, goingRight);
+    if (goingRight) { fishPos++; if (fishPos >= maxPos) goingRight = false; }
+    else { fishPos--; if (fishPos <= 0) goingRight = true; }
+    return frame;
+  }
+
+  function render() {
+    if (lineCount > 0) process.stderr.write(`\x1B[${lineCount}A\x1B[J`);
+    const frame = getFrame();
+    const status = statusFn ? `  ${theme.primary('⠋')} ${statusFn()}` : '';
+    const lines = [...frame.map((l) => `  ${colorFn(l)}`), ...(status ? [status] : [])];
+    process.stderr.write(lines.join('\n') + '\n');
+    lineCount = lines.length;
+  }
+
+  function cleanup() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (lineCount > 0) { process.stderr.write(`\x1B[${lineCount}A\x1B[J`); lineCount = 0; }
+    process.removeListener('SIGINT', onSigint);
+  }
+
+  function onSigint() {
+    cleanup();
+    console.error();
+    console.error(`  ${theme.muted('Goodbye.')}`);
+    console.error();
+    process.exit(130);
+  }
+
+  return {
+    /** @param {import('ora').Ora} spinner - stops it and takes over display */
+    start(spinner) {
+      if (spinner) spinner.stop();
+      process.on('SIGINT', onSigint);
+      lineCount = 0;
+      render();
+      timer = setInterval(render, isOpenSearch ? 600 : 120);
+    },
+    /** Update the status text shown below the art */
+    setStatus(fn) { statusFn = fn; },
+    stop() { cleanup(); },
+  };
+}

@@ -43,6 +43,7 @@ import {
   printWarning,
   printInfo,
   createSpinner,
+  createAsciiAnimation,
 } from './ui.mjs';
 import chalk from 'chalk';
 import { randomBytes } from 'node:crypto';
@@ -261,9 +262,12 @@ async function createManagedDomain(cfg) {
   // Poll for endpoint
   const spinner = createSpinner('Provisioning OpenSearch domain (20-30 min)...');
   spinner.start();
+  const anim = createAsciiAnimation('opensearch');
+  anim.start(spinner);
   const maxWait = 1800_000; // 30 min
   const interval = 10_000;
   const start = Date.now();
+  anim.setStatus(() => `Provisioning OpenSearch domain... (${fmtElapsed(Math.round((Date.now() - start) / 1000))} elapsed)`);
 
   while (Date.now() - start < maxWait) {
     try {
@@ -271,14 +275,15 @@ async function createManagedDomain(cfg) {
       const endpoint = desc.DomainStatus?.Endpoint;
       if (endpoint) {
         cfg.opensearchEndpoint = `https://${endpoint}`;
+        anim.stop();
         spinner.succeed(`Domain ready: ${cfg.opensearchEndpoint} (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         return;
       }
     } catch { /* keep polling */ }
-    await sleepWithTicker(interval, spinner, start,
-      (s) => `Provisioning OpenSearch domain... (${fmtElapsed(s)} elapsed)`);
+    await sleep(interval);
   }
 
+  anim.stop();
   spinner.fail(`Timed out waiting for OpenSearch domain (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
   throw new Error('Timed out waiting for OpenSearch domain');
 }
@@ -555,8 +560,11 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   // Wait for pipeline to become active
   const spinner = createSpinner('Waiting for pipeline to activate...');
   spinner.start();
+  const anim = createAsciiAnimation('pipeline');
+  anim.start(spinner);
   const maxWait = 1200_000; // 20 min
   const start = Date.now();
+  anim.setStatus(() => `Waiting for pipeline... (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
 
   while (Date.now() - start < maxWait) {
     try {
@@ -565,6 +573,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       if (status === 'ACTIVE') {
         const urls = resp.Pipeline?.IngestEndpointUrls || [];
         cfg.ingestEndpoints = urls;
+        anim.stop();
         spinner.succeed(`Pipeline is active (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         for (const url of urls) {
           printInfo(`Ingestion endpoint: https://${url}`);
@@ -573,6 +582,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       }
       if (status === 'CREATE_FAILED') {
         const reason = resp.Pipeline?.StatusReason?.Description || 'unknown';
+        anim.stop();
         spinner.fail(`Pipeline creation failed (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         printInfo(`Reason: ${reason}`);
         throw new Error(`Pipeline creation failed: ${reason}`);
@@ -581,10 +591,10 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       if (err.message?.startsWith('Pipeline creation failed')) throw err;
       /* keep polling */
     }
-    await sleepWithTicker(10_000, spinner, start,
-      (s) => `Waiting for pipeline... (${fmtElapsed(s)})`);
+    await sleep(10_000);
   }
 
+  anim.stop();
   spinner.fail(`Timed out waiting for pipeline (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
   throw new Error(`Pipeline '${cfg.pipelineName}' did not become active within 15 minutes`);
 }
