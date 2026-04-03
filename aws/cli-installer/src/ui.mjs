@@ -37,6 +37,13 @@ const BOX = {
   ltee: '\u251C', rtee: '\u2524',
 };
 
+// ── OSC 8 clickable hyperlinks ───────────────────────────────────────────────
+
+/** Wrap text in an OSC 8 hyperlink escape sequence (clickable in supported terminals). */
+export function link(url, text) {
+  return `\x1B]8;;${url}\x07${text ?? url}\x1B]8;;\x07`;
+}
+
 // ── Box-drawing primitives ───────────────────────────────────────────────────
 
 /**
@@ -52,8 +59,8 @@ export function renderBox(lines, opts = {}) {
   const pad = opts.padding ?? 1;
   const sp = ' '.repeat(pad);
 
-  // Strip ANSI for width calculation
-  const stripAnsi = (s) => s.replace(/\x1B\[[0-9;]*m/g, '');
+  // Strip ANSI (SGR + OSC 8 hyperlinks) for width calculation
+  const stripAnsi = (s) => s.replace(/\x1B\][^\x07]*\x07|\x1B\[[0-9;]*m/g, '');
   const innerWidth = opts.width || Math.max(...lines.filter((l) => typeof l === 'string').map((l) => stripAnsi(l).length)) + pad * 2;
 
   const colorFn = opts.color === 'dim' ? chalk.dim
@@ -105,14 +112,33 @@ export function printBox(lines, opts = {}) {
  * @param {Array<[string, string]>} entries - [label, value] pairs; empty label = blank line
  */
 export function printPanel(title, entries) {
-  const lines = [];
+  const stripAnsi = (s) => s.replace(/\x1B\][^\x07]*\x07|\x1B\[[0-9;]*m/g, '');
+
+  // Split entries into sections (separated by blank lines or header-only rows)
+  const sections = [];
+  let cur = [];
   for (const [label, value] of entries) {
-    if (!label && !value) {
-      lines.push('');
-    } else if (!label) {
-      lines.push(value);
+    if ((!label && !value) || (!label && value)) {
+      if (cur.length) sections.push(cur);
+      cur = [];
+      sections.push([[label, value]]);
     } else {
-      lines.push(`${theme.muted(label)}  ${value}`);
+      cur.push([label, value]);
+    }
+  }
+  if (cur.length) sections.push(cur);
+
+  const lines = [];
+  for (const section of sections) {
+    if (section.length === 1 && !section[0][0]) {
+      const [, value] = section[0];
+      lines.push(value || '');
+      continue;
+    }
+    const maxLen = Math.max(...section.map(([l]) => stripAnsi(l).length));
+    for (const [label, value] of section) {
+      const padded = label + ' '.repeat(maxLen - stripAnsi(label).length);
+      lines.push(`${theme.muted(padded)}  ${value}`);
     }
   }
   printBox(lines, { title, color: 'dim', padding: 1 });
@@ -299,15 +325,24 @@ export function formatDate(d) {
 export function printBanner(session) {
   console.error();
   const lines = [
-    `${theme.muted('Create and manage your observability stack on AWS')}`,
+    `${theme.muted('OpenTelemetry-native observability for services, infrastructure, and AI agents.')}`,
+    `${theme.muted('Collect and analyze traces, logs, metrics, service maps, and agent execution graphs.')}`,
+    '',
+    `${theme.muted('This installer provisions the following AWS resources:')}`,
+    `${theme.muted('  • OpenSearch Ingestion pipeline')}`,
+    `${theme.muted('  • Amazon Managed Prometheus workspace')}`,
+    `${theme.muted('  • OpenSearch, OpenSearch UI with connected data sources')}`,
+    `${theme.muted('  • IAM roles and access control policies')}`,
   ];
-  if (session) {
-    lines.push(DIVIDER);
-    lines.push(`${theme.muted('Account')}  ${session.account}`);
-    lines.push(`${theme.muted('Region')}   ${session.region}`);
-    lines.push(`${theme.muted('Identity')} ${theme.muted(session.arn)}`);
-  }
   printBox(lines, { title: 'Open Stack', color: 'primary', padding: 2 });
+  if (session) {
+    const sessionLines = [
+      `${theme.muted('Account')}  ${session.account}`,
+      `${theme.muted('Region')}   ${session.region}`,
+      `${theme.muted('Identity')} ${theme.muted(session.arn)}`,
+    ];
+    printBox(sessionLines, { title: 'Session', color: 'primary', padding: 2 });
+  }
 }
 
 // ── Horizontal divider ──────────────────────────────────────────────────────
@@ -315,6 +350,14 @@ export function printBanner(session) {
 export function printDivider() {
   console.error(`  ${theme.muted(BOX.h.repeat(60))}`);
 }
+
+// ── Terminal cursor helpers ──────────────────────────────────────────────────
+
+/** Save cursor position (DEC private mode). */
+export function saveCursor() { process.stderr.write('\x1B7'); }
+
+/** Restore saved cursor position and erase everything below it. */
+export function clearFromCursor() { process.stderr.write('\x1B8\x1B[J'); }
 
 // ── Escape-to-go-back prompt wrapper ────────────────────────────────────────
 
@@ -328,13 +371,14 @@ let _keypressInit = false;
  * @param {Function} promptFn
  */
 export function withEscape(promptFn) {
-  return (...args) => {
+  return (opts, ...rest) => {
     if (!_keypressInit && process.stdin.isTTY) {
       readline.emitKeypressEvents(process.stdin);
       _keypressInit = true;
     }
 
-    const promise = promptFn(...args);
+    opts = { ...opts, theme: { ...opts?.theme, prefix: _promptPrefix } };
+    const promise = promptFn(opts, ...rest);
     let escaped = false;
 
     const onKeypress = (_ch, key) => {
@@ -369,7 +413,7 @@ export function withEscape(promptFn) {
 export function printTable(headers, rows) {
   if (rows.length === 0) return;
 
-  const stripAnsi = (s) => String(s).replace(/\x1B\[[0-9;]*m/g, '');
+  const stripAnsi = (s) => String(s).replace(/\x1B\][^\x07]*\x07|\x1B\[[0-9;]*m/g, '');
 
   // Calculate column widths
   const widths = headers.map((h, i) =>

@@ -262,7 +262,7 @@ async function createManagedDomain(cfg) {
       const endpoint = desc.DomainStatus?.Endpoint;
       if (endpoint) {
         cfg.opensearchEndpoint = `https://${endpoint}`;
-        spinner.succeed(`Domain ready: ${cfg.opensearchEndpoint}`);
+        spinner.succeed(`Domain ready: ${cfg.opensearchEndpoint} (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         return;
       }
     } catch { /* keep polling */ }
@@ -270,7 +270,7 @@ async function createManagedDomain(cfg) {
       (s) => `Provisioning OpenSearch domain... (${fmtElapsed(s)} elapsed)`);
   }
 
-  spinner.fail('Timed out waiting for OpenSearch domain');
+  spinner.fail(`Timed out waiting for OpenSearch domain (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
   throw new Error('Timed out waiting for OpenSearch domain');
 }
 
@@ -545,7 +545,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       if (status === 'ACTIVE') {
         const urls = resp.Pipeline?.IngestEndpointUrls || [];
         cfg.ingestEndpoints = urls;
-        spinner.succeed('Pipeline is active');
+        spinner.succeed(`Pipeline is active (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         for (const url of urls) {
           printInfo(`Ingestion endpoint: https://${url}`);
         }
@@ -553,7 +553,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       }
       if (status === 'CREATE_FAILED') {
         const reason = resp.Pipeline?.StatusReason?.Description || 'unknown';
-        spinner.fail('Pipeline creation failed');
+        spinner.fail(`Pipeline creation failed (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
         printInfo(`Reason: ${reason}`);
         throw new Error(`Pipeline creation failed: ${reason}`);
       }
@@ -565,7 +565,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
       (s) => `Waiting for pipeline... (${fmtElapsed(s)})`);
   }
 
-  spinner.fail('Timed out waiting for pipeline after 15 minutes');
+  spinner.fail(`Timed out waiting for pipeline (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
   throw new Error(`Pipeline '${cfg.pipelineName}' did not become active within 15 minutes`);
 }
 

@@ -42,6 +42,7 @@ export async function startRepl() {
     process.exit(1);
   }
 
+  process.stderr.write('\x1B[2J\x1B[H');
   printBanner({ account: session.accountId, region: session.region, arn: session.arn });
 
   console.error();

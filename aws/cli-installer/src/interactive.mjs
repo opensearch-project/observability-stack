@@ -1,6 +1,7 @@
 import {
   printHeader, printStep, printInfo, printSubStep,
   createSpinner, theme, GoBack, eSelect, eInput,
+  saveCursor, clearFromCursor,
 } from './ui.mjs';
 import { createDefaultConfig, DEFAULTS } from './config.mjs';
 import { listDomains, listWorkspaces, listApplications } from './aws.mjs';
@@ -98,6 +99,7 @@ async function stepOpenSearch(cfg) {
   console.error();
 
   while (true) {
+    saveCursor();
     const osChoice = await eSelect({
       message: 'Create new or reuse existing?',
       choices: [
@@ -127,10 +129,10 @@ async function stepOpenSearch(cfg) {
         choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
 
         const selected = await eSelect({ message: 'Select domain', choices });
-        if (selected === GoBack) continue;
+        if (selected === GoBack) { clearFromCursor(); continue; }
         if (selected === CUSTOM_INPUT) {
           const ep = await promptEndpoint();
-          if (ep === GoBack) continue;
+          if (ep === GoBack) { clearFromCursor(); continue; }
           cfg.opensearchEndpoint = ep;
         } else {
           cfg.opensearchEndpoint = selected.endpoint;
@@ -138,34 +140,41 @@ async function stepOpenSearch(cfg) {
       } else {
         printInfo('No domains found \u2014 enter endpoint manually');
         const ep = await promptEndpoint();
-        if (ep === GoBack) continue;
+        if (ep === GoBack) { clearFromCursor(); continue; }
         cfg.opensearchEndpoint = ep;
       }
 
-      // Prompt for master username
-      const user = await eInput({
-        message: 'OpenSearch master username',
-        default: cfg.opensearchUser || 'admin',
-      });
-      if (user === GoBack) continue;
-      cfg.opensearchUser = user;
+      // Try Secrets Manager first — skip prompts if password already stored
+      let smPass;
+      try { smPass = await getMasterPassword(cfg.region, cfg.pipelineName); } catch {}
+      if (smPass) {
+        cfg.opensearchUser = cfg.opensearchUser || 'admin';
+        cfg.opensearchPassword = smPass;
+        printInfo('Master password found in Secrets Manager — skipping credential prompts');
+      } else {
+        const user = await eInput({
+          message: 'OpenSearch master username',
+          default: cfg.opensearchUser || 'admin',
+        });
+        if (user === GoBack) { clearFromCursor(); continue; }
+        cfg.opensearchUser = user;
 
-      // Prompt for master password (needed for FGAC mapping)
-      const pass = await eInput({
-        message: 'OpenSearch master password (for FGAC role mapping)',
-        validate: (v) => v.trim().length > 0 || 'Password is required to configure access',
-      });
-      if (pass === GoBack) continue;
-      cfg.opensearchPassword = pass;
+        const pass = await eInput({
+          message: 'OpenSearch master password (for FGAC role mapping)',
+          validate: (v) => v.trim().length > 0 || 'Password is required to configure access',
+        });
+        if (pass === GoBack) { clearFromCursor(); continue; }
+        cfg.opensearchPassword = pass;
+      }
     } else {
       cfg.osAction = 'create';
 
       const domainName = await eInput({ message: 'Domain name', default: cfg.osDomainName || cfg.pipelineName });
-      if (domainName === GoBack) continue;
+      if (domainName === GoBack) { clearFromCursor(); continue; }
       cfg.osDomainName = domainName;
 
       const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
-      if (instType === GoBack) continue;
+      if (instType === GoBack) { clearFromCursor(); continue; }
       cfg.osInstanceType = instType;
 
       const instCount = await eInput({
@@ -173,7 +182,7 @@ async function stepOpenSearch(cfg) {
         default: String(cfg.osInstanceCount || DEFAULTS.osInstanceCount),
         validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 1 || 'Must be a positive integer',
       });
-      if (instCount === GoBack) continue;
+      if (instCount === GoBack) { clearFromCursor(); continue; }
       cfg.osInstanceCount = Number(instCount);
 
       const volSize = await eInput({
@@ -181,11 +190,11 @@ async function stepOpenSearch(cfg) {
         default: String(cfg.osVolumeSize || DEFAULTS.osVolumeSize),
         validate: (v) => /^\d+$/.test(v.trim()) && Number(v) >= 10 || 'Must be at least 10 GB',
       });
-      if (volSize === GoBack) continue;
+      if (volSize === GoBack) { clearFromCursor(); continue; }
       cfg.osVolumeSize = Number(volSize);
 
       const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
-      if (engineVer === GoBack) continue;
+      if (engineVer === GoBack) { clearFromCursor(); continue; }
       cfg.osEngineVersion = engineVer;
     }
     return;
@@ -200,6 +209,7 @@ async function stepIam(cfg) {
   console.error();
 
   while (true) {
+    saveCursor();
     const iamChoice = await eSelect({
       message: 'Create new or reuse existing?',
       choices: [
@@ -213,12 +223,12 @@ async function stepIam(cfg) {
     if (iamChoice === 'reuse') {
       cfg.iamAction = 'reuse';
       const arn = await promptArn('IAM role ARN');
-      if (arn === GoBack) continue;
+      if (arn === GoBack) { clearFromCursor(); continue; }
       cfg.iamRoleArn = arn;
     } else {
       cfg.iamAction = 'create';
       const roleName = await eInput({ message: 'Role name', default: cfg.iamRoleName || `${cfg.pipelineName}-osi-role` });
-      if (roleName === GoBack) continue;
+      if (roleName === GoBack) { clearFromCursor(); continue; }
       cfg.iamRoleName = roleName;
     }
     return;
@@ -232,6 +242,7 @@ async function stepAps(cfg) {
   console.error();
 
   while (true) {
+    saveCursor();
     const apsChoice = await eSelect({
       message: 'Create new or reuse existing?',
       choices: [
@@ -260,10 +271,10 @@ async function stepAps(cfg) {
         choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
 
         const selected = await eSelect({ message: 'Select workspace', choices });
-        if (selected === GoBack) continue;
+        if (selected === GoBack) { clearFromCursor(); continue; }
         if (selected === CUSTOM_INPUT) {
           const url = await promptUrl('Prometheus remote-write URL');
-          if (url === GoBack) continue;
+          if (url === GoBack) { clearFromCursor(); continue; }
           cfg.prometheusUrl = url;
         } else {
           cfg.prometheusUrl = selected;
@@ -271,13 +282,13 @@ async function stepAps(cfg) {
       } else {
         printInfo('No workspaces found \u2014 enter URL manually');
         const url = await promptUrl('Prometheus remote-write URL');
-        if (url === GoBack) continue;
+        if (url === GoBack) { clearFromCursor(); continue; }
         cfg.prometheusUrl = url;
       }
     } else {
       cfg.apsAction = 'create';
       const alias = await eInput({ message: 'Workspace alias', default: cfg.apsWorkspaceAlias || cfg.pipelineName });
-      if (alias === GoBack) continue;
+      if (alias === GoBack) { clearFromCursor(); continue; }
       cfg.apsWorkspaceAlias = alias;
     }
     return;
@@ -292,6 +303,7 @@ async function stepConnectedDataSourceRole(cfg) {
   console.error();
 
   while (true) {
+    saveCursor();
     const choice = await eSelect({
       message: 'Create new or reuse existing?',
       choices: [
@@ -304,7 +316,7 @@ async function stepConnectedDataSourceRole(cfg) {
 
     if (choice === 'reuse') {
       const arn = await promptArn('Connected Data Source role ARN');
-      if (arn === GoBack) continue;
+      if (arn === GoBack) { clearFromCursor(); continue; }
       cfg.connectedDataSourceRoleArn = arn;
       cfg.connectedDataSourceRoleName = '';
     } else {
@@ -312,7 +324,7 @@ async function stepConnectedDataSourceRole(cfg) {
         message: 'Connected Data Source role name',
         default: cfg.connectedDataSourceRoleName || `${cfg.pipelineName}-connected-data-source-prometheus-role`,
       });
-      if (roleName === GoBack) continue;
+      if (roleName === GoBack) { clearFromCursor(); continue; }
       cfg.connectedDataSourceRoleName = roleName;
     }
     return;
@@ -345,6 +357,7 @@ async function stepApp(cfg) {
   console.error();
 
   while (true) {
+    saveCursor();
     const choice = await eSelect({
       message: 'Create new or reuse existing?',
       choices: [
@@ -373,10 +386,10 @@ async function stepApp(cfg) {
         choices.push({ name: theme.accent('Enter URL manually...'), value: CUSTOM_INPUT });
 
         const selected = await eSelect({ message: 'Select application', choices });
-        if (selected === GoBack) continue;
+        if (selected === GoBack) { clearFromCursor(); continue; }
         if (selected === CUSTOM_INPUT) {
           const url = await promptUrl('OpenSearch UI URL');
-          if (url === GoBack) continue;
+          if (url === GoBack) { clearFromCursor(); continue; }
           cfg.dashboardsUrl = url;
         } else {
           cfg.dashboardsUrl = selected;
@@ -384,7 +397,7 @@ async function stepApp(cfg) {
       } else {
         printInfo('No applications found \u2014 enter URL manually');
         const url = await promptUrl('OpenSearch UI URL');
-        if (url === GoBack) continue;
+        if (url === GoBack) { clearFromCursor(); continue; }
         cfg.dashboardsUrl = url;
       }
       cfg.appName = '';
@@ -394,7 +407,7 @@ async function stepApp(cfg) {
         message: 'Application name',
         default: cfg.appName || cfg.pipelineName,
       });
-      if (appName === GoBack) continue;
+      if (appName === GoBack) { clearFromCursor(); continue; }
       cfg.appName = appName;
     }
     return;
@@ -445,9 +458,11 @@ export async function runCreateWizard(session = null) {
   let i = 0;
 
   while (i < steps.length) {
+    saveCursor();
     const result = await steps[i](cfg, session);
 
     if (result === GoBack) {
+      clearFromCursor();
       if (visited.length === 0) {
         // Escape at first step → return to menu
         return GoBack;

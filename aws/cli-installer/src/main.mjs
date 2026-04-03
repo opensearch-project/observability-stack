@@ -20,6 +20,7 @@ import {
   printBox,
   STAR,
   theme,
+  link,
 } from './ui.mjs';
 
 export async function run() {
@@ -164,16 +165,17 @@ export async function executePipeline(cfg) {
   // ── Final summary ───────────────────────────────────────────────────
   console.error();
   const pad = (l) => l.padEnd(35);
+  const osiUrl = cfg.ingestEndpoints?.length ? `https://${cfg.ingestEndpoints[0]}` : null;
   printBox([
     '',
     `${theme.success.bold(`${STAR} Open Stack Setup Complete! ${STAR}`)}`,
     '',
-    `${theme.label(pad('OSI Pipeline:'))} ${cfg.ingestEndpoints?.length ? `https://${cfg.ingestEndpoints[0]}` : cfg.pipelineName}`,
+    `${theme.label(pad('OSI Pipeline:'))} ${osiUrl ? link(osiUrl) : cfg.pipelineName}`,
     `${theme.label(pad('OSI Pipeline Role:'))} ${cfg.iamRoleArn}`,
-    `${theme.label(pad('OpenSearch:'))} ${cfg.opensearchEndpoint}`,
+    `${theme.label(pad('OpenSearch:'))} ${link(cfg.opensearchEndpoint)}`,
     `${theme.label(pad('OpenSearch Master Password:'))} Secrets Manager: observability-stack/${cfg.pipelineName}/master-password`,
-    `${theme.label(pad('OpenSearch UI:'))} ${cfg.dashboardsUrl}`,
-    `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
+    `${theme.label(pad('OpenSearch UI:'))} ${link(cfg.dashboardsUrl)}`,
+    `${theme.label(pad('Prometheus:'))} ${link(cfg.prometheusUrl)}`,
     `${theme.label(pad('Connected Data Source:'))} ${cfg.connectedDataSourceArn || 'n/a'}`,
     `${theme.label(pad('Connected Data Source Role:'))} ${cfg.connectedDataSourceRoleArn || 'n/a'}`,
     ...(cfg.demoInstanceId ? [
@@ -182,7 +184,7 @@ export async function executePipeline(cfg) {
     ] : []),
     '',
     `${theme.success.bold('→ Open your dashboards')} ${theme.muted('(requires signing into your AWS account)')}`,
-    `  ${cfg.dashboardsUrl}`,
+    `  ${link(cfg.dashboardsUrl)}`,
     ...(cfg.demoInstanceId ? [``, `  ${theme.muted('Demo data may take 10-15 minutes to appear.')}`] : []),
     '',
   ], { color: 'primary', padding: 2 });
@@ -219,11 +221,9 @@ function printSummary(cfg) {
   // IAM
   const iamEntries = [];
   if (cfg.iamAction === 'reuse') {
-    iamEntries.push(['Action', 'reuse existing']);
-    iamEntries.push(['ARN', cfg.iamRoleArn]);
+    iamEntries.push(['Pipeline role ARN', cfg.iamRoleArn]);
   } else {
-    iamEntries.push(['Action', 'create new']);
-    iamEntries.push(['Role name', cfg.iamRoleName]);
+    iamEntries.push(['Pipeline role', cfg.iamRoleName]);
   }
 
   // APS
@@ -244,13 +244,13 @@ function printSummary(cfg) {
   } else {
     dashEntries.push(['Action', 'create new Observability workspace']);
   }
+  if (cfg.appName) dashEntries.push(['Application name', cfg.appName]);
 
-  // Connected Data Source & Application
+  // Connected Data Source
   const dqEntries = [];
   if (cfg.connectedDataSourceRoleName) dqEntries.push(['Connected Data Source role', cfg.connectedDataSourceRoleName]);
   else if (cfg.connectedDataSourceRoleArn) dqEntries.push(['Connected Data Source role ARN', cfg.connectedDataSourceRoleArn]);
   if (cfg.connectedDataSourceName) dqEntries.push(['Data source name', cfg.connectedDataSourceName]);
-  if (cfg.appName) dqEntries.push(['Application name', cfg.appName]);
 
   // Pipeline settings
   const tuneEntries = [
@@ -268,16 +268,14 @@ function printSummary(cfg) {
     ['', theme.accentBold('OpenSearch UI')],
     ...dashEntries,
     ['', ''],
-    ['', theme.accentBold('IAM Role')],
-    ...iamEntries,
-    ['', ''],
     ['', theme.accentBold('Amazon Managed Prometheus')],
     ...apsEntries,
     ['', ''],
-    ['', theme.accentBold('Connected Data Source & Application')],
+    ['', theme.accentBold('Connected Data Source')],
     ...dqEntries,
     ['', ''],
-    ['', theme.accentBold('Pipeline Settings')],
+    ['', theme.accentBold('Ingestion Pipeline')],
+    ...iamEntries,
     ...tuneEntries,
   ]);
 
