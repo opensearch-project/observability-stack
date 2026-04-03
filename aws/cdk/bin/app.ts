@@ -25,5 +25,5 @@ new ObservabilityStack(app, 'ObservabilityStack', {
   infra,
   minOcu: 1,
   maxOcu: 4,
-  enableDemo: false,
+  enableDemo: true,
 });
