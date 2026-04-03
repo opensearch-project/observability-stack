@@ -36,6 +36,7 @@ export class IngestionPipeline extends Construct {
         region: props.region,
         roleArn: props.pipelineRoleArn,
       }),
+      pipelineRoleArn: props.pipelineRoleArn,
     });
   }
 }
