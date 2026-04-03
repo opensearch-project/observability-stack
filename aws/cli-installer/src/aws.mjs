@@ -878,15 +878,17 @@ export async function listDomains(region) {
     const { DomainNames } = await client.send(new ListDomainNamesCommand({}));
     if (DomainNames?.length) {
       const names = DomainNames.map((d) => d.DomainName);
-      const { DomainStatusList } = await client.send(
-        new DescribeDomainsCommand({ DomainNames: names }),
-      );
-      for (const d of DomainStatusList || []) {
-        results.push({
-          name: d.DomainName,
-          endpoint: d.Endpoint ? `https://${d.Endpoint}` : '',
-          engineVersion: d.EngineVersion || '',
-        });
+      for (let j = 0; j < names.length; j += 5) {
+        const { DomainStatusList } = await client.send(
+          new DescribeDomainsCommand({ DomainNames: names.slice(j, j + 5) }),
+        );
+        for (const d of DomainStatusList || []) {
+          results.push({
+            name: d.DomainName,
+            endpoint: d.Endpoint ? `https://${d.Endpoint}` : '',
+            engineVersion: d.EngineVersion || '',
+          });
+        }
       }
     }
   } catch { /* listing failed */ }
