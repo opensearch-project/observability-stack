@@ -42,7 +42,7 @@ export class ObservabilityStack extends cdk.Stack {
         OpenSearchEndpoint: infra.domainEndpoint,
         MasterUserSecretArn: infra.masterPasswordSecretArn,
         MasterUserName: 'admin',
-        RoleArns: JSON.stringify([infra.pipelineRoleArn]),
+        RoleArns: JSON.stringify([infra.pipelineRoleArn, '*']),
         Region: this.region,
       },
     });
