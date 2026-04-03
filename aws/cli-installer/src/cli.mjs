@@ -22,7 +22,7 @@ export function parseCli(argv) {
 
   // Mode
   program
-    .option('--simple', 'Minimal input — auto-creates all resources with defaults')
+    .option('--quick', 'Minimal input — auto-creates all resources with defaults')
     .option('--advanced', 'More options — create new or reuse existing resources');
 
   // Core
@@ -54,11 +54,11 @@ export function parseCli(argv) {
     .option('--prometheus-url <url>', 'Reuse an existing APS remote-write URL')
     .option('--aps-workspace-alias <name>', 'Alias for new APS workspace');
 
-  // DQS (Direct Query Service)
+  // Connected Data Source
   program
-    .option('--dqs-role-arn <arn>', 'Reuse an existing DQS Prometheus IAM role')
-    .option('--dqs-role-name <name>', 'Name for new DQS Prometheus IAM role')
-    .option('--dqs-data-source-name <name>', 'Name for the Direct Query data source');
+    .option('--connected-data-source-role-arn <arn>', 'Reuse an existing Connected Data Source Prometheus IAM role')
+    .option('--connected-data-source-role-name <name>', 'Name for new Connected Data Source Prometheus IAM role')
+    .option('--connected-data-source-name <name>', 'Name for the Connected Data Source');
 
   // Dashboards / Application
   program
@@ -98,7 +98,7 @@ function parseDestroyArgs(argv) {
  * Convert commander opts to our normalized config shape.
  */
 function optsToConfig(opts) {
-  const mode = opts.advanced ? 'advanced' : 'simple';
+  const mode = opts.advanced ? 'advanced' : 'quick';
 
   // Determine actions based on which flags were provided
   let osAction = '';
@@ -142,10 +142,10 @@ function optsToConfig(opts) {
     serviceMapWindow: opts.serviceMapWindow,
     dashboardsAction,
     dashboardsUrl: opts.dashboardsUrl || '',
-    dqsRoleName: opts.dqsRoleName || '',
-    dqsRoleArn: opts.dqsRoleArn || '',
-    dqsDataSourceName: opts.dqsDataSourceName || '',
-    dqsDataSourceArn: '',
+    connectedDataSourceRoleName: opts.connectedDataSourceRoleName || '',
+    connectedDataSourceRoleArn: opts.connectedDataSourceRoleArn || '',
+    connectedDataSourceName: opts.connectedDataSourceName || '',
+    connectedDataSourceArn: '',
     appName: opts.appName || '',
     appId: '',
     appEndpoint: '',
@@ -157,9 +157,9 @@ function optsToConfig(opts) {
 }
 
 /**
- * Apply simple-mode defaults: fill in blanks so every field has a value.
+ * Apply quick-mode defaults: fill in blanks so every field has a value.
  */
-export function applySimpleDefaults(cfg) {
+export function applyQuickDefaults(cfg) {
   if (!cfg.osAction) cfg.osAction = 'create';
   if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
   if (!cfg.iamAction) cfg.iamAction = 'create';
@@ -167,8 +167,8 @@ export function applySimpleDefaults(cfg) {
   if (!cfg.apsAction) cfg.apsAction = 'create';
   if (!cfg.apsWorkspaceAlias) cfg.apsWorkspaceAlias = cfg.pipelineName;
   if (!cfg.dashboardsAction) cfg.dashboardsAction = 'create';
-  if (!cfg.dqsRoleName) cfg.dqsRoleName = `${cfg.pipelineName}-dqs-prometheus-role`;
-  if (!cfg.dqsDataSourceName) cfg.dqsDataSourceName = `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`;
+  if (!cfg.connectedDataSourceRoleName) cfg.connectedDataSourceRoleName = `${cfg.pipelineName}-connected-data-source-prometheus-role`;
+  if (!cfg.connectedDataSourceName) cfg.connectedDataSourceName = `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`;
   if (!cfg.appName) cfg.appName = cfg.pipelineName;
 }
 
@@ -185,11 +185,11 @@ export function fillDryRunPlaceholders(cfg) {
   if (cfg.apsAction === 'create' && !cfg.prometheusUrl) {
     cfg.prometheusUrl = `https://aps-workspaces.${cfg.region}.amazonaws.com/workspaces/<workspace-id>/api/v1/remote_write`;
   }
-  if (!cfg.dqsRoleArn && cfg.dqsRoleName) {
-    cfg.dqsRoleArn = `arn:aws:iam::${cfg.accountId || '123456789012'}:role/${cfg.dqsRoleName}`;
+  if (!cfg.connectedDataSourceRoleArn && cfg.connectedDataSourceRoleName) {
+    cfg.connectedDataSourceRoleArn = `arn:aws:iam::${cfg.accountId || '123456789012'}:role/${cfg.connectedDataSourceRoleName}`;
   }
-  if (!cfg.dqsDataSourceArn && cfg.dqsDataSourceName) {
-    cfg.dqsDataSourceArn = `arn:aws:opensearch:${cfg.region}:${cfg.accountId || '123456789012'}:datasource/${cfg.dqsDataSourceName}`;
+  if (!cfg.connectedDataSourceArn && cfg.connectedDataSourceName) {
+    cfg.connectedDataSourceArn = `arn:aws:opensearch:${cfg.region}:${cfg.accountId || '123456789012'}:datasource/${cfg.connectedDataSourceName}`;
   }
   if (!cfg.appEndpoint) {
     cfg.appEndpoint = `https://<app-id>.${cfg.region}.opensearch.amazonaws.com`;

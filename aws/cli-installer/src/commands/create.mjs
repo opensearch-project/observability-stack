@@ -1,5 +1,5 @@
 import { runCreateWizard } from '../interactive.mjs';
-import { applySimpleDefaults, validateConfig } from '../cli.mjs';
+import { applyQuickDefaults, validateConfig } from '../cli.mjs';
 import { executePipeline } from '../main.mjs';
 import { printError, printStep, theme, GoBack, eConfirm } from '../ui.mjs';
 
@@ -157,25 +157,25 @@ function renderArchitectureDiagram(cfg) {
   const C_PROM = os.w + sinkGap + prom.mid;
   out.push(os.botC + sp(sinkGap) + prom.botC);
 
-  // Prometheus → DQS box
+  // Prometheus → Connected Data Source box
   out.push(connector(os.w + sinkGap + prom.w, [[os.mid, '│'], [C_PROM, '│']]));
   out.push(connector(os.w + sinkGap + prom.w, [[os.mid, '│'], [C_PROM, '▼']]));
 
-  const dqs = box([p('Direct Query Service')]);
-  const dqsOff = Math.max(0, C_PROM - dqs.mid);
-  const C_DQS = dqsOff + dqs.mid;
-  const osPipe = (rest) => sp(os.mid) + m('│') + sp(dqsOff - os.mid - 1) + rest;
-  out.push(osPipe(dqs.top));
-  for (const l of dqs.lines) out.push(osPipe(l));
-  out.push(osPipe(dqs.botC));
+  const connDs = box([p('Connected Data Source')]);
+  const connDsOff = Math.max(0, C_PROM - connDs.mid);
+  const C_CONN_DS = connDsOff + connDs.mid;
+  const osPipe = (rest) => sp(os.mid) + m('│') + sp(connDsOff - os.mid - 1) + rest;
+  out.push(osPipe(connDs.top));
+  for (const l of connDs.lines) out.push(osPipe(l));
+  out.push(osPipe(connDs.botC));
 
-  // Merge OpenSearch + DQS → Dashboards
-  out.push(hline(dqsOff + dqs.w, os.mid, C_DQS, [
-    [os.mid, '└'], [C_DQS, '┘'],
+  // Merge OpenSearch + Connected Data Source → Dashboards
+  out.push(hline(connDsOff + connDs.w, os.mid, C_CONN_DS, [
+    [os.mid, '└'], [C_CONN_DS, '┘'],
   ]));
-  const mergeMid = Math.floor((os.mid + C_DQS) / 2);
-  out.push(connector(dqsOff + dqs.w, [[mergeMid, '│']]));
-  out.push(connector(dqsOff + dqs.w, [[mergeMid, '▼']]));
+  const mergeMid = Math.floor((os.mid + C_CONN_DS) / 2);
+  out.push(connector(connDsOff + connDs.w, [[mergeMid, '│']]));
+  out.push(connector(connDsOff + connDs.w, [[mergeMid, '▼']]));
 
   // Dashboards box — centered under merge point
   const dashOff = Math.max(0, mergeMid - dash.mid);
@@ -192,9 +192,9 @@ export async function runCreate(session) {
   const cfg = await runCreateWizard(session);
   if (cfg === GoBack) return GoBack;
 
-  // Apply simple-mode defaults
-  if (!cfg.mode) cfg.mode = 'simple';
-  if (cfg.mode === 'simple') applySimpleDefaults(cfg);
+  // Apply quick-mode defaults
+  if (!cfg.mode) cfg.mode = 'quick';
+  if (cfg.mode === 'quick') applyQuickDefaults(cfg);
 
   // Validate
   const errors = validateConfig(cfg);

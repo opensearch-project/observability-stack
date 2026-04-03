@@ -1,6 +1,6 @@
 /**
  * Destroy all AWS resources created by the CLI for a given pipeline name.
- * Deletes in reverse dependency order: EC2 → Application → DQS → OSIS → IAM → (preserves AOS/AMP).
+ * Deletes in reverse dependency order: EC2 → Application → Connected Data Source → OSIS → IAM → (preserves AOS/AMP).
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
 import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
@@ -91,14 +91,14 @@ export async function destroy(cfg) {
     }
   } catch (e) { printWarning(`Application: ${e.message}`); }
 
-  // 3. DQS Prometheus datasource
+  // 3. Connected Data Source (Prometheus datasource)
   const dqsName = pipelineName.replace(/-/g, '_') + '_prometheus';
   try {
     await os.send(new DeleteDirectQueryDataSourceCommand({ DataSourceName: dqsName }));
-    printSuccess(`DQS datasource ${dqsName} deleted`);
+    printSuccess(`Connected Data Source ${dqsName} deleted`);
   } catch (e) {
-    if (!e.message?.includes('not found')) printWarning(`DQS: ${e.message}`);
-    else printInfo('No DQS datasource found');
+    if (!e.message?.includes('not found')) printWarning(`Connected Data Source: ${e.message}`);
+    else printInfo('No Connected Data Source found');
   }
 
   // 4. OSIS pipeline
@@ -120,7 +120,7 @@ export async function destroy(cfg) {
 
   // 5. IAM roles
   const iam = new IAMClient({ region });
-  for (const roleName of [`${pipelineName}-osi-role`, `${pipelineName}-dqs-prometheus-role`]) {
+  for (const roleName of [`${pipelineName}-osi-role`, `${pipelineName}-connected-data-source-prometheus-role`]) {
     try {
       const { PolicyNames } = await iam.send(new ListRolePoliciesCommand({ RoleName: roleName }));
       for (const p of PolicyNames || []) {

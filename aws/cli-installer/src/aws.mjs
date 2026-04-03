@@ -599,23 +599,23 @@ export async function setupDashboards(cfg) {
   printSuccess(`URL: ${cfg.dashboardsUrl}`);
 }
 
-// ── Direct Query Data Source (AMP → OpenSearch) ─────────────────────────────
+// ── Connected Data Source (AMP → OpenSearch) ────────────────────────────────
 
 /**
- * Create an IAM role for the Direct Query Service to access AMP.
+ * Create an IAM role for the Connected Data Source to access AMP.
  * Trust policy allows directquery.opensearchservice.amazonaws.com to assume it.
  */
-export async function createDqsPrometheusRole(cfg) {
-  const roleName = cfg.dqsRoleName;
-  printStep(`Creating DQS Prometheus role '${roleName}'...`);
+export async function createConnectedDataSourceRole(cfg) {
+  const roleName = cfg.connectedDataSourceRoleName;
+  printStep(`Creating Connected Data Source Prometheus role '${roleName}'...`);
 
   const client = new IAMClient({ region: cfg.region });
 
   // Check if role already exists
   try {
     const existing = await client.send(new GetRoleCommand({ RoleName: roleName }));
-    cfg.dqsRoleArn = existing.Role.Arn;
-    printSuccess(`DQS role already exists: ${cfg.dqsRoleArn}`);
+    cfg.connectedDataSourceRoleArn = existing.Role.Arn;
+    printSuccess(`Connected Data Source role already exists: ${cfg.connectedDataSourceRoleArn}`);
     return;
   } catch (err) {
     if (err.name !== 'NoSuchEntityException') throw err;
@@ -636,13 +636,13 @@ export async function createDqsPrometheusRole(cfg) {
       AssumeRolePolicyDocument: trustPolicy,
       Tags: stackTags(cfg.pipelineName),
     }));
-    cfg.dqsRoleArn = result.Role.Arn;
-    printSuccess(`DQS role created: ${cfg.dqsRoleArn}`);
+    cfg.connectedDataSourceRoleArn = result.Role.Arn;
+    printSuccess(`Connected Data Source role created: ${cfg.connectedDataSourceRoleArn}`);
   } catch (err) {
-    printError('Failed to create DQS Prometheus role');
+    printError('Failed to create Connected Data Source Prometheus role');
     console.error(`  ${chalk.dim(err.message)}`);
     console.error();
-    throw new Error('Failed to create DQS Prometheus role');
+    throw new Error('Failed to create Connected Data Source Prometheus role');
   }
 
   // Attach APS access policy
@@ -658,24 +658,24 @@ export async function createDqsPrometheusRole(cfg) {
       PolicyName: 'APSAccess',
       PolicyDocument: permissionsPolicy,
     }));
-    printSuccess('APS access policy attached to DQS role');
+    printSuccess('APS access policy attached to Connected Data Source role');
   } catch (err) {
-    printError('Failed to attach APS policy to DQS role');
+    printError('Failed to attach APS policy to Connected Data Source role');
     console.error(`  ${chalk.dim(err.message)}`);
     console.error();
-    throw new Error('Failed to attach APS policy to DQS role');
+    throw new Error('Failed to attach APS policy to Connected Data Source role');
   }
 
   await sleep(5000);
 }
 
 /**
- * Create a Direct Query Data Source connecting OpenSearch to AMP (Prometheus).
+ * Create a Connected Data Source connecting OpenSearch to AMP (Prometheus).
  * Uses the OpenSearch service control plane API.
  */
-export async function createDirectQueryDataSource(cfg) {
-  const dataSourceName = cfg.dqsDataSourceName;
-  printStep(`Creating Direct Query data source '${dataSourceName}'...`);
+export async function createConnectedDataSource(cfg) {
+  const dataSourceName = cfg.connectedDataSourceName;
+  printStep(`Creating Connected Data Source '${dataSourceName}'...`);
 
   const client = new OpenSearchClient({ region: cfg.region });
   const workspaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/${cfg.apsWorkspaceId}`;
@@ -685,32 +685,32 @@ export async function createDirectQueryDataSource(cfg) {
       DataSourceName: dataSourceName,
       DataSourceType: {
         Prometheus: {
-          RoleArn: cfg.dqsRoleArn,
+          RoleArn: cfg.connectedDataSourceRoleArn,
           WorkspaceArn: workspaceArn,
         },
       },
       Description: `Prometheus data source for ${cfg.pipelineName} observability stack`,
     }));
-    cfg.dqsDataSourceArn = result.DataSourceArn;
-    printSuccess(`Direct Query data source created: ${cfg.dqsDataSourceArn}`);
-    await tagResource(cfg.region, cfg.dqsDataSourceArn, cfg.pipelineName);
+    cfg.connectedDataSourceArn = result.DataSourceArn;
+    printSuccess(`Connected Data Source created: ${cfg.connectedDataSourceArn}`);
+    await tagResource(cfg.region, cfg.connectedDataSourceArn, cfg.pipelineName);
   } catch (err) {
     // Treat "already exists" as success
     if (/already exists/i.test(err.message) || err.name === 'ResourceAlreadyExistsException') {
-      cfg.dqsDataSourceArn = `arn:aws:opensearch:${cfg.region}:${cfg.accountId}:datasource/${dataSourceName}`;
+      cfg.connectedDataSourceArn = `arn:aws:opensearch:${cfg.region}:${cfg.accountId}:datasource/${dataSourceName}`;
       printSuccess(`Data source '${dataSourceName}' already exists`);
       return;
     }
-    printError('Failed to create Direct Query data source');
+    printError('Failed to create Connected Data Source');
     console.error(`  ${chalk.dim(err.message)}`);
     console.error();
-    throw new Error('Failed to create Direct Query data source');
+    throw new Error('Failed to create Connected Data Source');
   }
 }
 
 /**
  * Create an OpenSearch Application (the new OpenSearch UI) and associate
- * the OpenSearch domain/collection and the DQS data source with it.
+ * the OpenSearch domain/collection and the Connected Data Source with it.
  */
 export async function createOpenSearchApplication(cfg) {
   const appName = cfg.appName;
@@ -797,7 +797,7 @@ async function fetchAppEndpoint(client, cfg) {
 function buildAppDataSources(cfg) {
   const dataSources = [];
   // Derive the domain name from the endpoint URL if reusing,
-  // otherwise use cfg.osDomainName (which may be set by applySimpleDefaults)
+  // otherwise use cfg.osDomainName (which may be set by applyQuickDefaults)
   let domainName = cfg.osDomainName;
   if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
     const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
@@ -808,14 +808,14 @@ function buildAppDataSources(cfg) {
       dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
     });
   }
-  if (cfg.dqsDataSourceArn) {
-    dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
+  if (cfg.connectedDataSourceArn) {
+    dataSources.push({ dataSourceArn: cfg.connectedDataSourceArn });
   }
   return dataSources;
 }
 
 /**
- * Associate the OpenSearch domain and DQS data source with the application.
+ * Associate the OpenSearch domain and Connected Data Source with the application.
  */
 async function associateDataSourcesWithApp(cfg, client) {
   if (!cfg.appId) return;

@@ -17,8 +17,8 @@ function buildAppDataSources(cfg) {
       dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
     });
   }
-  if (cfg.dqsDataSourceArn) {
-    dataSources.push({ dataSourceArn: cfg.dqsDataSourceArn });
+  if (cfg.connectedDataSourceArn) {
+    dataSources.push({ dataSourceArn: cfg.connectedDataSourceArn });
   }
   return dataSources;
 }
@@ -54,11 +54,11 @@ describe('buildAppDataSources', () => {
     assert.match(ds[0].dataSourceArn, /domain\/open-stack-aos-test$/);
   });
 
-  it('includes DQS datasource ARN when present', () => {
+  it('includes Connected Data Source ARN when present', () => {
     const ds = buildAppDataSources({
       ...baseCfg, osAction: 'create',
       osDomainName: 'my-domain',
-      dqsDataSourceArn: 'arn:aws:opensearch:us-east-1:123:datasource/prom',
+      connectedDataSourceArn: 'arn:aws:opensearch:us-east-1:123:datasource/prom',
     });
     assert.equal(ds.length, 2);
     assert.match(ds[1].dataSourceArn, /datasource\/prom$/);

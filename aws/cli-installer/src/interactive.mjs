@@ -32,10 +32,10 @@ async function stepMode(cfg) {
   const mode = await eSelect({
     message: 'Mode',
     choices: [
-      { name: `Simple   ${theme.muted('\u2014 creates all resources with defaults')}`, value: 'simple' },
+      { name: `Quick    ${theme.muted('\u2014 creates all resources with defaults')}`, value: 'quick' },
       { name: `Advanced ${theme.muted('\u2014 create new or reuse existing resources; tune pipeline settings')}`, value: 'advanced' },
     ],
-    default: cfg.mode || 'simple',
+    default: cfg.mode || 'quick',
   });
   if (mode === GoBack) return GoBack;
   cfg.mode = mode;
@@ -68,8 +68,8 @@ async function stepCore(cfg, session) {
     cfg.region = region;
   }
 
-  // Simple mode: auto-derive all resources from pipeline name
-  if (cfg.mode === 'simple') {
+  // Quick mode: auto-derive all resources from pipeline name
+  if (cfg.mode === 'quick') {
     cfg.osAction = 'create';
     cfg.osDomainName = cfg.pipelineName;
     cfg.iamAction = 'create';
@@ -77,16 +77,16 @@ async function stepCore(cfg, session) {
     cfg.apsAction = 'create';
     cfg.apsWorkspaceAlias = cfg.pipelineName;
     cfg.dashboardsAction = 'create';
-    cfg.dqsRoleName = `${cfg.pipelineName}-dqs-prometheus-role`;
-    cfg.dqsDataSourceName = `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`;
+    cfg.connectedDataSourceRoleName = `${cfg.pipelineName}-connected-data-source-prometheus-role`;
+    cfg.connectedDataSourceName = `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`;
     cfg.appName = cfg.pipelineName;
     console.error();
     printInfo(`Will create:`);
     printSubStep(`OpenSearch domain: ${theme.accent(cfg.osDomainName)}`);
     printSubStep(`IAM role: ${theme.accent(cfg.iamRoleName)}`);
     printSubStep(`APS workspace: ${theme.accent(cfg.apsWorkspaceAlias)}`);
-    printSubStep(`DQS role: ${theme.accent(cfg.dqsRoleName)}`);
-    printSubStep(`DQS data source: ${theme.accent(cfg.dqsDataSourceName)}`);
+    printSubStep(`Connected Data Source role: ${theme.accent(cfg.connectedDataSourceRoleName)}`);
+    printSubStep(`Connected Data Source: ${theme.accent(cfg.connectedDataSourceName)}`);
     printSubStep(`OpenSearch Application: ${theme.accent(cfg.appName)}`);
   }
 }
@@ -284,11 +284,11 @@ async function stepAps(cfg) {
   }
 }
 
-async function stepDqsRole(cfg) {
+async function stepConnectedDataSourceRole(cfg) {
   if (cfg.mode !== 'advanced') return 'skip';
 
-  printStep('Direct Query IAM role');
-  printInfo('This role allows OpenSearch to query Prometheus metrics via Direct Query Service');
+  printStep('Connected Data Source IAM role');
+  printInfo('This role allows OpenSearch to query Prometheus metrics via Connected Data Source');
   console.error();
 
   while (true) {
@@ -303,38 +303,38 @@ async function stepDqsRole(cfg) {
     if (choice === GoBack) return GoBack;
 
     if (choice === 'reuse') {
-      const arn = await promptArn('DQS role ARN');
+      const arn = await promptArn('Connected Data Source role ARN');
       if (arn === GoBack) continue;
-      cfg.dqsRoleArn = arn;
-      cfg.dqsRoleName = '';
+      cfg.connectedDataSourceRoleArn = arn;
+      cfg.connectedDataSourceRoleName = '';
     } else {
       const roleName = await eInput({
-        message: 'DQS role name',
-        default: cfg.dqsRoleName || `${cfg.pipelineName}-dqs-prometheus-role`,
+        message: 'Connected Data Source role name',
+        default: cfg.connectedDataSourceRoleName || `${cfg.pipelineName}-connected-data-source-prometheus-role`,
       });
       if (roleName === GoBack) continue;
-      cfg.dqsRoleName = roleName;
+      cfg.connectedDataSourceRoleName = roleName;
     }
     return;
   }
 }
 
-async function stepDqsDataSource(cfg) {
+async function stepConnectedDataSource(cfg) {
   if (cfg.mode !== 'advanced') return 'skip';
-  // Skip if no DQS role was configured
-  if (!cfg.dqsRoleName && !cfg.dqsRoleArn) return 'skip';
+  // Skip if no Connected Data Source role was configured
+  if (!cfg.connectedDataSourceRoleName && !cfg.connectedDataSourceRoleArn) return 'skip';
 
-  printStep('Direct Query data source');
+  printStep('Connected Data Source');
   printInfo('Connects OpenSearch to Prometheus so you can query metrics from OpenSearch UI');
   console.error();
 
   const dsName = await eInput({
     message: 'Data source name',
-    default: cfg.dqsDataSourceName || `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`,
+    default: cfg.connectedDataSourceName || `${cfg.pipelineName.replace(/-/g, '_')}_prometheus`,
     validate: (v) => /^[a-z][a-z0-9_]+$/.test(v.trim()) || 'Must match [a-z][a-z0-9_]+ (lowercase, underscores only)',
   });
   if (dsName === GoBack) return GoBack;
-  cfg.dqsDataSourceName = dsName;
+  cfg.connectedDataSourceName = dsName;
 }
 
 async function stepApp(cfg) {

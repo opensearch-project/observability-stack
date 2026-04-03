@@ -1,5 +1,5 @@
 import { writeFileSync } from 'node:fs';
-import { parseCli, applySimpleDefaults, validateConfig, fillDryRunPlaceholders } from './cli.mjs';
+import { parseCli, applyQuickDefaults, validateConfig, fillDryRunPlaceholders } from './cli.mjs';
 import { renderPipeline } from './render.mjs';
 import {
   checkRequirements,
@@ -9,8 +9,8 @@ import {
   createOsiPipeline,
   mapOsiRoleInDomain,
   setupDashboards,
-  createDqsPrometheusRole,
-  createDirectQueryDataSource,
+  createConnectedDataSourceRole,
+  createConnectedDataSource,
   createOpenSearchApplication,
 } from './aws.mjs';
 import {
@@ -38,9 +38,9 @@ export async function run() {
       return;
     }
 
-    // Apply simple-mode defaults for anything not explicitly set
-    if (!cfg.mode) cfg.mode = 'simple';
-    if (cfg.mode === 'simple') applySimpleDefaults(cfg);
+    // Apply quick-mode defaults for anything not explicitly set
+    if (!cfg.mode) cfg.mode = 'quick';
+    if (cfg.mode === 'quick') applyQuickDefaults(cfg);
 
     // Validate
     const errors = validateConfig(cfg);
@@ -120,12 +120,12 @@ export async function executePipeline(cfg) {
     if (m) cfg.apsWorkspaceId = m[1];
   }
 
-  // Create DQS Prometheus role and Direct Query data source (connects AMP to OpenSearch)
-  if (cfg.apsWorkspaceId && cfg.dqsRoleName) {
-    await createDqsPrometheusRole(cfg);
+  // Create Connected Data Source role and data source (connects AMP to OpenSearch)
+  if (cfg.apsWorkspaceId && cfg.connectedDataSourceRoleName) {
+    await createConnectedDataSourceRole(cfg);
     console.error();
 
-    await createDirectQueryDataSource(cfg);
+    await createConnectedDataSource(cfg);
     console.error();
   }
 
@@ -174,8 +174,8 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('OpenSearch Master Password:'))} Secrets Manager: observability-stack/${cfg.pipelineName}/master-password`,
     `${theme.label(pad('OpenSearch UI:'))} ${cfg.dashboardsUrl}`,
     `${theme.label(pad('Prometheus:'))} ${cfg.prometheusUrl}`,
-    `${theme.label(pad('Direct Query Service Datasource:'))} ${cfg.dqsDataSourceArn || 'n/a'}`,
-    `${theme.label(pad('Direct Query Service Role:'))} ${cfg.dqsRoleArn || 'n/a'}`,
+    `${theme.label(pad('Connected Data Source:'))} ${cfg.connectedDataSourceArn || 'n/a'}`,
+    `${theme.label(pad('Connected Data Source Role:'))} ${cfg.connectedDataSourceRoleArn || 'n/a'}`,
     ...(cfg.demoInstanceId ? [
       `${theme.label(pad('Demo EC2 Instance:'))} ${cfg.demoInstanceId}`,
       `${pad('')} ${theme.muted(`└─ Connect: aws ssm start-session --target ${cfg.demoInstanceId} --region ${cfg.region}`)}`,
@@ -245,11 +245,11 @@ function printSummary(cfg) {
     dashEntries.push(['Action', 'create new Observability workspace']);
   }
 
-  // Direct Query & Application
+  // Connected Data Source & Application
   const dqEntries = [];
-  if (cfg.dqsRoleName) dqEntries.push(['DQS role', cfg.dqsRoleName]);
-  else if (cfg.dqsRoleArn) dqEntries.push(['DQS role ARN', cfg.dqsRoleArn]);
-  if (cfg.dqsDataSourceName) dqEntries.push(['Data source name', cfg.dqsDataSourceName]);
+  if (cfg.connectedDataSourceRoleName) dqEntries.push(['Connected Data Source role', cfg.connectedDataSourceRoleName]);
+  else if (cfg.connectedDataSourceRoleArn) dqEntries.push(['Connected Data Source role ARN', cfg.connectedDataSourceRoleArn]);
+  if (cfg.connectedDataSourceName) dqEntries.push(['Data source name', cfg.connectedDataSourceName]);
   if (cfg.appName) dqEntries.push(['Application name', cfg.appName]);
 
   // Pipeline settings
@@ -274,7 +274,7 @@ function printSummary(cfg) {
     ['', theme.accentBold('Amazon Managed Prometheus')],
     ...apsEntries,
     ['', ''],
-    ['', theme.accentBold('Direct Query & Application')],
+    ['', theme.accentBold('Connected Data Source & Application')],
     ...dqEntries,
     ['', ''],
     ['', theme.accentBold('Pipeline Settings')],

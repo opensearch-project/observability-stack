@@ -22,9 +22,9 @@ Takes ~15 minutes. When complete, the CLI prints a dashboard URL — open it and
 | OpenSearch domain | Stores logs, traces, and service map data |
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
-| DQS Prometheus datasource | Connects AMP to OpenSearch for metric queries |
+| Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
 | OpenSearch Application | UI with workspace, index patterns, correlations, dashboards |
-| IAM roles | Pipeline role (OSIS → OpenSearch + AMP) and DQS role |
+| IAM roles | Pipeline role (OSIS → OpenSearch + AMP) and Connected Data Source role |
 | EC2 instance (t3.xlarge) | Runs OTel Demo + example agents (29 containers generating telemetry) |
 
 All resources are tagged with `observability-stack:pipeline-name` for identification and cleanup.
@@ -68,7 +68,7 @@ node bin/cli-installer.mjs destroy \
   --region us-east-1
 ```
 
-Deletes: EC2 instance, OpenSearch Application, DQS datasource, OSIS pipeline, IAM roles. OpenSearch domain and AMP workspace are preserved (shared resources).
+Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipeline, IAM roles. OpenSearch domain and AMP workspace are preserved (shared resources).
 
 ## Prerequisites
 
@@ -93,7 +93,7 @@ aws/cli-installer/
 ├── src/
 │   ├── main.mjs                # CLI orchestration + executePipeline flow
 │   ├── cli.mjs                 # Argument parsing + config
-│   ├── aws.mjs                 # AWS resource creation (IAM, OSIS, DQS, Application)
+│   ├── aws.mjs                 # AWS resource creation (IAM, OSIS, Connected Data Source, Application)
 │   ├── render.mjs              # OSIS pipeline YAML generation
 │   ├── opensearch-ui-init.mjs  # OpenSearch UI setup (SigV4, workspace, dashboards)
 │   ├── ec2-demo.mjs            # EC2 demo workload launcher
