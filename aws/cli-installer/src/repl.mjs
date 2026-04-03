@@ -5,6 +5,7 @@ import {
   theme, GoBack, eSelect,
 } from './ui.mjs';
 import { COMMANDS, COMMAND_CHOICES } from './commands/index.mjs';
+import { DEFAULT_REGION } from './config.mjs';
 
 /**
  * Initialize session — prompt for region and verify AWS credentials.
@@ -13,7 +14,7 @@ async function initSession() {
   const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
   const region = envRegion || await input({
     message: 'AWS region',
-    default: 'us-east-1',
+    default: DEFAULT_REGION,
     validate: (v) => /^[a-z]{2}-[a-z]+-\d+$/.test(v) || 'Expected format: us-east-1',
   });
 

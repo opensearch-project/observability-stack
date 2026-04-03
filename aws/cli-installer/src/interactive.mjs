@@ -3,7 +3,7 @@ import {
   createSpinner, theme, GoBack, eSelect, eInput,
   saveCursor, clearFromCursor,
 } from './ui.mjs';
-import { createDefaultConfig, DEFAULTS } from './config.mjs';
+import { createDefaultConfig, DEFAULTS, DEFAULT_REGION } from './config.mjs';
 import { listDomains, listWorkspaces, listApplications } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
@@ -62,7 +62,7 @@ async function stepCore(cfg, session) {
   } else {
     const region = await eInput({
       message: 'AWS region',
-      default: cfg.region || 'us-east-1',
+      default: cfg.region || DEFAULT_REGION,
       validate: (v) => /^[a-z]{2}-[a-z]+-\d+$/.test(v) || 'Expected format: us-east-1',
     });
     if (region === GoBack) return GoBack;
