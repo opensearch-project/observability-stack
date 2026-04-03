@@ -1,0 +1,7 @@
+node_modules/
+cdk.out/
+dist/
+*.js
+*.d.ts
+!custom-resources/ui-init/arch-image.mjs
+!custom-resources/ui-init/arch-image.d.mts
