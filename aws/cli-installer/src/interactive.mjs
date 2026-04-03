@@ -58,7 +58,7 @@ async function stepCore(cfg, session) {
   if (session) {
     cfg.region = session.region;
     cfg.accountId = session.accountId;
-    printSubStep(`Region: ${theme.accent(cfg.region)} (from session)`);
+    printSubStep(`Region: ${theme.accent(cfg.region)}`);
   } else {
     const region = await eInput({
       message: 'AWS region',
@@ -441,6 +441,22 @@ async function stepTuning(cfg) {
   cfg.serviceMapWindow = window;
 }
 
+async function stepDemo(cfg) {
+  printStep('Demo workloads');
+  console.error();
+
+  const demo = await eSelect({
+    message: 'Launch EC2 demo instance with sample logs, traces & metrics?',
+    choices: [
+      { name: `Yes ${theme.muted('— sends demo telemetry to the pipeline')}`, value: true },
+      { name: 'No', value: false },
+    ],
+    default: false,
+  });
+  if (demo === GoBack) return GoBack;
+  cfg.skipDemo = !demo;
+}
+
 // ── Main wizard ──────────────────────────────────────────────────────────────
 
 /**
@@ -453,7 +469,7 @@ export async function runCreateWizard(session = null) {
 
   if (!session) printHeader();
 
-  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepConnectedDataSourceRole, stepConnectedDataSource, stepApp, stepTuning];
+  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepConnectedDataSourceRole, stepConnectedDataSource, stepApp, stepTuning, stepDemo];
   const visited = [];
   let i = 0;
 
