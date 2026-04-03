@@ -963,9 +963,9 @@ run_aws_installer() {
     cd "$TMPDIR/aws/cli-installer"
     npm install --silent 2>/dev/null
 
-    # Forward args to CLI (auto-add --managed)
+    # Forward args to CLI
     echo ""
-    node bin/cli-installer.mjs --managed "${AWS_CLI_ARGS[@]}"
+    node bin/cli-installer.mjs "${AWS_CLI_ARGS[@]}"
 }
 
 main() {
