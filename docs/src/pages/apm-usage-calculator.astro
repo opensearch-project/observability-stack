@@ -1,0 +1,28 @@
+---
+import Layout from '../layouts/Layout.astro';
+import Navigation from '../components/Navigation.astro';
+import Footer from '../components/Footer.astro';
+import APMUsageCalculator from '../components/APMUsageCalculator.tsx';
+---
+
+<Layout
+  title="APM Usage Calculator | OpenSearch Observability Stack"
+  description="Estimate your APM resource consumption — spans, service maps, RED metrics storage and ingest rates."
+>
+  <Navigation />
+  <main id="main-content" class="py-20 bg-slate-950 min-h-screen">
+    <div class="container mx-auto px-6">
+      <div class="max-w-4xl mx-auto text-center mb-12">
+        <h1 class="text-3xl md:text-4xl font-bold text-white mb-4">
+          APM Usage Calculator
+        </h1>
+        <p class="text-lg text-slate-400 max-w-2xl mx-auto">
+          Model your APM workload and estimate resource consumption for spans,
+          service maps, and RED metrics.
+        </p>
+      </div>
+      <APMUsageCalculator client:load />
+    </div>
+  </main>
+  <Footer />
+</Layout>
