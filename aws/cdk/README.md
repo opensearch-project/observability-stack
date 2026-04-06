@@ -14,7 +14,6 @@ Deploy the Observability Stack to AWS managed services using CDK. This creates t
 ```bash
 cd aws/cdk
 npm install
-cd custom-resources && npm install && cd ..
 cdk deploy --all
 ```
 

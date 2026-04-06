@@ -93,6 +93,32 @@ grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
 ```
 ___ 
 
+### Option 3: AWS Managed Services
+
+Deploy the same observability stack to AWS managed services:
+
+| Local (Docker Compose) | AWS Managed |
+|------------------------|-------------|
+| OpenSearch | [Amazon OpenSearch Service](https://aws.amazon.com/opensearch-service/) |
+| Prometheus | [Amazon Managed Service for Prometheus](https://aws.amazon.com/prometheus/) |
+| OTel Collector → Data Prepper | [Amazon OpenSearch Ingestion (OSIS)](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ingestion.html) |
+| OpenSearch Dashboards | [OpenSearch Service Dashboards](https://aws.amazon.com/opensearch-service/features/dashboards/) |
+
+#### CLI installer — interactive single-command deploy:
+```bash
+cd aws/cli-installer && npm install
+node bin/cli-installer.mjs --managed --pipeline-name obs-stack --region us-west-2
+```
+See [aws/cli-installer/README.md](aws/cli-installer/README.md) for details.
+
+#### CDK — infrastructure as code:
+```bash
+cd aws/cdk
+npm install
+cdk deploy --all
+```
+See [aws/cdk/README.md](aws/cdk/README.md) for configuration options, architecture details, and sending telemetry via SigV4.
+
 ### Destroying the Stack
 
 To stop the stack while preserving your data:
