@@ -28,13 +28,15 @@ curl -s http://localhost:9090/-/healthy
 From the `observability-stack` repository root:
 
 ```bash
-claude install-plugin ./claude-code-observability-plugin
+claude plugin marketplace add ./
+claude plugin install observability
 ```
 
 Or install directly from GitHub:
 
 ```bash
-claude install-plugin https://github.com/opensearch-project/observability-stack/tree/main/claude-code-observability-plugin
+claude plugin marketplace add https://github.com/opensearch-project/observability-stack
+claude plugin install observability
 ```
 
 ## Verify Installation
