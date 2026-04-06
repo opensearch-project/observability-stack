@@ -18,7 +18,7 @@ The Observability Stack runs locally via Docker Compose out of the box. When you
 | OpenSearch | [Amazon OpenSearch Service](https://aws.amazon.com/opensearch-service/) |
 | Prometheus | [Amazon Managed Service for Prometheus](https://aws.amazon.com/prometheus/) |
 | OTel Collector → Data Prepper | [Amazon OpenSearch Ingestion (OSIS)](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/ingestion.html) |
-| OpenSearch Dashboards | [OpenSearch Service Dashboards](https://aws.amazon.com/opensearch-service/features/dashboards/) |
+| OpenSearch Dashboards | [OpenSearch UI](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/application.html) |
 
 :::note
 Kubernetes (Helm) deployment documentation is coming soon. The [Helm chart](https://github.com/opensearch-project/observability-stack/tree/main/helm) is available in the repository today.
