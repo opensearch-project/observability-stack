@@ -82,6 +82,14 @@ export default defineConfig({
 					],
 				},
 				{
+					label: 'Deploy to Cloud',
+					collapsed: true,
+					items: [
+						{ label: 'Overview', link: '/deploy/' },
+						{ label: 'AWS Managed Services', link: '/deploy/aws/' },
+					],
+				},
+				{
 					label: 'Send Data',
 					collapsed: true,
 					items: [
