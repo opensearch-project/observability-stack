@@ -5,12 +5,7 @@ Deploy the [Observability Stack](https://github.com/opensearch-project/observabi
 ## Quick Start
 
 ```bash
-git clone https://github.com/opensearch-project/observability-stack.git
-cd observability-stack/aws/cli-installer && npm install
-
-node bin/cli-installer.mjs --managed \
-  --pipeline-name obs-stack-<your-alias> \
-  --region us-east-1
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/opensearch-project/observability-stack/main/install.sh)" -- --deployment-target=aws
 ```
 
 Takes ~15 minutes. When complete, the CLI prints a dashboard URL — open it and you're in.
