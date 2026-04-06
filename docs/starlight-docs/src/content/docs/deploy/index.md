@@ -21,7 +21,7 @@ The Observability Stack runs locally via Docker Compose out of the box. When you
 | OpenSearch Dashboards | [OpenSearch UI](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/application.html) |
 
 :::note
-Kubernetes (Helm) deployment documentation is coming soon. The [Helm chart](https://github.com/opensearch-project/observability-stack/tree/main/helm) is available in the repository today.
+Native Kubernetes (Helm) deployment documentation is coming soon.
 :::
 
 ## Available deployment options
