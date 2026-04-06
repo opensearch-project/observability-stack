@@ -48,20 +48,8 @@ jobs:
         run: npm ci
         working-directory: ./docs/starlight-docs
 
-      - name: Detect fork base path
-        id: base
-        run: |
-          if [ "${{ github.repository }}" != "opensearch-project/observability-stack" ]; then
-            REPO_NAME=$(echo "${{ github.repository }}" | cut -d'/' -f2)
-            echo "path=/${REPO_NAME}" >> "$GITHUB_OUTPUT"
-          else
-            echo "path=" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Build main site
         run: npm run build:main
-        env:
-          ASTRO_BASE_PATH: ${{ steps.base.outputs.path }}
 
       - name: Build Starlight docs
         run: npm run build

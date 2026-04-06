@@ -22,15 +22,15 @@ describe('calculateUsage', () => {
     expect(result.retainedSpans).toBe(10_000_000 * (15 / 30));
   });
 
-  it('computes span storage in bytes', () => {
+  it('computes span storage in bytes with index overhead', () => {
     const result = calculateUsage(defaults);
-    const expected = 10_000_000 * (15 / 30) * 0.5 * 1024;
-    expect(result.spanStorageBytes).toBe(expected);
+    const rawBytes = 10_000_000 * (15 / 30) * 0.5 * 1024;
+    expect(result.spanStorageBytes).toBe(rawBytes * 2.0);
   });
 
-  it('computes service map edges as n*(n-1)/2', () => {
+  it('computes directed service map edges as n*(n-1)', () => {
     const result = calculateUsage(defaults);
-    expect(result.edges).toBe((10 * 9) / 2);
+    expect(result.edges).toBe(10 * 9);
   });
 
   it('computes 0 edges for 1 service', () => {
@@ -38,15 +38,16 @@ describe('calculateUsage', () => {
     expect(result.edges).toBe(0);
   });
 
-  it('computes RED series as services * ops * 3', () => {
+  it('computes RED series as services * ops * 16', () => {
     const result = calculateUsage(defaults);
-    expect(result.redSeries).toBe(10 * 5 * 3);
+    expect(result.redSeries).toBe(10 * 5 * 16);
   });
 
   it('computes prometheus samples per month', () => {
     const result = calculateUsage(defaults);
+    const redSeries = 10 * 5 * 16;
     const samplesPerSeriesPerMonth = (30 * 24 * 3600) / 60;
-    expect(result.samplesPerMonth).toBe(150 * samplesPerSeriesPerMonth);
+    expect(result.samplesPerMonth).toBe(redSeries * samplesPerSeriesPerMonth);
   });
 
   it('scales storage linearly with retention', () => {

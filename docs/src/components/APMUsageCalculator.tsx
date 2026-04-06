@@ -12,8 +12,10 @@ interface SliderConfig {
 
 const SERVICE_MAP_DOC_SIZE_BYTES = 104;
 const PROMETHEUS_BYTES_PER_SAMPLE = 2;
-const SCRAPE_INTERVAL_SECONDS = 60;
-const SERVICE_MAP_EMIT_INTERVAL_MINUTES = 2;
+const AGGREGATION_WINDOW_SECONDS = 60;
+const SERVICE_MAP_WINDOW_SECONDS = 180;
+const RED_SERIES_PER_OPERATION = 16;
+const OPENSEARCH_INDEX_OVERHEAD = 2.0;
 
 function formatCompact(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -253,20 +255,23 @@ export function calculateUsage(values: Record<SliderKey, number>) {
   // Span storage
   const tracesPerMonth = spansPerMonth / spansPerTrace;
   const retainedSpans = spansPerMonth * (retentionDays / 30);
-  const spanStorageBytes = retainedSpans * avgSpanSizeKB * 1024;
+  const spanRawBytes = retainedSpans * avgSpanSizeKB * 1024;
+  const spanStorageBytes = spanRawBytes * OPENSEARCH_INDEX_OVERHEAD;
 
-  // Service map
-  const edges = Math.max(0, (services * (services - 1)) / 2);
-  const emitsPerDay = (24 * 60) / SERVICE_MAP_EMIT_INTERVAL_MINUTES;
+  // Service map (directed edges: A→B ≠ B→A)
+  const edges = Math.max(0, services * (services - 1));
+  const emitsPerDay = (24 * 3600) / SERVICE_MAP_WINDOW_SECONDS;
   const serviceMapDocsPerMonth = edges * emitsPerDay * 30;
   const serviceMapRetainedDocs = serviceMapDocsPerMonth * (retentionDays / 30);
-  const serviceMapStorageBytes =
+  const serviceMapRawBytes =
     serviceMapRetainedDocs * SERVICE_MAP_DOC_SIZE_BYTES;
+  const serviceMapStorageBytes = serviceMapRawBytes * OPENSEARCH_INDEX_OVERHEAD;
 
-  // RED metrics (Prometheus)
-  const redSeries = services * opsPerService * 3;
+  // RED metrics (Prometheus) — pushed via OTLP, not scraped
+  // Per operation: request count + error count + fault count + ~12 histogram bucket series + _sum + _count
+  const redSeries = services * opsPerService * RED_SERIES_PER_OPERATION;
   const samplesPerSeriesPerMonth =
-    (30 * 24 * 3600) / SCRAPE_INTERVAL_SECONDS;
+    (30 * 24 * 3600) / AGGREGATION_WINDOW_SECONDS;
   const samplesPerMonth = redSeries * samplesPerSeriesPerMonth;
   const promRetainedSamples = samplesPerMonth * (retentionDays / 30);
   const promStorageBytes = promRetainedSamples * PROMETHEUS_BYTES_PER_SAMPLE;
@@ -350,7 +355,7 @@ function HowItWorks() {
             <div className="font-mono text-xs bg-slate-950 rounded p-3 space-y-1">
               <div><span className="text-slate-500">Traces/month</span> = spans_per_month / avg_spans_per_trace</div>
               <div><span className="text-slate-500">Retained spans</span> = spans_per_month * (retention_days / 30)</div>
-              <div><span className="text-slate-500">Storage</span> = retained_spans * avg_span_size_kb * 1024</div>
+              <div><span className="text-slate-500">Storage</span> = retained_spans * avg_span_size_kb * 1024 * 2.0x index overhead</div>
             </div>
             <p className="mt-2 text-slate-400">
               The default 0.5 KB per span is measured from a live stack. Spans with many custom attributes,
@@ -368,13 +373,14 @@ function HowItWorks() {
               Each document records a source service, target service, and the operation connecting them.
             </p>
             <div className="font-mono text-xs bg-slate-950 rounded p-3 space-y-1">
-              <div><span className="text-slate-500">Edges</span> = services * (services - 1) / 2 &nbsp; <span className="text-slate-600">[worst-case complete graph]</span></div>
-              <div><span className="text-slate-500">Docs/month</span> = edges * 720/day * 30 &nbsp; <span className="text-slate-600">[emitted every 2 min]</span></div>
-              <div><span className="text-slate-500">Storage</span> = retained_docs * 104 bytes &nbsp; <span className="text-slate-600">[measured avg doc size]</span></div>
+              <div><span className="text-slate-500">Edges</span> = services * (services - 1) &nbsp; <span className="text-slate-600">[directed: A&rarr;B &ne; B&rarr;A]</span></div>
+              <div><span className="text-slate-500">Docs/month</span> = edges * 480/day * 30 &nbsp; <span className="text-slate-600">[3 min window (DEFAULT_WINDOW_DURATION)]</span></div>
+              <div><span className="text-slate-500">Storage</span> = retained_docs * 104 bytes * 2.0x &nbsp; <span className="text-slate-600">[index overhead]</span></div>
             </div>
             <p className="mt-2 text-slate-400">
-              The edge count uses the worst case (every service calls every other service). In practice,
-              your service graph is sparser, so actual storage will be lower.
+              Service map edges are directed (A&rarr;B and B&rarr;A are separate documents with distinct
+              sourceNode/targetNode fields). The edge count uses the worst case (every service calls
+              every other). In practice, your graph is sparser, so actual storage will be lower.
             </p>
           </div>
 
@@ -382,18 +388,20 @@ function HowItWorks() {
           <div>
             <h3 className="text-white font-semibold mb-2">3. RED Metrics (Prometheus)</h3>
             <p className="mb-2">
-              APM computes three metrics per service-operation pair — <strong>R</strong>ate (requests/sec),
-              <strong>E</strong>rrors (error count), and <strong>D</strong>uration (latency histogram).
-              These are exported as Prometheus time-series via OTLP.
+              Data Prepper computes RED metrics per service-operation pair and pushes them
+              to Prometheus via OTLP (not pull/scrape). Each operation generates multiple
+              time-series: request count, error count, fault count, and a latency histogram
+              (~12 bucket boundaries + _sum + _count).
             </p>
             <div className="font-mono text-xs bg-slate-950 rounded p-3 space-y-1">
-              <div><span className="text-slate-500">Active series</span> = services * operations_per_service * 3</div>
-              <div><span className="text-slate-500">Samples/month</span> = series * (30 * 24 * 3600 / 60s scrape interval)</div>
+              <div><span className="text-slate-500">Active series</span> = services * operations * 16 &nbsp; <span className="text-slate-600">[req + err + fault + ~12 hist + _sum + _count]</span></div>
+              <div><span className="text-slate-500">Samples/month</span> = series * (30 * 24 * 3600 / 60s aggregation window)</div>
               <div><span className="text-slate-500">Storage</span> = retained_samples * 2 bytes &nbsp; <span className="text-slate-600">[Prometheus TSDB compression]</span></div>
             </div>
             <p className="mt-2 text-slate-400">
-              The "3" multiplier comes from the three RED signals. Prometheus TSDB compresses
-              time-series samples to roughly 1-2 bytes each. We use 2 bytes as a conservative estimate.
+              The multiplier of 16 accounts for the actual Prometheus series produced: request_count,
+              error_count, fault_count, and latency_seconds_bucket with ~12 histogram boundaries
+              plus _sum and _count. Prometheus TSDB compresses samples to ~1-2 bytes each.
             </p>
           </div>
 
@@ -403,12 +411,16 @@ function HowItWorks() {
             <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-xs">
               <span className="text-slate-400">Avg service map doc size</span>
               <span className="text-slate-200">104 bytes</span>
+              <span className="text-slate-400">OpenSearch index overhead</span>
+              <span className="text-slate-200">2.0x raw size</span>
               <span className="text-slate-400">Prometheus bytes/sample</span>
               <span className="text-slate-200">2 bytes</span>
-              <span className="text-slate-400">Scrape interval</span>
+              <span className="text-slate-400">Aggregation window (OTLP push)</span>
               <span className="text-slate-200">60 seconds</span>
-              <span className="text-slate-400">Service map emit interval</span>
-              <span className="text-slate-200">2 minutes</span>
+              <span className="text-slate-400">Service map window</span>
+              <span className="text-slate-200">180 seconds (3 min)</span>
+              <span className="text-slate-400">RED series per operation</span>
+              <span className="text-slate-200">16 (req + err + fault + histogram)</span>
             </div>
             <p className="mt-2 text-slate-400">
               These constants are derived from measurements on a live observability stack
@@ -471,28 +483,28 @@ export default function APMUsageCalculator() {
               formula={`= ${formatCompact(values.spansPerMonth)} spans/mo * (${values.retentionDays} / 30) retention`}
             />
             <MetricRow
-              label="Storage"
+              label="Storage (with index overhead)"
               value={formatBytes(usage.spanStorageBytes)}
-              formula={`= ${formatCompact(usage.retainedSpans)} retained * ${values.avgSpanSizeKB.toFixed(1)} KB avg size`}
+              formula={`= ${formatCompact(usage.retainedSpans)} retained * ${values.avgSpanSizeKB.toFixed(1)} KB * ${OPENSEARCH_INDEX_OVERHEAD}x index overhead`}
               highlight
             />
           </Section>
 
           <Section title="Service Map (OpenSearch)">
             <MetricRow
-              label="Unique service edges"
+              label="Directed service edges"
               value={usage.edges.toString()}
-              formula={`= ${values.services} * (${values.services} - 1) / 2  [worst-case pairs]`}
+              formula={`= ${values.services} * (${values.services} - 1)  [directed: A\u2192B \u2260 B\u2192A]`}
             />
             <MetricRow
               label="Docs / month"
               value={formatCompact(usage.serviceMapDocsPerMonth)}
-              formula={`= ${usage.edges} edges * 720 emits/day * 30 days  [emitted every 2 min]`}
+              formula={`= ${usage.edges} edges * 480 emits/day * 30 days  [every 3 min window]`}
             />
             <MetricRow
               label="Storage"
               value={formatBytes(usage.serviceMapStorageBytes)}
-              formula={`= ${formatCompact(usage.serviceMapRetainedDocs)} retained docs * 104 B avg doc size`}
+              formula={`= ${formatCompact(usage.serviceMapRetainedDocs)} retained docs * 104 B * ${OPENSEARCH_INDEX_OVERHEAD}x overhead`}
               highlight
             />
           </Section>
@@ -501,12 +513,12 @@ export default function APMUsageCalculator() {
             <MetricRow
               label="Active time-series"
               value={formatCompact(usage.redSeries)}
-              formula={`= ${values.services} services * ${values.opsPerService} ops * 3  [rate + errors + duration]`}
+              formula={`= ${values.services} services * ${values.opsPerService} ops * ${RED_SERIES_PER_OPERATION}  [req + err + fault + ~12 histogram + _sum + _count]`}
             />
             <MetricRow
               label="Samples / month"
               value={formatCompact(usage.samplesPerMonth)}
-              formula={`= ${formatCompact(usage.redSeries)} series * ${formatCompact((30 * 24 * 3600) / SCRAPE_INTERVAL_SECONDS)} samples/series/mo  [60s scrape]`}
+              formula={`= ${formatCompact(usage.redSeries)} series * ${formatCompact((30 * 24 * 3600) / AGGREGATION_WINDOW_SECONDS)} samples/series/mo  [60s aggregation window]`}
             />
             <MetricRow
               label="Storage"
