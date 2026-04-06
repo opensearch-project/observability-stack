@@ -7,9 +7,11 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@astrojs/react';
 
 // https://astro.build/config
+const isForkedDeploy = process.env.ASTRO_BASE_PATH || '';
+
 export default defineConfig({
-  site: 'https://observability.opensearch.org',
-  base: '/',
+  site: isForkedDeploy ? `https://${process.env.GITHUB_REPOSITORY_OWNER || 'anirudha'}.github.io` : 'https://observability.opensearch.org',
+  base: isForkedDeploy || '/',
   integrations: [sitemap(), react()],
   vite: {
     plugins: [tailwindcss()],
