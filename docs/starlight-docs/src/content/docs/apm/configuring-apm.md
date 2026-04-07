@@ -8,9 +8,11 @@ sidebar:
 
 After ingesting telemetry data using the OpenTelemetry Collector and Data Prepper, you need to configure APM in OpenSearch Dashboards. You'll create datasets, configure index patterns, attach a Prometheus data source, and configure APM settings in your workspace.
 
+> **Tip:** If your indexes follow the OpenTelemetry naming conventions (`otel-v1-apm-span*` for traces and `logs-otel-v1*` for logs), OpenSearch Dashboards can automatically create datasets and correlations for you. Navigate to **Discover** > **Traces** and select the **Create Trace Datasets** button when prompted. This skips Steps 1 and 2 below. For more details, see [Automatic dataset creation](/docs/investigate/discover-traces/#automatic-dataset-creation).
+
 ## Step 1: Create datasets for logs and traces
 
-Create datasets in your Observability workspace to define how APM accesses your trace and log data:
+If your indexes use custom naming conventions and automatic creation is not available, create datasets manually in your Observability workspace:
 
 1. Navigate to your Observability workspace.
 2. Select **Datasets** and then select **Create dataset**.
@@ -21,7 +23,7 @@ For detailed instructions on creating and configuring datasets, see [Datasets](/
 
 ## Step 2: Create a correlation between trace and log datasets
 
-Link the trace and log datasets so that APM can display related logs when you investigate traces:
+If you created datasets manually in Step 1, link the trace and log datasets so that APM can display related logs when you investigate traces:
 
 1. Navigate to **Datasets** > **Correlations**.
 2. Select the trace dataset you created in [Step 1](#step-1-create-datasets-for-logs-and-traces).
