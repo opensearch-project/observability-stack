@@ -61,6 +61,10 @@ To set up APM, complete the following steps:
 
 > **Note:** APM is distinct from the older [Trace analytics](https://opensearch.org/docs/latest/observing-your-data/trace/index/) and [Application analytics](https://opensearch.org/docs/latest/observing-your-data/app-analytics/) features. APM provides a more integrated experience that combines service topology, RED metrics, and in-context correlations into a single workflow.
 
+## Sizing and capacity planning
+
+Use the [APM Sizing Calculator](/docs/apm/sizing-calculator/) to estimate storage, metrics, and ingest requirements based on your workload — before you deploy or as you plan to scale.
+
 ## Prerequisites
 
 - Data Prepper running with the trace analytics pipelines enabled (see [Configuring Telemetry Ingestion](/docs/apm/configuring-telemetry-ingestion/) for the full pipeline configuration)
