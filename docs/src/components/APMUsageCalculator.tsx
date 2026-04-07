@@ -8,6 +8,7 @@ interface SliderConfig {
   default: number;
   unit: string;
   format: (v: number) => string;
+  logarithmic?: boolean;
 }
 
 const SERVICE_MAP_DOC_SIZE_BYTES = 104;
@@ -41,6 +42,7 @@ const sliders: Record<string, SliderConfig> = {
     default: 10_000_000,
     unit: 'spans',
     format: formatCompact,
+    logarithmic: true,
   },
   avgSpanSizeKB: {
     label: 'Avg span payload size',
@@ -91,6 +93,19 @@ const sliders: Record<string, SliderConfig> = {
 
 type SliderKey = keyof typeof sliders;
 
+function toLog(value: number, min: number, max: number): number {
+  const logMin = Math.log(min);
+  const logMax = Math.log(max);
+  return ((Math.log(value) - logMin) / (logMax - logMin)) * 1000;
+}
+
+function fromLog(position: number, min: number, max: number, step: number): number {
+  const logMin = Math.log(min);
+  const logMax = Math.log(max);
+  const raw = Math.exp(logMin + (position / 1000) * (logMax - logMin));
+  return Math.round(raw / step) * step;
+}
+
 function Slider({
   config,
   value,
@@ -103,6 +118,8 @@ function Slider({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const isLog = config.logarithmic;
+  const effectiveMax = value > config.max ? value : config.max;
 
   useEffect(() => {
     if (editing && inputRef.current) {
@@ -118,6 +135,19 @@ function Slider({
       onChange(clamped);
     }
     setEditing(false);
+  };
+
+  const sliderValue = isLog
+    ? toLog(value, config.min, effectiveMax)
+    : value;
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = Number(e.target.value);
+    if (isLog) {
+      onChange(fromLog(raw, config.min, effectiveMax, config.step));
+    } else {
+      onChange(raw);
+    }
   };
 
   return (
@@ -174,11 +204,11 @@ function Slider({
       </div>
       <input
         type="range"
-        min={config.min}
-        max={value > config.max ? value : config.max}
-        step={config.step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        min={isLog ? 0 : config.min}
+        max={isLog ? 1000 : effectiveMax}
+        step={isLog ? 1 : config.step}
+        value={sliderValue}
+        onChange={handleSliderChange}
         className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-slate-700 accent-cyan-500"
       />
       <div className="flex justify-between mt-1">
@@ -186,9 +216,7 @@ function Slider({
           {config.format(config.min)}
         </span>
         <span className="text-xs text-slate-500">
-          {value > config.max
-            ? config.format(value)
-            : config.format(config.max)}
+          {config.format(effectiveMax)}
         </span>
       </div>
     </div>
