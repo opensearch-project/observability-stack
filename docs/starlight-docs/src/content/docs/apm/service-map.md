@@ -1,6 +1,8 @@
 ---
 title: Application Map
 description: Visualize service dependencies and communication patterns
+sidebar:
+  order: 30
 ---
 
 The Application Map is an interactive topology view of your distributed system, auto-generated from trace data by Data Prepper. It shows which services communicate, how much traffic flows between them, and where errors are occurring.
@@ -51,6 +53,8 @@ Edges between nodes show the direction of communication between services.
 
 Click any service node to open a detail panel on the right side of the map. The panel shows:
 
+![Node details panel showing health and metrics for the selected service](/docs/images/apm/application-map-node-details.png)
+
 **Header**
 - Service name and environment label
 - A **View details** link that navigates to the full [service detail view](/docs/apm/services/#service-detail-view)
@@ -94,125 +98,15 @@ Clicking **View insights** on a group card drills into that group, showing only 
 
 ![Group by telemetry.sdk.language showing cards for python, go, cpp, nodejs, rust, dotnet, java, ruby, and php](/docs/images/apm/groupby-attributes.png)
 
+## In-context correlations
+
+The application map integrates with APM correlations to help you navigate from the topology view to detailed telemetry data:
+
+- **Application spans** - select a service node and choose **View traces** to see the individual trace spans associated with that service. This is useful for investigating the root cause of latency or error spikes visible on the map.
+- **Application logs** - select a service node and choose **View logs** to see log entries from that service during the selected time range. Log correlations require that you have configured a [correlation](/docs/investigate/correlations/) between your trace and log datasets.
+
+These in-context navigation paths allow you to move seamlessly from a high-level topology view to the detailed traces and logs needed for root cause analysis.
+
 ## Data Prepper pipeline configuration
 
-The Observability Stack uses a 5-pipeline architecture in Data Prepper to process OTLP data, generate the application map, and export RED metrics. Below is the full pipeline configuration from the stack's `pipelines.template.yaml`:
-
-### 1. OTLP entry point
-
-The main OTLP source pipeline that receives all telemetry data and routes logs and traces to their respective pipelines:
-
-```yaml
-otlp-pipeline:
-  source:
-    otel_trace_source:
-      ssl: false
-      port: 21890
-  processor:
-    - otel_traces:
-  route:
-    - logs: '/type == "log"'
-    - traces: '/type == "trace"'
-  sink:
-    - pipeline:
-        name: "otel-logs-pipeline"
-        routes:
-          - logs
-    - pipeline:
-        name: "otel-traces-pipeline"
-        routes:
-          - traces
-```
-
-### 2. Logs pipeline
-
-Processes OTLP log data and writes to OpenSearch:
-
-```yaml
-otel-logs-pipeline:
-  source:
-    pipeline:
-      name: "otlp-pipeline"
-  processor:
-    - otel_logs:
-  sink:
-    - opensearch:
-        hosts: ["https://opensearch:9200"]
-        index_type: log-analytics-plain
-        insecure: true
-        username: "${{opensearch.username}}"
-        password: "${{opensearch.password}}"
-```
-
-### 3. Traces fan-out pipeline
-
-Receives trace data from the OTLP pipeline and fans out to both the raw trace pipeline and the service map pipeline:
-
-```yaml
-otel-traces-pipeline:
-  source:
-    pipeline:
-      name: "otlp-pipeline"
-  sink:
-    - pipeline:
-        name: "traces-raw-pipeline"
-    - pipeline:
-        name: "service-map-pipeline"
-```
-
-### 4. Raw traces pipeline
-
-Processes trace spans and writes them to the trace analytics index in OpenSearch:
-
-```yaml
-traces-raw-pipeline:
-  source:
-    pipeline:
-      name: "otel-traces-pipeline"
-  processor:
-    - otel_traces:
-  sink:
-    - opensearch:
-        hosts: ["https://opensearch:9200"]
-        index_type: trace-analytics-plain-raw
-        insecure: true
-        username: "${{opensearch.username}}"
-        password: "${{opensearch.password}}"
-```
-
-### 5. Service map pipeline
-
-Builds the application map from trace data, groups by SDK language, and exports RED metrics to Prometheus via remote write:
-
-```yaml
-service-map-pipeline:
-  source:
-    pipeline:
-      name: "otel-traces-pipeline"
-  processor:
-    - otel_apm_service_map:
-        group_by_attributes:
-          - telemetry.sdk.language
-        window_duration: 10s
-  sink:
-    - opensearch:
-        hosts: ["https://opensearch:9200"]
-        index_type: otel-v2-apm-service-map
-        insecure: true
-        username: "${{opensearch.username}}"
-        password: "${{opensearch.password}}"
-    - prometheus_remote_write:
-        endpoint: "http://prometheus:9090/api/v1/write"
-```
-
-### Pipeline data flow
-
-```
-OTLP Source (port 21890)
-  └─ otlp-pipeline
-       ├─ logs → otel-logs-pipeline → OpenSearch (log-analytics-plain)
-       └─ traces → otel-traces-pipeline
-                     ├─ traces-raw-pipeline → OpenSearch (trace-analytics-plain-raw)
-                     └─ service-map-pipeline → OpenSearch (otel-v2-apm-service-map)
-                                             → Prometheus (remote write)
-```
+The Application Map is generated by Data Prepper's `otel_apm_service_map` processor. For the complete pipeline configuration, see [Configuring Telemetry Ingestion](/docs/apm/configuring-telemetry-ingestion/#configuring-data-prepper-pipelines).
