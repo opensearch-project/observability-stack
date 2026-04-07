@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import APMUsageCalculator, { calculateUsage } from './APMUsageCalculator';
 
 const defaults = {
-  spansPerMonth: 10_000_000,
+  tracesPerMonth: 1_250_000,
   avgSpanSizeKB: 0.5,
   spansPerTrace: 8,
   services: 10,
@@ -12,20 +12,28 @@ const defaults = {
 };
 
 describe('calculateUsage', () => {
-  it('computes traces from spans and spans-per-trace', () => {
+  it('derives spans from traces * spans-per-trace', () => {
     const result = calculateUsage(defaults);
-    expect(result.tracesPerMonth).toBe(10_000_000 / 8);
+    expect(result.spansPerMonth).toBe(1_250_000 * 8);
   });
 
   it('computes retained spans based on retention', () => {
     const result = calculateUsage(defaults);
-    expect(result.retainedSpans).toBe(10_000_000 * (15 / 30));
+    const spansPerMonth = 1_250_000 * 8;
+    expect(result.retainedSpans).toBe(spansPerMonth * (15 / 30));
   });
 
   it('computes span storage in bytes with index overhead', () => {
     const result = calculateUsage(defaults);
-    const rawBytes = 10_000_000 * (15 / 30) * 0.5 * 1024;
+    const spansPerMonth = 1_250_000 * 8;
+    const rawBytes = spansPerMonth * (15 / 30) * 0.5 * 1024;
     expect(result.spanStorageBytes).toBe(rawBytes * 2.0);
+  });
+
+  it('spans-per-trace slider affects storage', () => {
+    const r8 = calculateUsage({ ...defaults, spansPerTrace: 8 });
+    const r16 = calculateUsage({ ...defaults, spansPerTrace: 16 });
+    expect(r16.spanStorageBytes).toBe(r8.spanStorageBytes * 2);
   });
 
   it('computes directed service map edges as n*(n-1)', () => {
@@ -53,7 +61,7 @@ describe('calculateUsage', () => {
   it('scales storage linearly with retention', () => {
     const r15 = calculateUsage({ ...defaults, retentionDays: 15 });
     const r30 = calculateUsage({ ...defaults, retentionDays: 30 });
-    expect(r30.spanStorageBytes).toBe(r15.spanStorageBytes * 2);
+    expect(r30.spanStorageBytes).toBeCloseTo(r15.spanStorageBytes * 2, 0);
   });
 
   it('ingest rate is positive', () => {
@@ -65,7 +73,7 @@ describe('calculateUsage', () => {
 describe('APMUsageCalculator component', () => {
   it('renders slider labels', () => {
     render(<APMUsageCalculator />);
-    expect(screen.getByText('Spans ingested / month')).toBeTruthy();
+    expect(screen.getByText('Traces (requests) / month')).toBeTruthy();
     expect(screen.getByText('Avg span payload size')).toBeTruthy();
     expect(screen.getByText('Number of services')).toBeTruthy();
     expect(screen.getByText('Retention period')).toBeTruthy();

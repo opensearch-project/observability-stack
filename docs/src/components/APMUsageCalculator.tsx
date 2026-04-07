@@ -34,13 +34,13 @@ function formatBytes(bytes: number): string {
 }
 
 const sliders: Record<string, SliderConfig> = {
-  spansPerMonth: {
-    label: 'Spans ingested / month',
-    min: 1_000_000,
-    max: 10_000_000_000,
-    step: 1_000_000,
-    default: 10_000_000,
-    unit: 'spans',
+  tracesPerMonth: {
+    label: 'Traces (requests) / month',
+    min: 100_000,
+    max: 1_000_000_000,
+    step: 100_000,
+    default: 1_250_000,
+    unit: 'traces',
     format: formatCompact,
     logarithmic: true,
   },
@@ -272,7 +272,7 @@ function Section({
 
 export function calculateUsage(values: Record<SliderKey, number>) {
   const {
-    spansPerMonth,
+    tracesPerMonth,
     avgSpanSizeKB,
     spansPerTrace,
     services,
@@ -280,8 +280,8 @@ export function calculateUsage(values: Record<SliderKey, number>) {
     retentionDays,
   } = values;
 
-  // Span storage
-  const tracesPerMonth = spansPerMonth / spansPerTrace;
+  // Span storage — spans derived from traces * spans/trace
+  const spansPerMonth = tracesPerMonth * spansPerTrace;
   const retainedSpans = spansPerMonth * (retentionDays / 30);
   const spanRawBytes = retainedSpans * avgSpanSizeKB * 1024;
   const spanStorageBytes = spanRawBytes * OPENSEARCH_INDEX_OVERHEAD;
@@ -311,6 +311,7 @@ export function calculateUsage(values: Record<SliderKey, number>) {
   const ingestRate = totalDocsPerDay / 86400;
 
   return {
+    spansPerMonth,
     tracesPerMonth,
     retainedSpans,
     spanStorageBytes,
@@ -381,7 +382,7 @@ function HowItWorks() {
               start/end timestamps, duration, status code, and dynamic attributes.
             </p>
             <div className="font-mono text-xs bg-slate-950 rounded p-3 space-y-1">
-              <div><span className="text-slate-500">Traces/month</span> = spans_per_month / avg_spans_per_trace</div>
+              <div><span className="text-slate-500">Spans/month</span> = traces_per_month * avg_spans_per_trace</div>
               <div><span className="text-slate-500">Retained spans</span> = spans_per_month * (retention_days / 30)</div>
               <div><span className="text-slate-500">Storage</span> = retained_spans * avg_span_size_kb * 1024 * 2.0x index overhead</div>
             </div>
@@ -501,14 +502,14 @@ export default function APMUsageCalculator() {
 
           <Section title="Span Storage (OpenSearch)">
             <MetricRow
-              label="Traces / month"
-              value={formatCompact(usage.tracesPerMonth)}
-              formula={`= ${formatCompact(values.spansPerMonth)} spans / ${values.spansPerTrace} spans-per-trace`}
+              label="Spans / month"
+              value={formatCompact(usage.spansPerMonth)}
+              formula={`= ${formatCompact(values.tracesPerMonth)} traces * ${values.spansPerTrace} spans/trace`}
             />
             <MetricRow
               label="Spans retained"
               value={formatCompact(usage.retainedSpans)}
-              formula={`= ${formatCompact(values.spansPerMonth)} spans/mo * (${values.retentionDays} / 30) retention`}
+              formula={`= ${formatCompact(usage.spansPerMonth)} spans/mo * (${values.retentionDays} / 30) retention`}
             />
             <MetricRow
               label="Storage (with index overhead)"

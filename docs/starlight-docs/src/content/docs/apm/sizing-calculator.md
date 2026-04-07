@@ -17,7 +17,7 @@ Spans are the raw building blocks of traces. Each span document is indexed into 
 
 | Output | Formula |
 |--------|---------|
-| **Traces / month** | `spans_per_month ÷ avg_spans_per_trace` |
+| **Spans / month** | `traces_per_month × avg_spans_per_trace` |
 | **Retained spans** | `spans_per_month × (retention_days ÷ 30)` |
 | **Storage** | `retained_spans × avg_span_size × 2.0` (the 2.0× factor accounts for OpenSearch index overhead — field mappings, inverted indices, doc values) |
 | **Ingest rate** | `spans_per_month ÷ 30 ÷ 86400` (spans/sec) |
@@ -50,7 +50,7 @@ The calculator sums OpenSearch storage (spans + service map) and Prometheus stor
 
 | Parameter | Default | Range | Description |
 |-----------|---------|-------|-------------|
-| Spans ingested / month | 10M | 1M – 10B | Total span documents your applications generate per month |
+| Traces (requests) / month | 1.25M | 100K – 1B | Total traces (requests) your applications generate per month |
 | Avg span payload size | 0.5 KB | 0.1 – 50 KB | Average size of a single span document before indexing |
 | Avg spans per trace | 8 | 1 – 200 | How many spans make up one trace on average |
 | Number of services | 10 | 1 – 1000 | Distinct instrumented services in your environment |
