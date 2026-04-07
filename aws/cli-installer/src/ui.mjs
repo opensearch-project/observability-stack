@@ -519,7 +519,7 @@ function buildOwlFrame(frameIdx, statusText) {
 // Fish swimming back and forth through the pipeline
 const FISH_RIGHT = '><(((º>';
 const FISH_LEFT = '<º)))><';
-const PIPE_WIDTH = 36;
+const PIPE_WIDTH = 80;
 
 function buildPipelineFrame(pos, goingRight, caption, statusText) {
   const fish = goingRight ? FISH_RIGHT : FISH_LEFT;
