@@ -3,6 +3,7 @@ title: Application Monitoring
 description: Monitor application performance with service maps, RED metrics, and service-level views
 sidebar:
   label: APM
+  order: 1
 ---
 
 Application Monitoring gives you a real-time view of how your services are performing. It combines topology data stored in OpenSearch with time-series RED metrics (Rate, Errors, Duration) stored in Prometheus to surface health, latency, throughput, and error information across your distributed system.
@@ -46,9 +47,23 @@ From any service or operation, open correlation flyouts to jump directly to rela
 4. Topology and raw trace data are indexed into OpenSearch. RED metrics are exported to Prometheus via remote write.
 5. OpenSearch Dashboards queries both stores to render the Application Map, Services catalog, and service detail views.
 
+## Configuring APM
+
+To set up APM, complete the following steps:
+
+1. **Create an Observability workspace** - APM features are only available within Observability workspaces. To learn how to enable and create workspaces, see [Workspace for OpenSearch Dashboards](https://opensearch.org/docs/latest/dashboards/workspace/workspace/).
+
+2. **Instrument your application** - integrate [OpenTelemetry SDKs](https://opentelemetry.io/docs/instrumentation/) into your application code to generate trace and log data. See the [Send Data](/docs/send-data/opentelemetry/) section for instrumentation guides.
+
+3. **Configure telemetry ingestion** - set up the OpenTelemetry Collector and Data Prepper to process and route telemetry to OpenSearch and Prometheus. See [Configuring Telemetry Ingestion](/docs/apm/configuring-telemetry-ingestion/).
+
+4. **Configure APM in OpenSearch Dashboards** - create datasets, index patterns, and connect data sources in your Observability workspace. See [Setting Up APM](/docs/apm/configuring-apm/).
+
+> **Note:** APM is distinct from the older [Trace analytics](https://opensearch.org/docs/latest/observing-your-data/trace/index/) and [Application analytics](https://opensearch.org/docs/latest/observing-your-data/app-analytics/) features. APM provides a more integrated experience that combines service topology, RED metrics, and in-context correlations into a single workflow.
+
 ## Prerequisites
 
-- Data Prepper running with the trace analytics pipelines enabled (see [Application Map](/docs/apm/service-map/) for the full pipeline configuration)
+- Data Prepper running with the trace analytics pipelines enabled (see [Configuring Telemetry Ingestion](/docs/apm/configuring-telemetry-ingestion/) for the full pipeline configuration)
 - Trace data flowing via OTLP to the OTel Collector
 - Prometheus configured to receive remote write from Data Prepper
-- OpenSearch Dashboards with the Observability plugin
+- OpenSearch Dashboards with the Observability plugin and feature flags enabled (see [Configuring APM](#configuring-apm) above)

@@ -1,6 +1,8 @@
 ---
 title: Services
 description: Browse the service catalog, inspect service health, and drill into operations and dependencies
+sidebar:
+  order: 20
 ---
 
 The Services page provides a catalog of all instrumented services along with their health metrics, operations, and dependencies.
