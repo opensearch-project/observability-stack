@@ -12,7 +12,7 @@ Each example below shows a complete, runnable integration. All examples assume t
 [Strands Agents](https://github.com/strands-agents/sdk-python) is a model-driven agent framework from AWS. The SDK's auto-instrumentation captures Bedrock/OpenAI calls automatically - add `@observe` for agent-level visibility.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[bedrock]" strands-agents strands-agents-bedrock
+pip install "opensearch-genai-observability-sdk-py[bedrock]" strands-agents
 ```
 
 ```python
@@ -50,7 +50,7 @@ run_agent("What's the weather in Seattle?")
 Strands Agents has native OpenTelemetry support via `StrandsTelemetry`. It automatically emits spans for agent invocations, tool executions, and LLM calls following GenAI semantic conventions. Point it at the OTel collector, then use `@observe` from the SDK to add spans for any custom logic that Strands doesn't instrument automatically.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents strands-agents-bedrock
+pip install opensearch-genai-observability-sdk-py strands-agents
 ```
 
 ```python
