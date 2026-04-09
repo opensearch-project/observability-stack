@@ -1245,6 +1245,148 @@ Monitor agent activity, token usage, and tool execution at a glance.
         return None
 
 
+def _has_virtual_reference(obj):
+    """Check if a saved object references a virtual index pattern (e.g. Prometheus datasource).
+
+    Virtual index patterns are created at runtime by datasource plugins and don't
+    exist as persisted saved objects — the _import API rejects them as missing refs.
+    """
+    VIRTUAL_INDEX_PATTERNS = {"ObservabilityStack_Prometheus"}
+    for ref in obj.get("references", []):
+        if ref.get("type") == "index-pattern" and ref.get("id") in VIRTUAL_INDEX_PATTERNS:
+            return True
+    return False
+
+
+def _create_saved_object_directly(workspace_id, obj):
+    """Create a single saved object via the individual saved-objects API.
+
+    Unlike _import, this API does not validate references, so objects that
+    reference virtual index patterns (e.g. Prometheus) can be created.
+    """
+    obj_type = obj.get("type")
+    obj_id = obj.get("id")
+    title = obj.get("attributes", {}).get("title", obj_id)
+
+    payload = {"attributes": obj.get("attributes", {}), "references": obj.get("references", [])}
+    if workspace_id and workspace_id != "default":
+        payload["workspaces"] = [workspace_id]
+        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/{obj_type}/{obj_id}"
+    else:
+        url = f"{BASE_URL}/api/saved_objects/{obj_type}/{obj_id}"
+
+    try:
+        response = requests.post(
+            url, auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload, verify=False, timeout=10,
+        )
+        if response.status_code == 200:
+            print(f"  ✅ {title} (created directly)")
+            return True
+        elif response.status_code == 409:
+            # Already exists — update
+            update_payload = {"attributes": obj.get("attributes", {}), "references": obj.get("references", [])}
+            requests.put(
+                url, auth=(USERNAME, PASSWORD),
+                headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+                json=update_payload, verify=False, timeout=10,
+            )
+            print(f"  🔄 {title} (updated directly)")
+            return True
+        else:
+            print(f"  ⚠️  {title}: {response.status_code} {response.text[:100]}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"  ⚠️  {title}: {e}")
+        return False
+
+
+def import_ndjson_dashboard(workspace_id, ndjson_path):
+    """Import a dashboard and its dependencies from an ndjson export file.
+
+    Objects that reference virtual index patterns (e.g. Prometheus datasource)
+    are separated out and created individually via the saved-objects API, which
+    does not validate references. The remaining objects are bulk-imported via the
+    _import API.
+    """
+    import json
+    import io
+
+    print(f"📦 Importing dashboard from {os.path.basename(ndjson_path)}...")
+
+    try:
+        with open(ndjson_path, "r") as f:
+            raw_lines = f.readlines()
+    except FileNotFoundError:
+        print(f"⚠️  File not found: {ndjson_path}")
+        return None
+
+    importable = []
+    direct_create = []
+
+    for line in raw_lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        # Skip the export summary line (has exportedCount but no type)
+        if "exportedCount" in obj and "type" not in obj:
+            continue
+        # Remove workspace associations so objects land in the target workspace
+        obj.pop("workspaces", None)
+        # Remove version field that can cause conflicts on import
+        obj.pop("version", None)
+
+        if _has_virtual_reference(obj):
+            direct_create.append(obj)
+        else:
+            importable.append(json.dumps(obj, separators=(",", ":")))
+
+    if not importable and not direct_create:
+        print("⚠️  No valid saved objects found in ndjson file")
+        return None
+
+    total_success = 0
+
+    # Bulk-import objects without virtual references
+    if importable:
+        ndjson_body = "\n".join(importable) + "\n"
+
+        if workspace_id and workspace_id != "default":
+            url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/_import?overwrite=true"
+        else:
+            url = f"{BASE_URL}/api/saved_objects/_import?overwrite=true"
+
+        try:
+            response = requests.post(
+                url, auth=(USERNAME, PASSWORD), headers={"osd-xsrf": "true"},
+                files={"file": ("dashboard.ndjson", io.BytesIO(ndjson_body.encode("utf-8")), "application/ndjson")},
+                verify=False, timeout=30,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                total_success += result.get("successCount", 0)
+                for err in result.get("errors", []):
+                    print(f"  ⚠️  {err.get('type', '?')}/{err.get('id', '?')}: {err.get('error', {}).get('message', 'unknown error')}")
+            else:
+                print(f"⚠️  Bulk import failed ({response.status_code}): {response.text[:200]}")
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Error during bulk import: {e}")
+
+    # Create objects with virtual references individually
+    for obj in direct_create:
+        if _create_saved_object_directly(workspace_id, obj):
+            total_success += 1
+
+    print(f"✅ Imported {total_success} saved objects from {os.path.basename(ndjson_path)}")
+    return total_success
+
+
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
@@ -1293,12 +1435,15 @@ def main():
     create_promql_dashboard_from_yaml(workspace_id, "/config/dashboard-pipeline-health.yaml")
     create_promql_dashboard_from_yaml(workspace_id, "/config/dashboard-opensearch-health.yaml")
 
-    # Create saved queries for common agent observability patterns
-    create_default_saved_queries(workspace_id)
-
-    # Create datasources
+    # Create datasources (must happen before ndjson import so Prometheus references resolve)
     prometheus_datasource_id = create_prometheus_datasource(workspace_id)
     create_opensearch_datasource(workspace_id)
+
+    # Import Astronomy Shop dashboard (ndjson export with all dependencies)
+    import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-shop.ndjson")
+
+    # Create saved queries for common agent observability patterns
+    create_default_saved_queries(workspace_id)
 
     # Create APM config correlation (ties traces + service map + Prometheus)
     if traces_pattern_id and service_map_pattern_id:
