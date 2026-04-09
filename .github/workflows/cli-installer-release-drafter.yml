@@ -15,7 +15,7 @@ jobs:
       issues: write
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - id: get_approvers
         run: |
@@ -41,13 +41,11 @@ jobs:
 
       - name: Run unit tests
         working-directory: aws/cli-installer
-        run: node --test test/unit.test.mjs
+        run: npm run test
 
       - name: Publish to npm
         working-directory: aws/cli-installer
         run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Draft a release
         uses: softprops/action-gh-release@v1
