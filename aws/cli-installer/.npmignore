@@ -1,4 +1,6 @@
 .env
 .claude
-node_modules
 .kiro
+node_modules
+*.bak
+test

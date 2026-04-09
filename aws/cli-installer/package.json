@@ -1,12 +1,22 @@
 {
-  "name": "@opensearch-project/observability-stack-aws-cli",
-  "version": "0.0.2",
+  "name": "@opensearch-project/observability-stack",
+  "version": "0.1.0",
   "description": "CLI for the Observability Stack",
   "type": "module",
   "bin": "./bin/cli-installer.mjs",
   "scripts": {
-    "start": "node bin/open-stack.mjs"
+    "start": "node bin/open-stack.mjs",
+    "test": "node --test test/unit.test.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opensearch-project/observability-stack.git"
+  },
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/opensearch-project/observability-stack/issues"
+  },
+  "homepage": "https://github.com/opensearch-project/observability-stack/tree/main/aws/cli-installer",
   "dependencies": {
     "@aws-crypto/sha256-js": "^5.2.0",
     "@aws-sdk/client-amp": "^3.750.0",

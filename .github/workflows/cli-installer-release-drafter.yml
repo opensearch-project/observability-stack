@@ -1,0 +1,56 @@
+name: CLI Installer Release Drafter
+
+on:
+  push:
+    tags:
+      - "cli-installer-v*"
+
+jobs:
+  draft-a-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1440
+    permissions:
+      id-token: write
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - id: get_approvers
+        run: |
+          echo "approvers=$(cat .github/CODEOWNERS | grep @ | tr -d '* ' | sed 's/@/,/g' | sed 's/,//1')" >> $GITHUB_OUTPUT
+
+      - uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.TOKEN }}
+          approvers: ${{ steps.get_approvers.outputs.approvers }}
+          minimum-approvals: 2
+          issue-title: 'Release cli-installer ${{ github.ref_name }}'
+          issue-body: "Please approve or deny the release of cli-installer. **Tag**: ${{ github.ref_name }} **Commit**: ${{ github.sha }}"
+          exclude-workflow-initiator-as-approver: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        working-directory: aws/cli-installer
+        run: npm ci
+
+      - name: Run unit tests
+        working-directory: aws/cli-installer
+        run: node --test test/unit.test.mjs
+
+      - name: Publish to npm
+        working-directory: aws/cli-installer
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Draft a release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          generate_release_notes: true
