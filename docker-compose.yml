@@ -62,7 +62,7 @@ services:
 
   # Data Prepper - Transforms and enriches logs/traces before OpenSearch ingestion
   data-prepper:
-    image: ${DATA_PREPPER_DOCKER_REPO}/opensearch-data-prepper:${DATA_PREPPER_VERSION}
+    image: ${DATA_PREPPER_DOCKER_REPO}/${DATA_PREPPER_IMAGE}:${DATA_PREPPER_VERSION}
     container_name: data-prepper
     pull_policy: always
     platform: linux/amd64
