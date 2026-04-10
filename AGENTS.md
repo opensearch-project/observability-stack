@@ -704,13 +704,13 @@ docker-compose restart <service-name>
 
 ### Modifying Data Retention
 
-**OpenSearch**: Update ISM policy in `opensearch/` configuration
-**Prometheus**: Update `prometheus.yml`:
-```yaml
-global:
-  storage:
-    tsdb:
-      retention.time: 30d
+**OpenSearch**: Set `ISM_RETENTION_DAYS` in `.env` (default: 7 days). The init script configures ISM policies with rollover + delete. Set to `0` to disable automatic deletion.
+```env
+ISM_RETENTION_DAYS=7
+```
+**Prometheus**: Set `PROMETHEUS_RETENTION` in `.env`:
+```env
+PROMETHEUS_RETENTION=15d
 ```
 
 ### Adding Configuration Comments
@@ -948,12 +948,12 @@ Data Prepper uses a template (`pipelines.template.yaml`) with placeholders proce
 
 ### Index Management
 
-OpenSearch now uses built-in index types managed by Data Prepper:
-- **Logs**: `log-analytics-plain` index type
-- **Traces**: `trace-analytics-plain-raw` index type
-- **Service Maps**: `trace-analytics-service-map` index type
+OpenSearch uses ISM (Index State Management) policies for index lifecycle, configured automatically by the init script:
+- **Traces**: `otel-v1-apm-span-*` — rollover at 50GB/24h, delete after `ISM_RETENTION_DAYS`
+- **Logs**: `logs-otel-v1-*` — rollover at 50GB/24h, delete after `ISM_RETENTION_DAYS`
+- **Service Maps**: `otel-v2-apm-service-map-*` — rollover at 10GB/24h, delete after `ISM_RETENTION_DAYS`
 
-Do not create custom index patterns or ISM policies unless specifically required.
+Data Prepper creates rollover-only policies on startup. The init script overrides them to add a delete state. Data Prepper uses PUT-if-absent semantics and will not overwrite existing policies on restart.
 
 ### Health Checks
 

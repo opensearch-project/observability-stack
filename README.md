@@ -383,7 +383,7 @@ finch stats --no-stream
 - **Backup and Recovery**: Implement automated backup procedures and test recovery
 - **Monitoring**: Set up monitoring and alerting for the observability stack itself
 - **Resource Limits**: Configure appropriate CPU, memory, and disk quotas
-- **Data Lifecycle**: Implement production-appropriate retention and archival policies
+- **Data Lifecycle**: Default retention is 7 days (`ISM_RETENTION_DAYS` in `.env`). Adjust for production workloads
 
 ### Security Considerations
 
