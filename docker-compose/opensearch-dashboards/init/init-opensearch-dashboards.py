@@ -15,6 +15,83 @@ PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
 _opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
 OPENSEARCH_ENDPOINT = f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
+ISM_RETENTION_DAYS = int(os.getenv("ISM_RETENTION_DAYS", "7"))
+
+
+def _ism_policy(policy_id, description, index_patterns, rollover_size, retention_days):
+    """Build an ISM policy with rollover and optional delete."""
+    states = [
+        {
+            "name": "current_write_index",
+            "actions": [{"retry": {"count": 3, "backoff": "exponential", "delay": "1m"},
+                         "rollover": {"min_size": rollover_size, "min_index_age": "24h", "copy_alias": False}}],
+            "transitions": [{"state_name": "delete", "conditions": {"min_index_age": f"{retention_days}d"}}] if retention_days > 0 else [],
+        }
+    ]
+    if retention_days > 0:
+        states.append({"name": "delete", "actions": [{"delete": {}}], "transitions": []})
+    return {
+        "policy": {
+            "policy_id": policy_id,
+            "description": description,
+            "default_state": "current_write_index",
+            "states": states,
+            "ism_template": [{"index_patterns": index_patterns, "priority": 100}],
+        }
+    }
+
+
+def configure_ism_policies():
+    """Create or update ISM policies with retention-based deletion.
+
+    Data Prepper creates rollover-only policies on startup. This function
+    overrides them to add a delete state so old indices are cleaned up
+    automatically. Set ISM_RETENTION_DAYS=0 to keep rollover-only behavior.
+    """
+    if ISM_RETENTION_DAYS == 0:
+        print("⏭️  ISM_RETENTION_DAYS=0, skipping retention policy setup (rollover-only)")
+        return
+
+    print(f"🗂️  Configuring ISM retention policies ({ISM_RETENTION_DAYS}d)...")
+
+    policies = [
+        _ism_policy("raw-span-policy", "Trace span index lifecycle",
+                     ["otel-v1-apm-span-*"], "50gb", ISM_RETENTION_DAYS),
+        _ism_policy("logs-policy", "Log index lifecycle",
+                     ["logs-otel-v1-*"], "50gb", ISM_RETENTION_DAYS),
+        _ism_policy("otel-v2-apm-service-map-policy", "Service map index lifecycle",
+                     ["otel-v2-apm-service-map-*"], "10gb", ISM_RETENTION_DAYS),
+    ]
+
+    for policy_body in policies:
+        pid = policy_body["policy"]["policy_id"]
+        url = f"{OPENSEARCH_ENDPOINT}/_plugins/_ism/policies/{pid}"
+        try:
+            # Get current policy to obtain seq_no/primary_term for update
+            resp = requests.get(url, auth=(USERNAME, PASSWORD), verify=False, timeout=10)
+            if resp.status_code == 200:
+                existing = resp.json()
+                seq_no = existing.get("_seq_no")
+                primary_term = existing.get("_primary_term")
+                resp = requests.put(
+                    f"{url}?if_seq_no={seq_no}&if_primary_term={primary_term}",
+                    auth=(USERNAME, PASSWORD), json=policy_body, verify=False, timeout=10,
+                )
+                if resp.status_code == 200:
+                    print(f"  ✅ Updated {pid}")
+                else:
+                    print(f"  ⚠️  Update {pid}: {resp.status_code} {resp.text[:120]}")
+            elif resp.status_code == 404:
+                resp = requests.put(url, auth=(USERNAME, PASSWORD), json=policy_body,
+                                    verify=False, timeout=10)
+                if resp.status_code in (200, 201):
+                    print(f"  ✅ Created {pid}")
+                else:
+                    print(f"  ⚠️  Create {pid}: {resp.status_code} {resp.text[:120]}")
+            else:
+                print(f"  ⚠️  Get {pid}: {resp.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"  ⚠️  Error configuring {pid}: {e}")
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -1390,6 +1467,9 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
+
+    # Configure ISM retention policies (overrides Data Prepper rollover-only defaults)
+    configure_ism_policies()
 
     # Check for existing workspace
     workspace_id = get_existing_workspace()
