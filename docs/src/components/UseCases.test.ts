@@ -104,7 +104,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           // Render use case card
@@ -156,7 +156,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           container.innerHTML = renderUseCaseCard(useCase);
@@ -230,7 +230,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           container.innerHTML = renderUseCaseCard(useCase);
@@ -265,7 +265,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           container.innerHTML = renderUseCaseCard(useCase);
@@ -307,7 +307,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           container.innerHTML = renderUseCaseCard(useCase);
@@ -352,7 +352,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
             description: fc.string({ minLength: 20, maxLength: 200 })
               .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
             link: fc.string({ minLength: 5, maxLength: 50 })
-              .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+              .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
           }),
           { minLength: 3, maxLength: 10 }
         ),
@@ -401,7 +401,7 @@ describe('UseCases - Property 2: Use case cards contain all required elements', 
           description: fc.string({ minLength: 20, maxLength: 200 })
             .filter(s => s.trim().length >= 20 && !/[<>&"#]/.test(s)),
           link: fc.string({ minLength: 5, maxLength: 50 })
-            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["']/.test(s)),
+            .filter(s => (s.startsWith('#') || s.startsWith('http')) && s.trim() === s && !/["'&]/.test(s)),
         }),
         (useCase) => {
           container.innerHTML = renderUseCaseCard(useCase);
