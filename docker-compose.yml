@@ -75,6 +75,8 @@ services:
       sed -i 's|OPENSEARCH_PROTOCOL|${OPENSEARCH_PROTOCOL}|g' /tmp/pipelines.yaml &&
       sed -i 's|OPENSEARCH_HOST|${OPENSEARCH_HOST}|g' /tmp/pipelines.yaml &&
       sed -i 's|OPENSEARCH_PORT|${OPENSEARCH_PORT}|g' /tmp/pipelines.yaml &&
+      sed -i 's|PROMETHEUS_HOST|${PROMETHEUS_HOST}|g' /tmp/pipelines.yaml &&
+      sed -i 's|PROMETHEUS_PORT|${PROMETHEUS_PORT}|g' /tmp/pipelines.yaml &&
       mv /tmp/pipelines.yaml /usr/share/data-prepper/pipelines/pipelines.yaml &&
       exec /usr/share/data-prepper/bin/data-prepper"
     volumes:
@@ -90,6 +92,8 @@ services:
       - OPENSEARCH_PORT=${OPENSEARCH_PORT}
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - PROMETHEUS_HOST=${PROMETHEUS_HOST}
+      - PROMETHEUS_PORT=${PROMETHEUS_PORT}
     depends_on:
       opensearch:
         condition: service_healthy
