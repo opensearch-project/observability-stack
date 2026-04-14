@@ -86,6 +86,7 @@ export default defineConfig({
 					collapsed: true,
 					items: [
 						{ label: 'Overview', link: '/deploy/' },
+						{ label: 'Kubernetes (Helm)', link: '/deploy/kubernetes/' },
 						{ label: 'AWS Managed Services', link: '/deploy/aws/' },
 					],
 				},

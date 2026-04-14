@@ -1,0 +1,45 @@
+name: Build and Push Example Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/**'
+      - 'docker-compose/canary/**'
+      - '.github/workflows/publish-images.yml'
+  workflow_dispatch:
+
+# Only runs kylehounslow fork. 
+# skips silently on opensearch-project/observability-stack until repositories are supported
+jobs:
+  build:
+    if: github.repository == 'kylehounslow/observability-stack'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - name: weather-agent
+            context: examples/plain-agents/weather-agent
+          - name: travel-planner
+            context: examples/plain-agents/multi-agent-planner/orchestrator
+          - name: events-agent
+            context: examples/plain-agents/multi-agent-planner/events-agent
+          - name: mcp-server
+            context: examples/plain-agents/multi-agent-planner/mcp-server
+          - name: canary
+            context: docker-compose/canary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ghcr.io/${{ github.repository }}/${{ matrix.name }}:latest

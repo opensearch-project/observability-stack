@@ -1,0 +1,25 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "properties": {
+      "traceId": { "type": "keyword" },
+      "spanId": { "type": "keyword" },
+      "parentSpanId": { "type": "keyword" },
+      "serviceName": { "type": "keyword" },
+      "name": { "type": "keyword" },
+      "kind": { "type": "keyword" },
+      "startTime": { "type": "date_nanos" },
+      "endTime": { "type": "date_nanos" },
+      "durationInNanos": { "type": "long" },
+      "status.code": { "type": "integer" },
+      "resource.attributes.service@name": { "type": "keyword" },
+      "resource.attributes.gen_ai@agent@name": { "type": "keyword" },
+      "resource.attributes.gen_ai@operation@name": { "type": "keyword" }
+    }
+  }
+}

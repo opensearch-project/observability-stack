@@ -9,7 +9,8 @@ The OpenSearch Observability Stack is an open-source, OpenTelemetry-native obser
 
 ## Prerequisites
 
-- **Docker** and **Docker Compose** (v2.20+)
+- **Docker** and **Docker Compose** (v2.20+) — for local installation
+- **Helm** (v3.12+) and **kubectl** — for Kubernetes installation
 - At least 8 GB of available RAM
 - macOS, Linux, or WSL2 on Windows
 
@@ -34,6 +35,18 @@ import { Tabs, TabItem } from '@astrojs/starlight/components';
     docker compose up -d
     ```
     Access OpenSearch Dashboards at [http://localhost:5601](http://localhost:5601)
+  </TabItem>
+  <TabItem label="Helm (Kubernetes)">
+    ```bash
+    git clone https://github.com/opensearch-project/observability-stack.git
+    cd observability-stack
+    helm install obs charts/observability-stack
+    ```
+    Then port-forward to access OpenSearch Dashboards:
+    ```bash
+    kubectl port-forward svc/obs-opensearch-dashboards 5601:5601
+    ```
+    Open [http://localhost:5601](http://localhost:5601) — see [Kubernetes (Helm)](/docs/deploy/kubernetes/) for configuration, credentials, and sizing options.
   </TabItem>
 </Tabs>
 

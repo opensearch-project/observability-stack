@@ -1,0 +1,30 @@
+name: Helm Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - 'test/helm-test.sh'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'charts/**'
+      - 'test/helm-test.sh'
+  workflow_dispatch:
+
+jobs:
+  helm-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install helm-unittest plugin
+        run: helm plugin install https://github.com/helm-unittest/helm-unittest.git --verify=false
+
+      - name: Run helm lint + unittest
+        run: ./test/helm-test.sh

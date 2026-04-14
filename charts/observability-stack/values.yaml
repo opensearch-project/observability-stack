@@ -1,0 +1,459 @@
+# Default values for observability-stack umbrella chart
+# Mirrors the docker-compose setup for Kubernetes deployment
+
+# -- OpenSearch
+# Sizing guide:
+#   Storage: daily_ingest_GB × 1.45 × (replicas + 1) × retention_days
+#   Shards:  30–50 GB per shard for logs/traces, 10–30 GB for search
+#   JVM:     50% of node RAM, max ~31 GB (set via OPENSEARCH_JAVA_OPTS)
+#   Nodes:   minimum 3 for production, 1 for dev/demo
+#   Heap-to-shard ratio: max 25 shards per GB of JVM heap
+opensearch:
+  enabled: true
+  singleNode: false
+  replicas: 3
+  image:
+    repository: "opensearchproject/opensearch"
+    tag: "3.6.0"
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+    limits:
+      memory: "4Gi"
+      cpu: "4000m"
+  persistence:
+    enabled: true
+    size: 100Gi
+    # storageClass: "gp3"       # Uncomment for AWS gp3 (better IOPS/$ than gp2)
+  # JVM heap — set to 50% of resources.requests.memory, max 31g
+  opensearchJavaOpts: "-Xms2g -Xmx2g"
+  extraEnvs:
+    - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: opensearch-credentials
+          key: password
+    - name: plugins.query.datasources.encryption.masterkey
+      valueFrom:
+        secretKeyRef:
+          name: opensearch-credentials
+          key: datasource-encryption-key
+  config:
+    opensearch.yml: |
+      # masterkey is injected via env var from opensearch-credentials Secret
+  # Security config — controls anonymous authentication.
+  # Default: anonymous auth disabled. To enable, use values-anonymous-auth.yaml overlay
+  # or set opensearch.securityConfig.config.data."config.yml" with anonymous_auth_enabled: true.
+  securityConfig:
+    config:
+      dataComplete: false
+      data:
+        config.yml: |-
+          _meta:
+            type: "config"
+            config_version: 2
+          config:
+            dynamic:
+              http:
+                anonymous_auth_enabled: false
+                xff:
+                  enabled: false
+                  internalProxies: "192\\.168\\.0\\.10|192\\.168\\.0\\.11"
+              authc:
+                basic_internal_auth_domain:
+                  description: "Authenticate via HTTP Basic against internal users database"
+                  http_enabled: true
+                  transport_enabled: true
+                  order: 4
+                  http_authenticator:
+                    type: "basic"
+                    challenge: true
+                  authentication_backend:
+                    type: "intern"
+
+# -- OpenSearch Dashboards
+opensearch-dashboards:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: "opensearchproject/opensearch-dashboards"
+    tag: "3.6.0"
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  ingress:
+    enabled: false
+    # Uncomment and configure for your environment, or use values-eks.yaml overlay:
+    # ingressClassName: alb
+    # annotations:
+    #   alb.ingress.kubernetes.io/scheme: internet-facing
+    #   alb.ingress.kubernetes.io/target-type: ip
+    #   alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    #   alb.ingress.kubernetes.io/certificate-arn: <your-acm-cert-arn>
+    #   alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    #   alb.ingress.kubernetes.io/healthcheck-path: /app/login
+    #   alb.ingress.kubernetes.io/success-codes: "200"
+    hosts:
+      - host: ""
+        paths:
+          - path: /
+            backend:
+              servicePort: 5601
+  opensearchHosts: "https://opensearch-cluster-master:9200"
+  opensearchAccount:
+    secret: opensearch-credentials
+  config:
+    opensearch_dashboards.yml: |
+      server.host: "0.0.0.0"
+      server.name: "observability-stack-dashboards"
+      opensearch.hosts: ["https://opensearch-cluster-master:9200"]
+      opensearch.ssl.verificationMode: none
+      opensearch.requestTimeout: 30000
+      opensearch.requestHeadersAllowlist: ["authorization", "securitytenant"]
+      opensearch_security.multitenancy.enabled: false
+      opensearch_security.readonly_mode.roles: ["kibana_read_only"]
+      console.enabled: true
+      server.maxPayloadBytes: 1048576
+      savedObjects.maxImportPayloadBytes: 26214400
+      csp.strict: false
+      explore.enabled: true
+      explore.discoverTraces.enabled: true
+      explore.discoverMetrics.enabled: true
+      explore.agentTraces.enabled: true
+      workspace.enabled: true
+      data_source.enabled: true
+      data_source.ssl.verificationMode: none
+      datasetManagement.enabled: true
+      data.savedQueriesNewUI.enabled: true
+      opensearchDashboards.branding.useExpandedHeader: false
+      uiSettings.overrides.home:useNewHomePage: true
+      uiSettings.overrides.query:enhancements:enabled: true
+      uiSettings.overrides.explore:experimental: true
+
+# -- Data Prepper
+data-prepper:
+  enabled: true
+  image:
+    repository: "sgguruda62324/opensearch-data-prepper"
+    tag: "2.15.0-SNAPSHOT-rc2"
+  # Wait for OpenSearch to be ready before starting Data Prepper.
+  # Without this, sink initialization fails and the OTLP source never starts.
+  initContainers:
+    - name: wait-for-opensearch
+      image: curlimages/curl:8.13.0
+      command: ['sh', '-c', 'until curl -sk -u ${OS_USER}:${OS_PASS} https://opensearch-cluster-master:9200/_cluster/health | grep -qE "green|yellow"; do echo "Waiting for OpenSearch..."; sleep 5; done']
+      env:
+        - name: OS_USER
+          valueFrom:
+            secretKeyRef:
+              name: opensearch-credentials
+              key: username
+        - name: OS_PASS
+          valueFrom:
+            secretKeyRef:
+              name: opensearch-credentials
+              key: password
+  ports:
+    - name: http-source
+      port: 2021
+    - name: otel-traces
+      port: 21890
+    - name: otel-metrics
+      port: 21891
+    - name: otel-logs
+      port: 21892
+    - name: metrics
+      port: 4900
+  config:
+    data-prepper-config.yaml: |
+      ssl: false
+      peer_forwarder:
+        ssl: false
+      experimental:
+        enabled_plugins:
+          processor:
+            - otel_apm_service_map
+          sink:
+            - prometheus
+  livenessProbe:
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    failureThreshold: 10
+  # Override readiness probe to check OTLP source port (21890) instead of management API (4900).
+  # Prevents K8s from routing traffic before the OTLP listener is ready.
+  readinessProbe:
+    tcpSocket:
+      port: 21890
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 12
+  pipelineConfig:
+    enabled: false
+    existingSecret: data-prepper-pipeline
+
+# -- OpenTelemetry Collector
+opentelemetry-collector:
+  enabled: true
+  mode: deployment
+  image:
+    repository: "otel/opentelemetry-collector-contrib"
+  resources:
+    requests:
+      cpu: 256m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+  configMap:
+    create: false
+    existingName: otel-collector-config
+
+  ports:
+    otlp:
+      enabled: true
+      containerPort: 4317
+      servicePort: 4317
+      protocol: TCP
+    otlp-http:
+      enabled: true
+      containerPort: 4318
+      servicePort: 4318
+      protocol: TCP
+    metrics:
+      enabled: true
+      containerPort: 8888
+      servicePort: 8888
+      protocol: TCP
+
+# -- Prometheus
+prometheus:
+  enabled: true
+  server:
+    # Retention — how long Prometheus keeps metrics. Increase for longer history.
+    retention: "15d"
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+        cpu: "1000m"
+    extraFlags:
+      - "web.enable-remote-write-receiver"
+      - "web.enable-otlp-receiver"
+    global:
+      scrape_interval: 60s
+      scrape_timeout: 10s
+      evaluation_interval: 60s
+      external_labels:
+        cluster: 'observability-stack'
+        environment: 'development'
+  # Disable default K8s scrape configs — they add ~60k series from API server internals.
+  # We keep node-exporter and kube-state-metrics (scraped via service endpoints below),
+  # and add explicit scrape for OTel Collector and Prometheus self-monitoring.
+  scrapeConfigs:
+    # Disable noisy defaults
+    kubernetes-api-servers: { enabled: false }
+    kubernetes-nodes: { enabled: false }
+    kubernetes-nodes-cadvisor: { enabled: false }
+    kubernetes-pods: { enabled: false }
+    kubernetes-pods-slow: { enabled: false }
+    kubernetes-service-endpoints: { enabled: false }
+    kubernetes-service-endpoints-slow: { enabled: false }
+    kubernetes-services: { enabled: false }
+    prometheus-pushgateway: { enabled: false }
+    # Keep self-monitoring
+    prometheus:
+      static_configs:
+        - targets: ['localhost:9090']
+  # Dynamic scrape targets — uses tpl so {{ .Release.Name }} is resolved at render time
+  extraScrapeConfigs: |
+    - job_name: otel-collector
+      static_configs:
+        - targets: ['{{ .Release.Name }}-opentelemetry-collector:8888']
+      scrape_interval: 10s
+    - job_name: opensearch
+      static_configs:
+        - targets: ['{{ .Release.Name }}-observability-stack-opensearch-exporter:9114']
+      scrape_interval: 30s
+    - job_name: data-prepper
+      metrics_path: '/metrics/prometheus'
+      static_configs:
+        - targets: ['{{ .Release.Name }}-data-prepper:4900']
+      scrape_interval: 30s
+    - job_name: node-exporter
+      kubernetes_sd_configs:
+        - role: endpoints
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name]
+          regex: {{ .Release.Name }}-prometheus-node-exporter
+          action: keep
+    - job_name: kube-state-metrics
+      kubernetes_sd_configs:
+        - role: endpoints
+      relabel_configs:
+        - source_labels: [__meta_kubernetes_service_name]
+          regex: {{ .Release.Name }}-kube-state-metrics
+          action: keep
+        - source_labels: [__meta_kubernetes_endpoint_port_name]
+          regex: http
+          action: keep
+  scrapeConfigFiles: []
+  serverFiles:
+    prometheus.yml:
+      otlp:
+        keep_identifying_resource_attributes: true
+        promote_resource_attributes:
+          - service.instance.id
+          - service.name
+          - service.namespace
+          - service.version
+          - deployment.environment.name
+          - gen_ai.agent.id
+          - gen_ai.agent.name
+          - gen_ai.provider.name
+          - gen_ai.request.model
+          - gen_ai.response.model
+      storage:
+        tsdb:
+          out_of_order_time_window: 30m
+  alertmanager:
+    enabled: false
+  kube-state-metrics:
+    enabled: true
+  prometheus-node-exporter:
+    enabled: true
+  prometheus-pushgateway:
+    enabled: false
+
+# -- Global settings
+# opensearchUsername/Password are the single source of truth for all components.
+# OpenSearch reads the password from the opensearch-credentials Secret via secretKeyRef.
+# OpenSearch Dashboards uses opensearchAccount.secret for automatic env var injection.
+# Data Prepper pipeline config is rendered as a Secret template with credentials injected.
+opensearchUsername: "admin"
+opensearchPassword: "My_password_123!@#"
+
+# -- ISM Retention
+# Number of days to retain log and trace indices before automatic deletion.
+# Set to 0 to disable deletion (rollover-only, indices accumulate indefinitely).
+ismRetentionDays: 7
+
+# -- Anonymous Authentication
+# When enabled, users can access OpenSearch Dashboards without logging in.
+# Anonymous users can browse data, view/create/modify saved objects, explore
+# traces and service maps, run queries, and access the REST API.
+# They cannot delete existing saved objects or perform admin operations.
+#
+# To enable:
+#   helm install obs-stack . -f values-anonymous-auth.yaml
+#
+# Or override individual values:
+#   --set anonymousAuth.enabled=true
+#   (plus the opensearch.securityConfig and opensearch-dashboards.config overrides
+#    shown in values-anonymous-auth.yaml)
+anonymousAuth:
+  enabled: false
+
+# -- OpenSearch Prometheus Exporter
+opensearchExporter:
+  enabled: true
+  image:
+    repository: prometheuscommunity/elasticsearch-exporter
+    tag: v1.10.0
+
+# -- Example agents (matches docker-compose.examples.yml)
+examples:
+  enabled: true
+  imagePullPolicy: IfNotPresent
+  weatherAgent:
+    image: "ghcr.io/kylehounslow/observability-stack/weather-agent:latest"
+  eventsAgent:
+    image: "ghcr.io/kylehounslow/observability-stack/events-agent:latest"
+  travelPlanner:
+    image: "ghcr.io/kylehounslow/observability-stack/travel-planner:latest"
+  mcpServer:
+    image: "ghcr.io/kylehounslow/observability-stack/mcp-server:latest"
+  canary:
+    image: "ghcr.io/kylehounslow/observability-stack/canary:latest"
+    interval: "120"
+
+# -- OpenTelemetry Demo (optional)
+# Full microservices e-commerce app that generates realistic telemetry.
+# Disabled by default — adds ~2GB memory. Enable with opentelemetry-demo.enabled=true.
+# All bundled backends (jaeger, grafana, prometheus, opensearch, collector) are disabled —
+# demo services send telemetry to our OTel Collector instead.
+opentelemetry-demo:
+  enabled: false
+  default:
+    envOverrides:
+      - name: OTEL_COLLECTOR_NAME
+        # Must match: <release-name>-opentelemetry-collector
+        value: obs-stack-opentelemetry-collector
+  # Disable all bundled backends — we use our own stack
+  opentelemetry-collector:
+    enabled: false
+  jaeger:
+    enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+  opensearch:
+    enabled: false
+
+# -- Gateway API for OpenSearch Dashboards
+# Requires: Gateway API CRDs + a gateway controller installed on the cluster.
+# Supported providers: envoy (Envoy Gateway), aws (AWS Gateway API Controller).
+# Contributors welcome to add: gcp, azure, etc.
+gateway:
+  enabled: false
+  # provider: envoy or aws
+  provider: envoy
+  # className maps to GatewayClass installed by your controller
+  className: eg
+  # host: dashboards.example.com
+  annotations: {}
+  tls: {}
+    # secretName: dashboards-tls  # K8s TLS secret (envoy)
+  #
+  # --- Envoy Gateway ---
+  # Requires: https://gateway.envoyproxy.io/docs/install/
+  #   provider: envoy
+  #   className: eg
+  #   host: dashboards.example.com
+  #   tls:
+  #     secretName: dashboards-tls  # cert-manager or manual secret
+  #
+  # --- AWS Gateway API Controller ---
+  # Requires: https://www.gateway-api-controller.eks.aws.dev/
+  #   provider: aws
+  #   className: amazon-vpc-lattice
+  #   host: dashboards.example.com
+  #   annotations:
+  #     application-networking.k8s.aws/certificate-arn: arn:aws:acm:REGION:ACCOUNT:certificate/ID
+
+# -- Kubernetes RBAC service accounts for kubectl/helm access
+# Creates Kubernetes ServiceAccounts with long-lived tokens for admin and readonly
+# cluster access. This is for Kubernetes API access (kubectl, helm), NOT OpenSearch
+# cluster authentication (see opensearch.securityConfig for OpenSearch users).
+# Usage: generate a kubeconfig from the token secret, e.g.
+#   kubectl get secret <release>-admin-token -n <ns> -o jsonpath='{.data.token}' | base64 -d
+rbac:
+  enabled: false
+  admin:
+    enabled: true
+    # clusterRole to bind — "cluster-admin" for full access
+    clusterRole: cluster-admin
+  readonly:
+    enabled: true
+    # clusterRole to bind — "view" for read-only access
+    clusterRole: view

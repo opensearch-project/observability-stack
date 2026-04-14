@@ -1,0 +1,24 @@
+suite: init dashboards configmap
+templates:
+  - templates/init-dashboards-configmap.yaml
+tests:
+  - it: should render when dashboards enabled
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - isAPIVersion:
+          of: v1
+
+  - it: should not render when dashboards disabled
+    set:
+      opensearch-dashboards:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should use post-install hook
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade

@@ -1,0 +1,76 @@
+{{- if .Values.opensearchExporter.enabled }}
+# OpenSearch Exporter — bridges OpenSearch cluster metrics to Prometheus.
+# OpenSearch doesn't expose a native Prometheus endpoint, so this exporter
+# queries the OpenSearch API (cluster health, node stats, indices) and
+# serves them as Prometheus metrics on :9114/metrics.
+# https://github.com/prometheus-community/elasticsearch_exporter
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-opensearch-exporter
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: opensearch-exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: opensearch-exporter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: opensearch-exporter
+    spec:
+      containers:
+        - name: opensearch-exporter
+          image: "{{ .Values.opensearchExporter.image.repository }}:{{ .Values.opensearchExporter.image.tag }}"
+          args:
+            - --es.uri=https://opensearch-cluster-master:9200
+            - --es.ssl-skip-verify
+            - --es.all
+            - --es.indices
+            - --es.shards
+          env:
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: username
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: password
+          ports:
+            - containerPort: 9114
+              name: metrics
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9114
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 9114
+            initialDelaySeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-opensearch-exporter
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: opensearch-exporter
+spec:
+  selector:
+    app.kubernetes.io/component: opensearch-exporter
+  ports:
+    - port: 9114
+      targetPort: 9114
+      name: metrics
+{{- end }}

@@ -1,0 +1,73 @@
+# EKS-specific overrides for the observability-stack helm chart.
+# Used by: helm upgrade obs-stack ... -f values-eks.yaml
+# Used by: terraform/aws/observability-stack.tf (via values = [file(...)])
+#
+# TLS annotations (certificate-arn, listen-ports, ssl-redirect, hostname)
+# are injected conditionally by Terraform via dynamic set blocks — not here.
+
+# gp2 is the default EBS StorageClass on EKS. Without this, OpenSearch PVCs
+# stay Pending because the chart default ("") doesn't match any provisioner.
+opensearch:
+  singleNode: false
+  replicas: 3
+  persistence:
+    storageClass: gp2
+  resources:
+    requests:
+      memory: "4Gi"
+      cpu: "2000m"
+    limits:
+      memory: "4Gi"
+      cpu: "4000m"
+  opensearchJavaOpts: "-Xms2g -Xmx2g"
+
+opensearch-dashboards:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: "500m"
+      memory: "1Gi"
+    limits:
+      cpu: "2000m"
+      memory: "2Gi"
+  ingress:
+    enabled: true
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'  # Terraform overrides to HTTPS:443 when domain is set
+      alb.ingress.kubernetes.io/success-codes: "200,302"  # OSD returns 302 on unauthenticated health checks
+    hosts:
+      - host: ""
+        paths:
+          - path: /
+            backend:
+              servicePort: 5601
+
+# Examples — pulls from GHCR (public images built by .github/workflows/publish-images.yml)
+examples:
+  enabled: false
+
+# Prometheus — persistent storage + resource limits
+prometheus:
+  server:
+    persistentVolume:
+      enabled: true
+      size: 50Gi
+      storageClass: gp2
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "500m"
+      limits:
+        memory: "4Gi"
+        cpu: "1000m"
+
+# OTel Demo — realistic telemetry from ~20 microservices
+opentelemetry-demo:
+  enabled: false
+
+# Gateway not needed — ALB handles ingress directly.
+gateway:
+  enabled: false

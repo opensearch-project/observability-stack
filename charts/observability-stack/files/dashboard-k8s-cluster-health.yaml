@@ -1,0 +1,51 @@
+# Kubernetes Cluster Health Dashboard — Node and pod infrastructure metrics
+
+dashboard:
+  id: k8s-cluster-health-dashboard
+  title: Kubernetes Cluster Health
+  description: Node resources, pod health, and container status
+
+panels:
+  # --- Row 1: Cluster Overview ---
+  - id: k8s-node-count
+    title: "Node Count"
+    query: "count(kube_node_info)"
+    chartType: line
+
+  - id: k8s-pods-by-status
+    title: "Pods by Status"
+    query: "sum by (phase) (kube_pod_status_phase{namespace=\"observability-stack\"})"
+    chartType: line
+
+  # --- Row 2: Node CPU & Memory ---
+  - id: k8s-node-cpu-usage
+    title: "Node CPU Usage %"
+    query: "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+    chartType: line
+
+  - id: k8s-node-memory-usage
+    title: "Node Memory Usage %"
+    query: "100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)"
+    chartType: line
+
+  # --- Row 3: Disk & Network ---
+  - id: k8s-node-disk-usage
+    title: "Node Disk Usage %"
+    query: "100 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"} * 100)"
+    chartType: line
+
+  - id: k8s-node-network-receive
+    title: "Node Network Receive (bytes/sec)"
+    query: "rate(node_network_receive_bytes_total{device!=\"lo\"}[5m])"
+    chartType: line
+
+  # --- Row 4: Pod Health ---
+  - id: k8s-pod-restarts
+    title: "Container Restarts (1h)"
+    query: "increase(kube_pod_container_status_restarts_total{namespace=\"observability-stack\"}[1h])"
+    chartType: line
+
+  - id: k8s-pod-memory-vs-request
+    title: "Pod Memory Usage vs Request %"
+    query: "100 * sum by (pod) (container_memory_working_set_bytes{namespace=\"observability-stack\", container!=\"\"}) / sum by (pod) (kube_pod_container_resource_requests{namespace=\"observability-stack\", resource=\"memory\"})"
+    chartType: line

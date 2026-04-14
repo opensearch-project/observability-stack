@@ -1,0 +1,48 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-gateway
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+  {{- with .Values.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  gatewayClassName: {{ .Values.gateway.className }}
+  listeners:
+    - name: https
+      port: 443
+      protocol: HTTPS
+      {{- if .Values.gateway.host }}
+      hostname: {{ .Values.gateway.host }}
+      {{- end }}
+      tls:
+        mode: Terminate
+        {{- if and (ne .Values.gateway.provider "aws") .Values.gateway.tls }}
+        certificateRefs:
+          - name: {{ .Values.gateway.tls.secretName | default (printf "%s-dashboards-tls" (include "observability-stack.fullname" .)) }}
+        {{- end }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-dashboards
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+spec:
+  parentRefs:
+    - name: {{ include "observability-stack.fullname" . }}-gateway
+  {{- if .Values.gateway.host }}
+  hostnames:
+    - {{ .Values.gateway.host }}
+  {{- end }}
+  rules:
+    - backendRefs:
+        - name: {{ .Release.Name }}-opensearch-dashboards
+          port: 5601
+{{- end }}

@@ -1,0 +1,69 @@
+suite: example agents
+templates:
+  - templates/examples.yaml
+tests:
+  - it: should render all example deployments and services by default
+    asserts:
+      - hasDocuments:
+          count: 9  # 4 services + 5 deployments
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          name: example-weather-agent
+          any: true
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          name: example-events-agent
+          any: true
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          name: example-travel-planner
+          any: true
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          name: example-mcp-server
+          any: true
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          name: example-canary
+          any: true
+      - containsDocument:
+          kind: Service
+          apiVersion: v1
+          name: weather-agent
+          any: true
+
+  - it: should not render when disabled
+    set:
+      examples.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should set OTEL_EXPORTER_OTLP_ENDPOINT on weather-agent
+    documentSelector:
+      path: metadata.name
+      value: example-weather-agent
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: "http://RELEASE-NAME-opentelemetry-collector:4317"
+
+  - it: should set canary interval from values
+    set:
+      examples.canary.interval: "60"
+    documentSelector:
+      path: metadata.name
+      value: example-canary
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CANARY_INTERVAL
+            value: "60"

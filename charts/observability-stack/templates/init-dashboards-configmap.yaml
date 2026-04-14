@@ -1,0 +1,31 @@
+{{- if index .Values "opensearch-dashboards" "enabled" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-init-script
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  init-opensearch-dashboards.py: |
+{{ .Files.Get "files/init-opensearch-dashboards.py" | indent 4 }}
+  saved-queries-traces.yaml: |
+{{ .Files.Get "files/saved-queries-traces.yaml" | indent 4 }}
+  saved-queries-metrics.yaml: |
+{{ .Files.Get "files/saved-queries-metrics.yaml" | indent 4 }}
+  saved-queries-self-monitoring.yaml: |
+{{ .Files.Get "files/saved-queries-self-monitoring.yaml" | indent 4 }}
+  dashboard-k8s-cluster-health.yaml: |
+{{ .Files.Get "files/dashboard-k8s-cluster-health.yaml" | indent 4 }}
+  dashboard-pipeline-health.yaml: |
+{{ .Files.Get "files/dashboard-pipeline-health.yaml" | indent 4 }}
+  dashboard-opensearch-health.yaml: |
+{{ .Files.Get "files/dashboard-opensearch-health.yaml" | indent 4 }}
+  dashboard-astronomy-shop.ndjson: |
+{{ .Files.Get "files/dashboard-astronomy-shop.ndjson" | indent 4 }}
+binaryData:
+  architecture.png: {{ .Files.Get "files/architecture.png" | b64enc }}
+{{- end }}

@@ -1,0 +1,99 @@
+{
+  "short_description": "Observability Stack trace/log workload matching otel-v1-apm-span and logs-otel-v1 index shapes",
+  "description": "Custom workload for OpenSearch Benchmark that generates documents matching the OTLP trace and log index patterns used by the observability stack.",
+  "indices": [
+    {
+      "name": "otel-v1-apm-span-loadtest",
+      "body": "index-settings.json"
+    }
+  ],
+  "operations": [
+    {
+      "name": "bulk-index-traces",
+      "operation-type": "bulk",
+      "bulk-size": 500,
+      "index": "otel-v1-apm-span-loadtest"
+    },
+    {
+      "name": "search-by-service",
+      "operation-type": "search",
+      "index": "otel-v1-apm-span-*",
+      "body": {
+        "size": 50,
+        "query": {
+          "term": { "serviceName": "load-test-traces" }
+        },
+        "sort": [{ "startTime": "desc" }]
+      }
+    },
+    {
+      "name": "agg-by-service",
+      "operation-type": "search",
+      "index": "otel-v1-apm-span-*",
+      "body": {
+        "size": 0,
+        "aggs": {
+          "services": {
+            "terms": { "field": "serviceName", "size": 50 },
+            "aggs": {
+              "avg_duration": { "avg": { "field": "durationInNanos" } },
+              "error_count": {
+                "filter": { "term": { "status.code": 2 } }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "service-map-query",
+      "operation-type": "search",
+      "index": "otel-v2-apm-service-map-*",
+      "body": {
+        "size": 200,
+        "query": { "match_all": {} }
+      }
+    },
+    {
+      "name": "search-logs",
+      "operation-type": "search",
+      "index": "logs-otel-v1-*",
+      "body": {
+        "size": 50,
+        "query": { "match_all": {} },
+        "sort": [{ "time": "desc" }]
+      }
+    }
+  ],
+  "schedule": [
+    {
+      "operation": "bulk-index-traces",
+      "warmup-time-period": 60,
+      "clients": 4
+    },
+    {
+      "operation": "search-by-service",
+      "warmup-iterations": 50,
+      "iterations": 200,
+      "clients": 8
+    },
+    {
+      "operation": "agg-by-service",
+      "warmup-iterations": 20,
+      "iterations": 100,
+      "clients": 8
+    },
+    {
+      "operation": "service-map-query",
+      "warmup-iterations": 20,
+      "iterations": 100,
+      "clients": 4
+    },
+    {
+      "operation": "search-logs",
+      "warmup-iterations": 50,
+      "iterations": 200,
+      "clients": 8
+    }
+  ]
+}

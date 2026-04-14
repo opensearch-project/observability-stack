@@ -1,0 +1,121 @@
+suite: gateway
+templates:
+  - templates/gateway.yaml
+tests:
+  - it: should not render when disabled
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render Gateway and HTTPRoute when enabled
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+        host: dashboards.example.com
+        tls:
+          secretName: my-tls
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          kind: Gateway
+          apiVersion: gateway.networking.k8s.io/v1
+          any: true
+      - containsDocument:
+          kind: HTTPRoute
+          apiVersion: gateway.networking.k8s.io/v1
+          any: true
+
+  - it: should set gatewayClassName
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.gatewayClassName
+          value: eg
+
+  - it: should set hostname on Gateway and HTTPRoute
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+        host: dashboards.example.com
+    asserts:
+      - equal:
+          path: spec.listeners[0].hostname
+          value: dashboards.example.com
+        documentIndex: 0
+      - contains:
+          path: spec.hostnames
+          content: dashboards.example.com
+        documentIndex: 1
+
+  - it: should include certificateRefs for envoy with TLS
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+        tls:
+          secretName: my-cert
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.listeners[0].tls.certificateRefs[0].name
+          value: my-cert
+
+  - it: should not include certificateRefs for aws provider
+    set:
+      gateway:
+        enabled: true
+        provider: aws
+        className: amazon-vpc-lattice
+    documentIndex: 0
+    asserts:
+      - notExists:
+          path: spec.listeners[0].tls.certificateRefs
+
+  - it: should set TLS terminate mode
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.listeners[0].tls.mode
+          value: Terminate
+
+  - it: should route to opensearch-dashboards on port 5601
+    set:
+      gateway:
+        enabled: true
+        provider: envoy
+        className: eg
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: spec.rules[0].backendRefs[0].port
+          value: 5601
+
+  - it: should apply custom annotations
+    set:
+      gateway:
+        enabled: true
+        provider: aws
+        className: amazon-vpc-lattice
+        annotations:
+          application-networking.k8s.aws/certificate-arn: "arn:aws:acm:us-east-1:123:certificate/abc"
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: metadata.annotations["application-networking.k8s.aws/certificate-arn"]
+          value: "arn:aws:acm:us-east-1:123:certificate/abc"

@@ -1,0 +1,91 @@
+# Saved queries for OpenSearch Dashboards - Self-Monitoring & Capacity Planning
+# PromQL queries for monitoring the observability stack itself under load
+
+queries:
+  # --- OpenSearch Health ---
+  - id: os_jvm_heap_used_pct
+    title: "OpenSearch JVM Heap Used %"
+    description: JVM heap utilization — sustained >85% indicates need to scale
+    language: PROMQL
+    query: |
+      100 * elasticsearch_jvm_memory_used_bytes{area="heap"} / elasticsearch_jvm_memory_max_bytes{area="heap"}
+
+  - id: os_thread_pool_rejections
+    title: "OpenSearch Thread Pool Rejections"
+    description: Rejected requests per second — non-zero means OpenSearch is overloaded
+    language: PROMQL
+    query: |
+      rate(elasticsearch_thread_pool_rejected_count[5m])
+
+  - id: os_active_searches
+    title: "OpenSearch Active Searches"
+    description: Currently executing search queries
+    language: PROMQL
+    query: |
+      elasticsearch_indices_search_query_current
+
+  - id: os_search_latency
+    title: "OpenSearch Search Latency (sec/query)"
+    description: Average time per search query
+    language: PROMQL
+    query: |
+      rate(elasticsearch_indices_search_query_time_seconds_total[5m]) / rate(elasticsearch_indices_search_query_total[5m])
+
+  # --- OTel Collector ---
+  - id: otel_spans_dropped
+    title: "OTel Collector Spans Dropped/sec"
+    description: Failed span exports — non-zero indicates backpressure or downstream failure
+    language: PROMQL
+    query: |
+      rate(otelcol_exporter_send_failed_spans_total[5m])
+
+  - id: otel_batch_timeout_sends
+    title: "OTel Batch Timeout Sends/sec"
+    description: Batches sent due to timeout rather than reaching batch size — high rate means low throughput
+    language: PROMQL
+    query: |
+      rate(otelcol_processor_batch_timeout_trigger_send_total[5m])
+
+  # --- Prometheus ---
+  - id: prom_query_latency_p99
+    title: "Prometheus Query Latency P99"
+    description: 99th percentile query duration — degrades under concurrent PromQL load
+    language: PROMQL
+    query: |
+      histogram_quantile(0.99, rate(prometheus_http_request_duration_seconds_bucket{handler="/api/v1/query"}[5m]))
+
+  - id: prom_range_query_latency_p99
+    title: "Prometheus Range Query Latency P99"
+    description: 99th percentile range query duration — expensive for long time ranges
+    language: PROMQL
+    query: |
+      histogram_quantile(0.99, rate(prometheus_http_request_duration_seconds_bucket{handler="/api/v1/query_range"}[5m]))
+
+  - id: prom_active_series
+    title: "Prometheus Active Time Series"
+    description: Total active time series — drives memory usage
+    language: PROMQL
+    query: |
+      prometheus_tsdb_head_series
+
+  - id: prom_ingestion_rate
+    title: "Prometheus Sample Ingestion Rate"
+    description: Samples appended per second
+    language: PROMQL
+    query: |
+      rate(prometheus_tsdb_head_samples_appended_total[5m])
+
+  # --- Data Prepper ---
+  - id: dp_buffer_capacity_used
+    title: "Data Prepper Buffer Capacity Used"
+    description: Combined buffer usage across all pipelines — approaching max means backpressure
+    language: PROMQL
+    query: |
+      otlp_pipeline_BlockingBuffer_capacityUsed + otel_logs_pipeline_BlockingBuffer_capacityUsed + otel_traces_pipeline_BlockingBuffer_capacityUsed
+
+  - id: dp_bulk_write_errors
+    title: "Data Prepper Bulk Write Errors/sec"
+    description: OpenSearch bulk request errors from Data Prepper
+    language: PROMQL
+    query: |
+      sum(rate(otel_logs_pipeline_opensearch_bulkRequestErrors_total[5m])) + sum(rate(traces_raw_pipeline_opensearch_bulkRequestErrors_total[5m]))

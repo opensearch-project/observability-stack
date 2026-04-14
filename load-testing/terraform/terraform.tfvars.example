@@ -1,0 +1,4 @@
+vpc_id     = "vpc-xxxxxxxxxxxxxxxxx"
+subnet_id  = "subnet-xxxxxxxxxxxxxxxxx"
+target_url = "https://your-opensearch-dashboards-endpoint"
+# key_name = "your-key-pair"  # Uncomment if you have an EC2 key pair for SSH

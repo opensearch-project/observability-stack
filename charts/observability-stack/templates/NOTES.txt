@@ -1,0 +1,26 @@
+🚀 Observability Stack deployed!
+
+Access OpenSearch Dashboards:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-opensearch-dashboards 5601:5601
+
+  Then open: http://localhost:5601
+  Username: {{ .Values.opensearchUsername }}
+  Password: {{ .Values.opensearchPassword }}
+
+Send telemetry:
+
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ .Release.Name }}-opentelemetry-collector 4317:4317 4318:4318
+
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+{{- if .Values.gateway.enabled }}
+
+Gateway API ({{ .Values.gateway.provider }}):
+
+  Gateway:   kubectl get gateway -n {{ .Release.Namespace }}
+  HTTPRoute: kubectl get httproute -n {{ .Release.Namespace }}
+  {{- if .Values.gateway.host }}
+  Host:      {{ .Values.gateway.host }}
+  {{- end }}
+{{- end }}

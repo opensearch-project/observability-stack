@@ -1,0 +1,209 @@
+{{- if .Values.examples.enabled }}
+# MCP Server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-mcp-server
+  labels:
+    app: example-mcp-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-mcp-server
+  template:
+    metadata:
+      labels:
+        app: example-mcp-server
+    spec:
+      containers:
+        - name: mcp-server
+          image: {{ .Values.examples.mcpServer.image }}
+          imagePullPolicy: {{ .Values.examples.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8003
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-opentelemetry-collector:4317"
+          resources:
+            limits:
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+spec:
+  selector:
+    app: example-mcp-server
+  ports:
+    - port: 8003
+      targetPort: 8003
+---
+# Weather Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-weather-agent
+  labels:
+    app: example-weather-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-weather-agent
+  template:
+    metadata:
+      labels:
+        app: example-weather-agent
+    spec:
+      containers:
+        - name: weather-agent
+          image: {{ .Values.examples.weatherAgent.image }}
+          imagePullPolicy: {{ .Values.examples.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-opentelemetry-collector:4317"
+            - name: MCP_SERVER_URL
+              value: "http://mcp-server:8003"
+          resources:
+            limits:
+              memory: "200Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: weather-agent
+spec:
+  selector:
+    app: example-weather-agent
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# Events Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-events-agent
+  labels:
+    app: example-events-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-events-agent
+  template:
+    metadata:
+      labels:
+        app: example-events-agent
+    spec:
+      containers:
+        - name: events-agent
+          image: {{ .Values.examples.eventsAgent.image }}
+          imagePullPolicy: {{ .Values.examples.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8002
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-opentelemetry-collector:4317"
+            - name: MCP_SERVER_URL
+              value: "http://mcp-server:8003"
+          resources:
+            limits:
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: events-agent
+spec:
+  selector:
+    app: example-events-agent
+  ports:
+    - port: 8002
+      targetPort: 8002
+---
+# Travel Planner (Orchestrator)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-travel-planner
+  labels:
+    app: example-travel-planner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-travel-planner
+  template:
+    metadata:
+      labels:
+        app: example-travel-planner
+    spec:
+      containers:
+        - name: travel-planner
+          image: {{ .Values.examples.travelPlanner.image }}
+          imagePullPolicy: {{ .Values.examples.imagePullPolicy | default "IfNotPresent" }}
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ .Release.Name }}-opentelemetry-collector:4317"
+            - name: WEATHER_AGENT_URL
+              value: "http://weather-agent:8000"
+            - name: EVENTS_AGENT_URL
+              value: "http://events-agent:8002"
+            - name: MCP_SERVER_URL
+              value: "http://mcp-server:8003"
+          resources:
+            limits:
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: travel-planner
+spec:
+  selector:
+    app: example-travel-planner
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+# Canary - periodically invokes travel-planner
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: example-canary
+  labels:
+    app: example-canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: example-canary
+  template:
+    metadata:
+      labels:
+        app: example-canary
+    spec:
+      containers:
+        - name: canary
+          image: {{ .Values.examples.canary.image }}
+          imagePullPolicy: {{ .Values.examples.imagePullPolicy | default "IfNotPresent" }}
+          env:
+            - name: TRAVEL_PLANNER_URL
+              value: "http://travel-planner:8000"
+            - name: WEATHER_AGENT_URL
+              value: "http://weather-agent:8000"
+            - name: EVENTS_AGENT_URL
+              value: "http://events-agent:8002"
+            - name: CANARY_INTERVAL
+              value: {{ .Values.examples.canary.interval | default "120" | quote }}
+          resources:
+            limits:
+              memory: "100Mi"
+{{- end }}

@@ -1,6 +1,7 @@
 # Observability Stack
 # Docker Compose configuration for local development
 # WARNING: This configuration is for development/testing only - not production-ready
+name: observability-stack
 
 include:
   - path: ${INCLUDE_COMPOSE_EXAMPLES:-docker-compose/util/docker-compose.empty.yml}

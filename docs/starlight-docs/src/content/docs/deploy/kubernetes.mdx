@@ -1,0 +1,128 @@
+---
+title: Kubernetes (Helm)
+---
+
+Deploy the Observability Stack to any Kubernetes cluster using the Helm umbrella chart. This creates the same observability platform as the local Docker Compose stack — OpenSearch, OpenSearch Dashboards, Data Prepper, OTel Collector, and Prometheus — as Kubernetes workloads.
+
+## Prerequisites
+
+- Kubernetes cluster (1.26+) — [kind](https://kind.sigs.k8s.io/), EKS, GKE, AKS, etc.
+- [Helm](https://helm.sh/docs/intro/install/) v3.12+
+- [kubectl](https://kubernetes.io/docs/tasks/tools/) configured for your cluster
+
+## Install
+
+```bash
+git clone https://github.com/opensearch-project/observability-stack.git
+cd observability-stack
+
+helm install obs charts/observability-stack
+```
+
+This deploys all components with sensible defaults. The stack is ready when all pods are running:
+
+```bash
+kubectl get pods
+```
+
+:::note
+The default configuration deploys a 3-node OpenSearch cluster, 3 OpenSearch Dashboards replicas, and single instances of Data Prepper, OTel Collector, and Prometheus. This is suitable for small production workloads. For local development with kind, see [Resource sizing](#resource-sizing) below.
+:::
+
+## Access Dashboards
+
+```bash
+kubectl port-forward svc/obs-opensearch-dashboards 5601:5601
+```
+
+Open http://localhost:5601. Default credentials: `admin` / `My_password_123!@#`
+
+## Send Telemetry
+
+Port-forward the OTel Collector OTLP endpoints:
+
+```bash
+kubectl port-forward svc/obs-opentelemetry-collector 4317:4317 4318:4318
+```
+
+Then configure your application:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+```
+
+Within the cluster, services can send telemetry directly to `obs-opentelemetry-collector:4317` (gRPC) or `obs-opentelemetry-collector:4318` (HTTP).
+
+## Configuration
+
+Key values in `charts/observability-stack/values.yaml`:
+
+| Value | Default | Description |
+|---|---|---|
+| `opensearchUsername` | `admin` | OpenSearch admin username |
+| `opensearchPassword` | `My_password_123!@#` | OpenSearch admin password |
+| `examples.enabled` | `true` | Deploy example agents that generate sample telemetry |
+| `opentelemetry-demo.enabled` | `false` | Deploy the [OTel Demo](https://opentelemetry.io/docs/demo/) microservices app |
+| `ismRetentionDays` | `7` | Days to retain trace/log indices (0 = rollover only) |
+| `gateway.enabled` | `false` | Enable Gateway API ingress |
+| `opensearchExporter.enabled` | `true` | Deploy Prometheus exporter for OpenSearch metrics |
+
+Override values at install time:
+
+```bash
+helm install obs charts/observability-stack \
+  --set opensearchPassword="YourSecurePassword123!" \
+  --set examples.enabled=false
+```
+
+### Credential management
+
+All components read credentials from a single Kubernetes Secret (`opensearch-credentials`), sourced from `opensearchUsername` and `opensearchPassword` in values.yaml. No passwords are hardcoded in sub-chart configurations.
+
+:::caution
+The password is set at install time. OpenSearch stores the admin password hash in its internal security index, and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` only takes effect on first boot. To change the password after install, use the [Security REST API](https://docs.opensearch.org/latest/security/access-control/api/#create-user) or [security-admin.sh](https://docs.opensearch.org/latest/security/configuration/security-admin/), then update the Secret.
+:::
+
+### Resource sizing
+
+For local development (kind):
+
+```bash
+helm install obs charts/observability-stack \
+  --set opensearch.singleNode=true \
+  --set opensearch.replicas=1 \
+  --set opensearch.resources.requests.memory=1Gi \
+  --set opensearch.resources.limits.memory=1Gi \
+  --set opensearch.opensearchJavaOpts="-Xms512m -Xmx512m" \
+  --set opensearch.persistence.size=2Gi \
+  --set data-prepper.resources.requests.memory=512Mi \
+  --set data-prepper.resources.limits.memory=512Mi
+```
+
+For production sizing, dedicated node roles, and advanced cluster topologies, see the [chart README sizing guide](https://github.com/opensearch-project/observability-stack/tree/main/charts/observability-stack#sizing-guide) and the official [Tuning your cluster](https://opensearch.org/docs/latest/tuning-your-cluster/) documentation.
+
+### Anonymous authentication
+
+For public-facing demos where login isn't needed:
+
+```bash
+helm install obs charts/observability-stack \
+  -f charts/observability-stack/values-anonymous-auth.yaml
+```
+
+## EKS deployment
+
+A Terraform module for deploying to AWS EKS with TLS, WAF, DNS, and optional anonymous auth is included at `terraform/aws/`. It provisions the full stack — VPC, EKS cluster, ALB, ACM certificate, and the Helm release — in a single `terraform apply`.
+
+See the [EKS Deployment Guide](https://github.com/opensearch-project/observability-stack/tree/main/terraform/aws/DEPLOYMENT_GUIDE.md) for the step-by-step checklist, including S3 state backend setup, multi-region support, verification steps, troubleshooting, and cost estimates.
+
+## Uninstall
+
+```bash
+# Keep data (PVCs)
+helm uninstall obs
+
+# Remove everything including data
+helm uninstall obs
+kubectl delete pvc -l app.kubernetes.io/part-of=observability-stack
+```

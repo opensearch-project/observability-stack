@@ -1,0 +1,60 @@
+suite: opensearch exporter
+templates:
+  - templates/opensearch-exporter.yaml
+tests:
+  - it: should render deployment and service by default
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          kind: Deployment
+          apiVersion: apps/v1
+          any: true
+      - containsDocument:
+          kind: Service
+          apiVersion: v1
+          any: true
+
+  - it: should not render when disabled
+    set:
+      opensearchExporter.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should use configured image
+    documentIndex: 0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "prometheuscommunity/elasticsearch-exporter:v1.10.0"
+
+  - it: should use secretKeyRef for credentials
+    documentIndex: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ES_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ES_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: password
+
+  - it: should expose metrics port 9114
+    documentIndex: 1
+    asserts:
+      - contains:
+          path: spec.ports
+          content:
+            port: 9114
+            targetPort: 9114
+            name: metrics

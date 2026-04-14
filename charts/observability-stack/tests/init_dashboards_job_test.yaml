@@ -1,0 +1,53 @@
+suite: init dashboards job
+templates:
+  - templates/init-dashboards-job.yaml
+tests:
+  - it: should render when dashboards enabled
+    asserts:
+      - isKind:
+          of: Job
+      - isAPIVersion:
+          of: batch/v1
+
+  - it: should not render when dashboards disabled
+    set:
+      opensearch-dashboards:
+        enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should use post-install hook
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+
+  - it: should read credentials from secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_USER
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: username
+
+  - it: should pass ISM_RETENTION_DAYS from values
+    set:
+      ismRetentionDays: 30
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ISM_RETENTION_DAYS
+            value: "30"
+
+  - it: should default ISM_RETENTION_DAYS to 7
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ISM_RETENTION_DAYS
+            value: "7"

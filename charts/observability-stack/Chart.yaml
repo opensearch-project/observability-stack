@@ -1,0 +1,62 @@
+apiVersion: v2
+name: observability-stack
+description: OpenTelemetry-native observability platform for microservices, web apps, and AI agents
+type: application
+version: 0.1.0
+appVersion: "3.6.0"
+
+home: https://github.com/opensearch-project/observability-stack
+sources:
+  - https://github.com/opensearch-project/observability-stack
+
+maintainers:
+  - name: kylehounslow
+    url: https://github.com/kylehounslow
+  - name: goyamegh
+    url: https://github.com/goyamegh
+  - name: vamsimanohar
+    url: https://github.com/vamsimanohar
+  - name: anirudha
+    url: https://github.com/anirudha
+  - name: ps48
+    url: https://github.com/ps48
+  - name: joshuali925
+    url: https://github.com/joshuali925
+
+keywords:
+  - opensearch
+  - observability
+  - opentelemetry
+  - data-prepper
+  - agent-tracing
+
+dependencies:
+  - name: opensearch
+    version: "3.5.0"
+    repository: "https://opensearch-project.github.io/helm-charts/"
+    condition: opensearch.enabled
+
+  - name: opensearch-dashboards
+    version: "3.5.0"
+    repository: "https://opensearch-project.github.io/helm-charts/"
+    condition: opensearch-dashboards.enabled
+
+  - name: data-prepper
+    version: "0.3.1"
+    repository: "https://opensearch-project.github.io/helm-charts/"
+    condition: data-prepper.enabled
+
+  - name: opentelemetry-collector
+    version: "0.147.0"
+    repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    condition: opentelemetry-collector.enabled
+
+  - name: prometheus
+    version: "28.13.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: prometheus.enabled
+
+  - name: opentelemetry-demo
+    version: "0.40.5"
+    repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
+    condition: opentelemetry-demo.enabled

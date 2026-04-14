@@ -93,7 +93,24 @@ grep -E '^OPENSEARCH_(USER|PASSWORD)=' .env
 ```
 ___ 
 
-### Option 3: AWS Managed Services
+### Option 3: Kubernetes (Helm)
+
+Deploy to any Kubernetes cluster using the umbrella Helm chart:
+
+```bash
+git clone https://github.com/opensearch-project/observability-stack.git
+cd observability-stack
+helm install obs charts/observability-stack
+```
+
+Access OpenSearch Dashboards:
+```bash
+kubectl port-forward svc/obs-opensearch-dashboards 5601:5601
+```
+
+See [charts/observability-stack/README.md](charts/observability-stack/README.md) for configuration, credential management, and sizing options.
+
+### Option 4: AWS Managed Services
 
 Deploy the same observability stack to AWS managed services:
 

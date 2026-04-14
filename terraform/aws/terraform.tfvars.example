@@ -1,0 +1,13 @@
+# All optional. Just `terraform apply` for a working stack on plain HTTP.
+# Uncomment domain + route53_zone_id to enable HTTPS.
+
+# region             = "us-east-1"
+# cluster_name       = "obs-stack-use1"     # Keep short — used in IAM role names (global)
+# domain             = "obs.example.com"    # Must be ≤ 64 chars (ACM limit)
+# route53_zone_id    = "Z0123456789ABCDEFGHIJ"
+# node_instance_type = "m5.xlarge"
+# node_count         = 3
+# enable_waf         = false
+# anonymous_auth     = false
+# enable_examples    = false
+# enable_otel_demo   = false
