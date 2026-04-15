@@ -4,6 +4,7 @@ description: "Extract or substitute fields using regex - with support for sed-mo
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import PlaygroundLink from '../../../../components/PlaygroundLink.astro';
 
 The `rex` command is a more powerful alternative to `parse` for extracting fields from text using Java regular expressions. In addition to standard extraction, `rex` supports **sed mode** for text substitution, **multiple match extraction**, and **offset tracking** to record match positions.
 
@@ -78,7 +79,7 @@ source=logs-otel-v1*
 | [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/0PUK6V6EV0 HTTP/1.1" 200 ... | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 |
 | [2026-02-26T18:04:27.084Z] "GET /api/products/6E92ZMYYFZ HTTP/1.1" 200 ... | GET | /api/products/6E92ZMYYFZ |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5B%5E%5Cs%5D%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5B%5E%5Cs%5D%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%2020" />
 
 ### Replace text using sed mode
 
@@ -96,7 +97,7 @@ source=logs-otel-v1*
 | [[REDACTED]] "GET /api/data/ HTTP/1.1" 308 - via_upstream - "-" 0 9 3 2 "-" "python-requests/2.32.5" ... "[REDACTED]" frontend [REDACTED] ... |
 | [[REDACTED]] "GET /api/data HTTP/1.1" 200 - via_upstream - "-" 0 211 140 140 "-" "python-requests/2.32.5" ... "[REDACTED]" frontend [REDACTED] ... |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20rex%20field%3Dbody%20mode%3Dsed%20%22s%2F%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%2F%5BREDACTED%5D%2Fg%22%20%7C%20head%202')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20rex%20field%3Dbody%20mode%3Dsed%20%22s%2F%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%5C.%5Cd%2B%2F%5BREDACTED%5D%2Fg%22%20%7C%20head%202" />
 
 ### Extract Kafka broker component and ID
 
@@ -116,7 +117,7 @@ source=logs-otel-v1*
 | [RaftManager id=1] Completed transition to Leader ... | RaftManager | 1 |
 | [QuorumController id=1] The request from broker 1 ... | QuorumController | 1 |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20rex%20field%3Dbody%20%22%5C%5B%28%3F%3Ccomponent%3E%5Cw%2B%29%20id%3D%28%3F%3CbrokerId%3E%5Cd%2B%29%5C%5D%22%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%205')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20rex%20field%3Dbody%20%22%5C%5B%28%3F%3Ccomponent%3E%5Cw%2B%29%20id%3D%28%3F%3CbrokerId%3E%5Cd%2B%29%5C%5D%22%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%205" />
 
 ### Track match positions with offset_field
 
@@ -134,7 +135,7 @@ source=logs-otel-v1*
 | [2026-02-26T18:04:21.634Z] "GET /api/data HTTP/1.1" 200 ... | GET | 200 | method=29-31&statusCode=50-52 |
 | [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/... | POST | 200 | method=29-32&statusCode=81-83 |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%29.%2A%28%3F%3CstatusCode%3E%5Cd%7B3%7D%29%22%20offset_field%3Dmatchpos%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%202')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%29.%2A%28%3F%3CstatusCode%3E%5Cd%7B3%7D%29%22%20offset_field%3Dmatchpos%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%202" />
 
 ## Extended examples
 
@@ -156,7 +157,7 @@ source=logs-otel-v1*
 | INFO | [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/... | I | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 |
 | INFO | [2026-02-26T18:04:24.766Z] "GET / HTTP/1.1" 200 ... | I | GET | / |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3DseverityText%20%22%28%3F%3CseverityChar%3E%5E.%29%22%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%203')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20rex%20field%3DseverityText%20%22%28%3F%3CseverityChar%3E%5E.%29%22%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20head%203" />
 
 ### Aggregate endpoint traffic from Envoy access logs
 
@@ -174,7 +175,7 @@ source=logs-otel-v1*
 
 This extracts HTTP method and path from Envoy access log bodies, then counts requests per endpoint.
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20rex%20field%3Dbody%20%22%28%3F%3Cmethod%3EGET%7CPOST%7CPUT%7CDELETE%7CPATCH%29%5Cs%2B%28%3F%3Cpath%3E%2F%5CS%2B%29%22%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020" />
 
 <Aside type="caution">
 Capture group names **cannot contain underscores**. Use `(?<userName>...)` instead of `(?<user_name>...)`. This is a Java regex limitation.

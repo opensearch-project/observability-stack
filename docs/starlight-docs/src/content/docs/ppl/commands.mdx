@@ -4,8 +4,9 @@ description: "Complete reference for all PPL commands - syntax, parameters, and 
 ---
 
 import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+import PlaygroundLink from '../../../components/PlaygroundLink.astro';
 
-This reference covers every PPL command available in OpenSearch. Each command includes syntax, parameters, and examples you can run against live OpenTelemetry data in the [playground](https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t)).
+This reference covers every PPL command available in OpenSearch. Each command includes syntax, parameters, and examples you can run against live OpenTelemetry data in the <PlaygroundLink query="" text="playground" />.
 
 <Aside type="tip">
 Commands marked **experimental** are ready for use but parameters may change based on feedback. Commands marked **stable** have a fixed API.
@@ -58,7 +59,7 @@ source = logs-otel-v1*
 source = logs-otel-v1* severityText = 'ERROR'
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20head%2020" />
 
 ---
 
@@ -83,7 +84,7 @@ Supports operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `AND`, `OR`, `NOT`, `LIKE`,
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20or%20severityText%20%3D%20!%27FATAL!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20where%20severityText%20%3D%20!%27ERROR!%27%20or%20severityText%20%3D%20!%27FATAL!%27%20%7C%20head%2020" />
 
 **Example - Compound conditions:**
 ```sql
@@ -91,7 +92,7 @@ Supports operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `AND`, `OR`, `NOT`, `LIKE`,
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20where%20severityNumber%20%3E%3D%2017%20AND%20%60resource.attributes.service.name%60%20%3D%20!%27checkout!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20where%20severityNumber%20%3E%3D%2017%20AND%20%60resource.attributes.service.name%60%20%3D%20!%27checkout!%27%20%7C%20head%2020" />
 
 ---
 
@@ -118,7 +119,7 @@ regex <field> != <pattern>
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query='%7C%20regex%20%60resource.attributes.service.name%60%20%3D%20%22.%2Aagent.%2A%22%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20regex%20%60resource.attributes.service.name%60%20%3D%20%22.%2Aagent.%2A%22%20%7C%20head%2020" />
 
 ---
 
@@ -173,7 +174,7 @@ fields [+|-] <field-list>
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fields%20time%2C%20body%2C%20severityText%2C%20%60resource.attributes.service.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20fields%20time%2C%20body%2C%20severityText%2C%20%60resource.attributes.service.name%60%20%7C%20head%2020" />
 
 ---
 
@@ -194,7 +195,7 @@ table [+|-] <field-list>
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20table%20time%20body%20severityText%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20table%20time%20body%20severityText%20%7C%20head%2020" />
 
 ---
 
@@ -213,7 +214,7 @@ rename <source-field> AS <target-field> [, <source-field> AS <target-field>]...
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rename%20%60resource.attributes.service.name%60%20as%20service%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20rename%20%60resource.attributes.service.name%60%20as%20service%20%7C%20head%2020" />
 
 ---
 
@@ -240,7 +241,7 @@ source = otel-v1-apm-span-*
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20eval%20service_operation%20%3D%20concat%28%60resource.attributes.service.name%60%2C%20!%27%2F!%27%2C%20body%29%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20eval%20service_operation%20%3D%20concat%28%60resource.attributes.service.name%60%2C%20!%27%2F!%27%2C%20body%29%20%7C%20head%2020" />
 
 ---
 
@@ -274,7 +275,7 @@ replace (<regex>, <replacement>) in <field> [, <field>]...
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20replace%20%28%22error%22%2C%20%22ERROR%22%29%20in%20body%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20replace%20%28%22error%22%2C%20%22ERROR%22%29%20in%20body%20%7C%20head%2020" />
 
 ---
 
@@ -296,7 +297,7 @@ fillnull using <field> = <value> [, <field> = <value>]
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20fillnull%20value%3D!%27unknown!%27%20%60resource.attributes.service.name%60%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20fillnull%20value%3D!%27unknown!%27%20%60resource.attributes.service.name%60%20%7C%20head%2020" />
 
 ---
 
@@ -349,7 +350,7 @@ stats <aggregation>... [by span(<field>, <interval>) [as <alias>], <field-list>]
 | stats count() as log_count by `resource.attributes.service.name`
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count()%20as%20log_count%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20stats%20count()%20as%20log_count%20by%20%60resource.attributes.service.name%60" />
 
 **Example - Error rate by service:**
 ```sql
@@ -360,14 +361,14 @@ stats <aggregation>... [by span(<field>, <interval>) [as <alias>], <field-list>]
 | sort - error_rate
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%20%7C%20eval%20error_rate%20%3D%20errors%20%2A%20100.0%20%2F%20total%20%7C%20sort%20-%20error_rate')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%20%7C%20eval%20error_rate%20%3D%20errors%20%2A%20100.0%20%2F%20total%20%7C%20sort%20-%20error_rate" />
 
 **Example - Time-bucketed log volume:**
 ```sql
 | stats count() as volume by span(time, 5m) as time_bucket
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20stats%20count()%20as%20volume%20by%20span(time%2C%205m)%20as%20time_bucket')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20stats%20count()%20as%20volume%20by%20span(time%2C%205m)%20as%20time_bucket" />
 
 ---
 
@@ -460,7 +461,7 @@ timechart [timefield=<field>] [span=<interval>] <aggregation> [by <field>]
 | timechart timefield=time span=5m count() by `resource.attributes.service.name`
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60" />
 
 ---
 
@@ -481,7 +482,7 @@ chart <aggregation> [over <row-split>] [by <column-split>]
 | chart count() by `resource.attributes.service.name`, severityText
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20chart%20count%28%29%20by%20%60resource.attributes.service.name%60%2C%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20chart%20count%28%29%20by%20%60resource.attributes.service.name%60%2C%20severityText" />
 
 ---
 
@@ -569,7 +570,7 @@ sort [<count>] <field> [asc|desc] [, <field> [asc|desc]]...
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20sort%20-%20time%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20sort%20-%20time%20%7C%20head%2020" />
 
 **Example - Slowest traces:**
 ```sql
@@ -600,7 +601,7 @@ head [<size>] [from <offset>]
 | head 50
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20sort%20-%20time%20%7C%20head%2050')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20sort%20-%20time%20%7C%20head%2050" />
 
 ---
 
@@ -640,7 +641,7 @@ dedup [<count>] <field-list> [keepempty=<bool>] [consecutive=<bool>]
 | dedup `resource.attributes.service.name`
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20dedup%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20dedup%20%60resource.attributes.service.name%60" />
 
 ---
 
@@ -663,7 +664,7 @@ top [<N>] <field-list> [by <group-field>]
 | top 5 `resource.attributes.service.name`
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20top%205%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20top%205%20%60resource.attributes.service.name%60" />
 
 ---
 
@@ -681,7 +682,7 @@ rare <field-list> [by <group-field>]
 | rare severityText
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rare%20severityText')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20rare%20severityText" />
 
 ---
 
@@ -702,7 +703,7 @@ parse <field> <regex-pattern>
 | stats count() as requests by statusCode
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20parse%20body%20!%27HTTP%2F%5Cd%5C.%5Cd%22%5Cs%2B%28%3F%3CstatusCode%3E%5Cd%7B3%7D%29!%27%20%7C%20stats%20count%28%29%20as%20requests%20by%20statusCode')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20parse%20body%20!%27HTTP%2F%5Cd%5C.%5Cd%22%5Cs%2B%28%3F%3CstatusCode%3E%5Cd%7B3%7D%29!%27%20%7C%20stats%20count%28%29%20as%20requests%20by%20statusCode" />
 
 ---
 
@@ -723,7 +724,7 @@ grok <field> <grok-pattern>
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20grok%20body%20!%27%25%7BIP%3Aclient_ip%7D%20-%20%25%7BDATA%3Auser%7D%20%5B%25%7BHTTPDATE%3Atimestamp%7D%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Aurl%7D%22!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20grok%20body%20!%27%25%7BIP%3Aclient_ip%7D%20-%20%25%7BDATA%3Auser%7D%20%5B%25%7BHTTPDATE%3Atimestamp%7D%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Aurl%7D%22!%27%20%7C%20head%2020" />
 
 ---
 
@@ -751,7 +752,7 @@ rex [mode=<extract|sed>] field=<field> <pattern> [max_match=<int>]
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20rex%20field%3Dbody%20%22status%3D%28%3F%3Cstatus%3E%5Cw%2B%29%5Cs%2Blatency%3D%28%3F%3Clatency%3E%5Cd%2B%29%22%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20rex%20field%3Dbody%20%22status%3D%28%3F%3Cstatus%3E%5Cw%2B%29%5Cs%2Blatency%3D%28%3F%3Clatency%3E%5Cd%2B%29%22%20%7C%20head%2020" />
 
 ---
 
@@ -773,7 +774,7 @@ spath input=<field> [output=<field>] [path=<json-path>]
 | stats count() by error_msg
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query='%7C%20spath%20input%3Dbody%20path%3Derror.message%20output%3Derror_msg%20%7C%20where%20isnotnull%28error_msg%29%20%7C%20stats%20count%28%29%20by%20error_msg')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20spath%20input%3Dbody%20path%3Derror.message%20output%3Derror_msg%20%7C%20where%20isnotnull%28error_msg%29%20%7C%20stats%20count%28%29%20by%20error_msg" />
 
 ---
 
@@ -800,7 +801,7 @@ patterns <field> [method=simple_pattern|brain] [mode=label|aggregation] [max_sam
 | patterns body method=simple_pattern mode=aggregation
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'%7C%20patterns%20body%20method%3Dsimple_pattern%20mode%3Daggregation')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="%7C%20patterns%20body%20method%3Dsimple_pattern%20mode%3Daggregation" />
 
 ---
 

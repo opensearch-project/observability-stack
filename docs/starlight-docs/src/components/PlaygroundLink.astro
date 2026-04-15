@@ -1,0 +1,18 @@
+---
+import { PLAYGROUND } from '../config/playground';
+
+interface Props {
+  /** URL-encoded PPL query string (the part that goes into query:'...'). Pass empty string for no query. */
+  query: string;
+  /** Link text. Defaults to "Try in playground →". */
+  text?: string;
+}
+
+const { query, text } = Astro.props;
+
+const base = `https://observability.playground.opensearch.org/w/${PLAYGROUND.workspaceId}/app/explore/logs/`;
+const hash = `#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'${PLAYGROUND.datasetId}',timeFieldName:${PLAYGROUND.timeField},title:'${PLAYGROUND.datasetName}',type:INDEX_PATTERN),language:PPL,query:'${query}')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))`;
+
+const href = base + hash;
+---
+<a href={href} target="_blank" rel="noopener">{text || 'Try in playground →'}</a>

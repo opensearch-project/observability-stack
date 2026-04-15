@@ -4,6 +4,7 @@ description: "Extract fields using grok patterns - a higher-level alternative to
 ---
 
 import { Aside } from '@astrojs/starlight/components';
+import PlaygroundLink from '../../../../components/PlaygroundLink.astro';
 
 The `grok` command parses a text field using grok pattern syntax and appends the extracted fields to the search results. Grok provides over 200 predefined patterns (`%{IP}`, `%{NUMBER}`, `%{HOSTNAME}`, etc.) that wrap common regular expressions, making extraction more readable and less error-prone than writing raw regex.
 
@@ -67,7 +68,7 @@ source=logs-otel-v1*
 | [2026-02-26T18:04:23.059Z] "POST /api/product-ask-ai-assistant/0PUK6V6EV0 HTTP/1.1" 200 ... | POST | /api/product-ask-ai-assistant/0PUK6V6EV0 | 200 |
 | [2026-02-26T18:04:21.629Z] "GET /api/data/ HTTP/1.1" 308 - via_upstream ... | GET | /api/data/ | 308 |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20like%28body%2C%20!%27%25HTTP%2F1.1%22%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20head%2020" />
 
 ### Override an existing field
 
@@ -87,7 +88,7 @@ source=logs-otel-v1*
 | Creating new partition __consumer_offsets-15 with topic id _xZjVwc_TO2HCCnHkcNIDg. |
 | Creating new partition __consumer_offsets-48 with topic id _xZjVwc_TO2HCCnHkcNIDg. |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20where%20like%28body%2C%20!%27%25Broker%25Creating%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%7D%5C%5D%20%25%7BGREEDYDATA%3Abody%7D!%27%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20where%20like%28body%2C%20!%27%25Broker%25Creating%25!%27%29%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%7D%5C%5D%20%25%7BGREEDYDATA%3Abody%7D!%27%20%7C%20head%2020" />
 
 ### Extract component name and broker ID from Kafka logs
 
@@ -107,7 +108,7 @@ source=logs-otel-v1*
 | [RaftManager id=1] Completed transition to Leader ... | RaftManager | 1 | Completed transition to Leader ... |
 | [QuorumController id=1] The request from broker 1 ... | QuorumController | 1 | The request from broker 1 ... |
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Acomponent%7D%20id%3D%25%7BNUMBER%3AbrokerId%7D%5C%5D%20%25%7BGREEDYDATA%3Amessage%7D!%27%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27kafka!%27%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Acomponent%7D%20id%3D%25%7BNUMBER%3AbrokerId%7D%5C%5D%20%25%7BGREEDYDATA%3Amessage%7D!%27%20%7C%20where%20length%28component%29%20%3E%200%20%7C%20head%2020" />
 
 ### Aggregate HTTP requests by method and status
 
@@ -123,7 +124,7 @@ source=logs-otel-v1*
 | sort - requests
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20status%20%7C%20sort%20-%20requests')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20status%20%7C%20sort%20-%20requests" />
 
 ## Extended examples
 
@@ -143,7 +144,7 @@ source=logs-otel-v1*
 
 This extracts the first word from each log body, then counts occurrences to identify the most common log message prefixes across all services.
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20head%201000%20%7C%20grok%20body%20!%27%25%7BWORD%3Afirst%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28first%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20occurrences%20by%20first%20%7C%20sort%20-%20occurrences%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20head%201000%20%7C%20grok%20body%20!%27%25%7BWORD%3Afirst%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28first%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20occurrences%20by%20first%20%7C%20sort%20-%20occurrences%20%7C%20head%2020" />
 
 ### Identify top endpoints from Envoy access logs
 
@@ -160,7 +161,7 @@ source=logs-otel-v1*
 | head 20
 ```
 
-<a href="https://observability.playground.opensearch.org/w/19jD-R/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:d1f424b0-2655-11f1-8baa-d5b726b04d73,timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+<PlaygroundLink query="source%3Dlogs-otel-v1%2A%20%7C%20where%20%60resource.attributes.service.name%60%20%3D%20!%27frontend-proxy!%27%20%7C%20head%201000%20%7C%20grok%20body%20!%27%5C%5B%25%7BDATA%3Ats%7D%5C%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Apath%7D%20HTTP%2F%25%7BDATA%3Aver%7D%22%20%25%7BPOSINT%3Astatus%7D%20%25%7BGREEDYDATA%3Arest%7D!%27%20%7C%20where%20length%28method%29%20%3E%200%20%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20path%20%7C%20sort%20-%20requests%20%7C%20head%2020" />
 
 <Aside type="tip">
 When grok patterns become very long, consider whether `parse` with a targeted regex might be simpler. Grok excels at parsing well-known formats (HTTP access logs, syslog, etc.); for ad-hoc extraction of one or two fields, `parse` or `rex` may be more concise.

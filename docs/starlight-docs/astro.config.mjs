@@ -196,6 +196,7 @@ export default defineConfig({
 						},
 						{ label: 'Function Reference', link: '/ppl/functions/' },
 						{ label: 'Observability Examples', link: '/ppl/examples/' },
+						{ label: 'PPL for DQL/Lucene Users', link: '/ppl/dql-lucene-users/' },
 					],
 				},
 				{
