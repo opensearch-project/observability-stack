@@ -62,6 +62,11 @@ processors:
           - delete_key(attributes, "app.ads.contextKeys")
           - set(attributes["rpc_system"], attributes["rpc.system"]) where attributes["rpc.system"] != nil
           - delete_key(attributes, "rpc.system")
+          # Rename flat-string attributes that conflict with dotted-key object mappings
+          - set(attributes["user_agent_string"], attributes["user_agent"]) where attributes["user_agent"] != nil and not IsMap(attributes["user_agent"])
+          - delete_key(attributes, "user_agent") where attributes["user_agent_string"] != nil
+          - set(attributes["db_system"], attributes["db.system"]) where attributes["db.system"] != nil
+          - delete_key(attributes, "db.system")
       - context: spanevent
         statements:
           # De-dot gRPC message.* event attributes to prevent mapping conflict with
