@@ -37,21 +37,36 @@ kubectl port-forward svc/obs-opensearch-dashboards 5601:5601
 
 Open http://localhost:5601. Default credentials: `admin` / `My_password_123!@#`
 
+:::caution
+Change the default password for any non-local deployment. Set it at install time with `--set opensearchPassword="..."`. The password only takes effect on first boot — OpenSearch hashes it into its internal security index on initial startup. To change the password after install, update it via the [Security REST API](https://docs.opensearch.org/latest/security/access-control/api/#create-user) or [security-admin.sh](https://docs.opensearch.org/latest/security/configuration/security-admin/), then run `helm upgrade` with the new password so the Kubernetes Secret and all pods stay in sync.
+:::
+
 ## Send Telemetry
 
-Port-forward the OTel Collector OTLP endpoints:
+Services running inside the cluster can send telemetry directly to the OTel Collector:
+
+| Protocol | Endpoint |
+|----------|----------|
+| gRPC | `obs-opentelemetry-collector:4317` |
+| HTTP | `obs-opentelemetry-collector:4318` |
+
+Set the environment variable in your pod spec or deployment:
+
+```yaml
+env:
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: http://obs-opentelemetry-collector:4317
+```
+
+For sending telemetry **from outside the cluster** (e.g. local development), port-forward the OTLP endpoints:
 
 ```bash
 kubectl port-forward svc/obs-opentelemetry-collector 4317:4317 4318:4318
 ```
 
-Then configure your application:
-
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 ```
-
-Within the cluster, services can send telemetry directly to `obs-opentelemetry-collector:4317` (gRPC) or `obs-opentelemetry-collector:4318` (HTTP).
 
 ## Configuration
 
@@ -77,11 +92,7 @@ helm install obs charts/observability-stack \
 
 ### Credential management
 
-All components read credentials from a single Kubernetes Secret (`opensearch-credentials`), sourced from `opensearchUsername` and `opensearchPassword` in values.yaml. No passwords are hardcoded in sub-chart configurations.
-
-:::caution
-The password is set at install time. OpenSearch stores the admin password hash in its internal security index, and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` only takes effect on first boot. To change the password after install, use the [Security REST API](https://docs.opensearch.org/latest/security/access-control/api/#create-user) or [security-admin.sh](https://docs.opensearch.org/latest/security/configuration/security-admin/), then update the Secret.
-:::
+All components read credentials from a single Kubernetes Secret (`opensearch-credentials`), sourced from `opensearchUsername` and `opensearchPassword` in values.yaml. No passwords are hardcoded in sub-chart configurations. Pods read the Secret as environment variables at startup, so changing the password requires both updating OpenSearch's internal security index (via the Security API) **and** running `helm upgrade` with the new value to update the Secret and restart pods.
 
 ### Resource sizing
 
@@ -112,9 +123,24 @@ helm install obs charts/observability-stack \
 
 ## EKS deployment
 
-A Terraform module for deploying to AWS EKS with TLS, WAF, DNS, and optional anonymous auth is included at `terraform/aws/`. It provisions the full stack — VPC, EKS cluster, ALB, ACM certificate, and the Helm release — in a single `terraform apply`.
+A Terraform module for deploying to AWS EKS is included at `terraform/aws/`. A single `terraform apply` provisions:
+
+- **VPC** with public/private subnets
+- **EKS cluster** with managed node groups
+- **ALB** with TLS termination via ACM certificate, routing to OpenSearch Dashboards
+- **WAF** rules for web application protection
+- **Route 53** DNS records pointing to ALB
+- **Helm release** of the full Observability Stack
+- Optional **anonymous authentication** for public demos
 
 See the [EKS Deployment Guide](https://github.com/opensearch-project/observability-stack/tree/main/terraform/aws/DEPLOYMENT_GUIDE.md) for the step-by-step checklist, including S3 state backend setup, multi-region support, verification steps, troubleshooting, and cost estimates.
+
+## Next steps
+
+- [Send Data](/docs/send-data/) — instrument your applications and agents to send telemetry to the stack
+- [Dashboards & Visualize](/docs/dashboards/) — build custom dashboards and visualizations
+- [Agent Observability](/docs/ai-observability/) — trace AI agent execution with GenAI semantic conventions
+- [Application Monitoring](/docs/apm/) — explore service maps, RED metrics, and latency tracking
 
 ## Uninstall
 
