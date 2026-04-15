@@ -23,7 +23,7 @@
     "@types/react-dom": "^19.2.3",
     "astro": "^5.16.15",
     "astro-icon": "^1.1.5",
-    "lucide-react": "^0.563.0",
+    "lucide-react": "^1.8.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "shiki": "^3.21.0",
