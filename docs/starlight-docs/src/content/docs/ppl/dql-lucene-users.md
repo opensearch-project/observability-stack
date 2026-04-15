@@ -1,0 +1,306 @@
+---
+title: "PPL for DQL/Lucene Users"
+description: "A transition guide for users familiar with DQL or Lucene query syntax - the only difference is : becomes = and you gain a full pipeline after the filter."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+If you are coming from OpenSearch Dashboards Query Language (DQL) or Lucene query syntax, you may be looking for the language dropdown in Discover. The Observability Stack defaults to **PPL** in the observability workspace because PPL covers every DQL/Lucene use case and goes far beyond what those query languages can express.
+
+This guide maps the patterns you already know to their PPL equivalents so you can be productive immediately.
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">
+
+**Try PPL in the live playground &rarr;**
+
+</a>
+
+## The only difference: `:` becomes `=`
+
+<Aside type="tip" title="One character change">
+If you know DQL, you already know PPL filtering. Replace `:` with `=` and you are done. Everything else - `AND`, `OR`, `NOT`, `>=`, parentheses - is the same.
+</Aside>
+
+| DQL / Lucene | PPL |
+|-------------|-----|
+| `severityText`**`:`**`ERROR` | `severityText`**`=`**`"ERROR"` |
+| `field1`**`:`**`a AND field2`**`:`**`b` | `field1`**`=`**`"a" AND field2`**`=`**`"b"` |
+| `severityText`**`:`**`ERROR OR severityText`**`:`**`FATAL` | `severityText`**`=`**`"ERROR" OR severityText`**`=`**`"FATAL"` |
+| `NOT severityText`**`:`**`DEBUG` | `NOT severityText`**`=`**`"DEBUG"` |
+| `severityNumber >= 17` | `severityNumber>=17` |
+| `severityText: (ERROR OR WARN)` | `severityText IN ("ERROR", "WARN")` |
+
+Both the `search` keyword and `source=` are **optional** and can be omitted:
+
+- **`search` keyword**: Always optional. `search source=logs-otel-v1* severityText="ERROR"` and `source=logs-otel-v1* severityText="ERROR"` are identical.
+- **`source=` clause**: In the Discover UI, the **dataset picker** sets your index automatically. You just type the filter expression directly in the search bar - exactly like DQL.
+
+## It works just like DQL in the Discover UI
+
+In the Discover UI, you select your dataset from the **dataset picker** dropdown. This sets the `source=` automatically - you never need to type it. Your query starts directly with the filter, exactly like typing a DQL query in the search bar:
+
+| DQL search bar | PPL search bar (Discover UI) |
+|---------------|------------------------------|
+| `severityText: ERROR` | `severityText="ERROR"` |
+| `severityText: ERROR AND service.name: cart` | `severityText="ERROR" AND \`resource.attributes.service.name\`="cart"` |
+| *(empty - show all)* | *(empty - show all)* |
+
+The experience is the same: pick your index, type your filter, hit refresh. The dataset picker handles the index selection, so you write exactly the filter expression and nothing more.
+
+When you want to go beyond filtering - aggregate, extract patterns, compute fields - just add a pipe (`|`) and keep going. That is the part DQL/Lucene cannot do.
+
+## Side-by-side: common workflows
+
+### Free-text search
+
+This is the most familiar pattern for DQL/Lucene users - just type a word and search. It works identically in PPL:
+
+**Lucene:**
+```
+error
+```
+
+**PPL:**
+```sql
+error
+```
+
+Unquoted terms in PPL work exactly like Lucene - they search across all fields. Multiple terms are combined with `AND` by default. Use quotes for phrase matching: `"connection refused"`.
+
+![Free-text search in PPL — type a term and search, just like Lucene](/docs/images/ppl/free-text-search.png)
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'error')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Filter by field value
+
+**DQL:**
+```
+severityText: ERROR
+```
+
+**PPL:**
+```sql
+severityText="ERROR"
+```
+
+In the Discover UI, both are typed directly into the search bar. The only change is `:` to `=`.
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Filter by service and severity (AND)
+
+**DQL:**
+```
+severityText: ERROR AND resource.attributes.service.name: cart
+```
+
+**PPL:**
+```sql
+severityText="ERROR" AND `resource.attributes.service.name`="cart"
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%20AND%20%60resource.attributes.service.name%60%3D%22cart%22%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+Boolean `AND` works identically. The only extra detail: dotted field names like `resource.attributes.service.name` need backticks in PPL to prevent them from being interpreted as nested object access.
+
+### Boolean OR
+
+**DQL:**
+```
+severityText: ERROR OR severityText: FATAL
+```
+
+**PPL:**
+```sql
+severityText="ERROR" OR severityText="FATAL"
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%20OR%20severityText%3D%22FATAL%22%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+<Aside type="caution" title="Operator precedence">
+In PPL, `OR` binds tighter than `AND` (the opposite of SQL and Lucene). When combining both, use explicit parentheses:
+
+```sql
+(severityText="ERROR" OR severityText="FATAL") AND `resource.attributes.service.name`="cart"
+```
+</Aside>
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20%28severityText%3D%22ERROR%22%20OR%20severityText%3D%22FATAL%22%29%20AND%20%60resource.attributes.service.name%60%3D%22cart%22%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Multi-value match (IN)
+
+**DQL:**
+```
+severityText: (ERROR OR WARN OR FATAL)
+```
+
+**PPL:**
+```sql
+severityText IN ("ERROR", "WARN", "FATAL")
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%20IN%20%28%22ERROR%22%2C%20%22WARN%22%2C%20%22FATAL%22%29%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+PPL's `IN` operator is cleaner than DQL's repeated `OR` syntax for matching against a set of values.
+
+### Range query
+
+**DQL:**
+```
+severityNumber >= 17
+```
+
+**PPL:**
+```sql
+severityNumber>=17
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityNumber%3E%3D17%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+Range operators (`>`, `<`, `>=`, `<=`) are identical in both DQL and PPL.
+
+## Where PPL goes beyond DQL/Lucene
+
+DQL and Lucene stop at filtering. Once you have your filtered results, you are limited to what the UI can do. PPL keeps going - after the filter, add a pipe (`|`) and chain aggregation, transformation, pattern discovery, and more. This is the power of the pipeline.
+
+### Aggregate and visualize (not possible in DQL/Lucene)
+
+Start with the same filter, then count and sort:
+
+```sql
+severityText="ERROR"
+| stats count() as errors by `resource.attributes.service.name`
+| sort - errors
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%0A%7C%20stats%20count%28%29%20as%20errors%20by%20%60resource.attributes.service.name%60%0A%7C%20sort%20-%20errors')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+This filters for errors, counts them by service, and sorts by count - all in one query. The Discover UI automatically switches to a visualization view when you use `stats`.
+
+### Compute new fields on the fly
+
+```sql
+| stats count() as total,
+        sum(case(severityText = 'ERROR', 1 else 0)) as errors
+  by `resource.attributes.service.name`
+| eval error_rate = round(errors * 100.0 / total, 2)
+| sort - error_rate
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%0A%7C%20stats%20count%28%29%20as%20total%2C%20sum%28case%28severityText%20%3D%20!%27ERROR!%27%2C%201%20else%200%29%29%20as%20errors%20by%20%60resource.attributes.service.name%60%0A%7C%20eval%20error_rate%20%3D%20round%28errors%20*%20100.0%20%2F%20total%2C%202%29%0A%7C%20sort%20-%20error_rate')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Discover patterns without writing regex
+
+```sql
+severityText="ERROR"
+| patterns body
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%0A%7C%20patterns%20body')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+The `patterns` command automatically clusters similar log messages. During incident triage, this shows the shape of the problem in seconds - no manual regex needed. This is one of PPL's most powerful features with no equivalent in DQL or Lucene.
+
+### Time-bucketed analysis
+
+```sql
+severityText="ERROR"
+| timechart timefield=time span=5m count() by `resource.attributes.service.name`
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%0A%7C%20timechart%20timefield%3Dtime%20span%3D5m%20count%28%29%20by%20%60resource.attributes.service.name%60')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+### Extract fields from unstructured logs
+
+```sql
+| grok body '%{IP:client_ip} - %{DATA:user} \[%{HTTPDATE:timestamp}\] "%{WORD:method} %{DATA:url}"'
+| stats count() as requests by method, url
+| sort - requests
+| head 20
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%0A%7C%20grok%20body%20!%27%25%7BIP%3Aclient_ip%7D%20-%20%25%7BDATA%3Auser%7D%20%5B%25%7BHTTPDATE%3Atimestamp%7D%5D%20%22%25%7BWORD%3Amethod%7D%20%25%7BDATA%3Aurl%7D%22!%27%0A%7C%20stats%20count%28%29%20as%20requests%20by%20method%2C%20url%0A%7C%20sort%20-%20requests%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## Capabilities comparison
+
+| Capability | DQL/Lucene | PPL |
+|-----------|-----------|-----|
+| Field-value filtering | Yes | Yes (same syntax, `=` instead of `:`) |
+| Boolean logic (AND/OR/NOT) | Yes | Yes (identical) |
+| Full-text search | Yes | Yes (unquoted terms, identical) |
+| Range queries | Yes | Yes (`>=`, `<=`, identical) |
+| Regex filtering | Lucene only | Yes (`regex` command) |
+| **Aggregation** | No | Yes (`stats`, `timechart`, `chart`) |
+| **Computed fields** | No | Yes (`eval`) |
+| **Pattern discovery** | No | Yes (`patterns`) |
+| **Field extraction** | No | Yes (`parse`, `grok`, `rex`) |
+| **Deduplication** | No | Yes (`dedup`) |
+| **Top/rare analysis** | No | Yes (`top`, `rare`) |
+| **Rolling statistics** | No | Yes (`streamstats`, `trendline`) |
+| **Cross-index joins** | No | Yes (`join`, `lookup`, `subquery`) |
+| **Machine learning** | No | Yes (`ml`, `kmeans`) |
+| **Auto visualization** | No | Yes (Discover switches to chart on `stats`) |
+
+## Syntax tips for DQL/Lucene users
+
+### `:` becomes `=`
+
+This is the only operator change. Everything else carries over:
+
+```
+DQL:   severityText: ERROR
+PPL:   severityText="ERROR"
+```
+
+### Both `search` and `source=` can be omitted
+
+The full form of a PPL query is:
+
+```sql
+search source=logs-otel-v1* severityText="ERROR"
+```
+
+But both `search` and `source=` are optional:
+
+- **`search` keyword** - always optional. Omit it freely.
+- **`source=` clause** - in the Discover UI, the dataset picker sets this for you. Just type your filter.
+
+So in the Discover UI search bar, you simply type:
+
+```sql
+severityText="ERROR"
+```
+
+### Backtick dotted field names
+
+OpenTelemetry fields contain dots. In DQL, you reference them directly. In PPL, wrap them in backticks to prevent them from being interpreted as nested object access:
+
+```
+DQL:   resource.attributes.service.name: cart
+PPL:   `resource.attributes.service.name`="cart"
+```
+
+### Double quotes for string values
+
+PPL's search expressions use double quotes for string values:
+
+```sql
+severityText="ERROR"
+```
+
+### Operator precedence
+
+In PPL, `OR` binds tighter than `AND` (the opposite of SQL and Lucene). When combining both, use explicit parentheses:
+
+```sql
+(severityText="ERROR" OR severityText="FATAL") AND `resource.attributes.service.name`="cart"
+```
+
+<a href="https://observability.playground.opensearch.org/w/AYexAG/app/explore/logs/#/?_g=(filters:!(),refreshInterval:(pause:!t,value:0),time:(from:now-6h,to:now))&_q=(dataset:(id:'6766d4f0-3869-11f1-b2f2-5f6bda0002a3',timeFieldName:time,title:'logs-otel-v1*',type:INDEX_PATTERN),language:PPL,query:'source%3Dlogs-otel-v1*%20%28severityText%3D%22ERROR%22%20OR%20severityText%3D%22FATAL%22%29%20AND%20%60resource.attributes.service.name%60%3D%22cart%22%0A%7C%20head%2020')&_a=(legacy:(columns:!(body,severityText,resource.attributes.service.name),interval:auto,isDirty:!f,sort:!()),tab:(logs:(),patterns:(usingRegexPatterns:!f)),ui:(activeTabId:logs,showHistogram:!t))" target="_blank" rel="noopener">Try in playground &rarr;</a>
+
+## See also
+
+- [`search` command](/docs/ppl/commands/search/) - Full syntax for the search command, including boolean expressions and full-text search
+- [`where` command](/docs/ppl/commands/where/) - Extended filtering with functions, LIKE, BETWEEN, and computed expressions
+- [PPL Overview](/docs/ppl/) - Why PPL and how it compares to other query languages
+- [Observability Examples](/docs/ppl/examples/) - Real-world PPL queries for OTel logs, traces, and AI agent data
+- [Discover Logs](/docs/investigate/discover-logs/) - Using PPL in the Logs Discover interface
