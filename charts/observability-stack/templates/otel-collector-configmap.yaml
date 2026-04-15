@@ -27,15 +27,43 @@ data:
         timeout: 10s
         send_batch_size: 1024
       resourcedetection:
-        detectors: [env]
+        detectors: [env, system]
       transform:
         error_mode: ignore
         trace_statements:
           - context: span
             statements:
               - replace_pattern(name, "\\?.*", "")
+              - replace_match(name, "GET /api/products/*", "GET /api/products/{productId}")
+              # Workaround for https://github.com/opensearch-project/data-prepper/issues/5616
+              # Flatten nested dotted attribute keys to prevent OpenSearch mapping conflicts
+              - set(attributes["db_system_name"], attributes["db.system.name"]) where attributes["db.system.name"] != nil
+              - delete_key(attributes, "db.system.name")
+              - set(attributes["code_function_name"], attributes["code.function.name"]) where attributes["code.function.name"] != nil
+              - delete_key(attributes, "code.function.name")
+              - set(attributes["user_agent_original"], attributes["user_agent.original"]) where attributes["user_agent.original"] != nil
+              - delete_key(attributes, "user_agent.original")
+              - set(attributes["upstream_cluster_name"], attributes["upstream_cluster.name"]) where attributes["upstream_cluster.name"] != nil
+              - delete_key(attributes, "upstream_cluster.name")
               - set(attributes["error_type"], attributes["error.type"]) where attributes["error.type"] != nil
               - delete_key(attributes, "error.type")
+              - set(attributes["app_ads_contextKeys"], attributes["app.ads.contextKeys"]) where attributes["app.ads.contextKeys"] != nil
+              - delete_key(attributes, "app.ads.contextKeys")
+              - set(attributes["rpc_system"], attributes["rpc.system"]) where attributes["rpc.system"] != nil
+              - delete_key(attributes, "rpc.system")
+              # Rename flat-string attributes that conflict with dotted-key object mappings
+              - set(attributes["user_agent_string"], attributes["user_agent"]) where attributes["user_agent"] != nil and not IsMap(attributes["user_agent"])
+              - delete_key(attributes, "user_agent") where attributes["user_agent_string"] != nil
+              - set(attributes["db_system"], attributes["db.system"]) where attributes["db.system"] != nil
+              - delete_key(attributes, "db.system")
+          - context: spanevent
+            statements:
+              - set(attributes["message_type"], attributes["message.type"]) where attributes["message.type"] != nil
+              - delete_key(attributes, "message.type")
+              - set(attributes["message_id"], attributes["message.id"]) where attributes["message.id"] != nil
+              - delete_key(attributes, "message.id")
+              - set(attributes["message_uncompressed_size"], attributes["message.uncompressed_size"]) where attributes["message.uncompressed_size"] != nil
+              - delete_key(attributes, "message.uncompressed_size")
         log_statements:
           - context: log
             statements:
