@@ -1,0 +1,320 @@
+---
+title: "PPL for SPL Users"
+description: "A transition guide for users familiar with Splunk Search Processing Language (SPL) - learn the PPL equivalents for the commands and patterns you already know."
+---
+
+import { Aside } from '@astrojs/starlight/components';
+import PlaygroundLink from '../../../components/PlaygroundLink.astro';
+
+This cheat sheet helps Splunk users transition to OpenSearch's PPL. It maps common Splunk Search Processing Language (SPL) commands to their PPL equivalents with examples using OpenTelemetry observability data.
+
+<PlaygroundLink query="" text="Try PPL in the live playground →" />
+
+## Structure and Concepts
+
+| Aspect | Splunk SPL | OpenSearch PPL | Notes |
+|--------|------------|---------------|-------|
+| Query structure | `search terms \| command` | `search term source = index \| command` | PPL requires explicit source at the beginning |
+| Index reference | `index=name*` | `source=name*` | Different command to specify data source, PPL support referring to multiple indices |
+| Raw field | Special `_raw` field | Identify a field in your OpenSearch data that contains the text content you want to work with (often `message` or `content` fields in log data) | Default field configured by the index.query.default_field setting (defaults to * which searches all fields) |
+| Time field | Special `_time` field | User-specified timestamp field | PPL uses @timestamp by default |
+
+## Command Reference
+
+This table provides a mapping between Splunk SPL commands and their OpenSearch PPL equivalents:
+
+| Splunk SPL | OpenSearch PPL | Purpose |
+|------------|---------------|---------|
+| dedup | [dedup](/docs/ppl/commands/dedup/) | Remove duplicate results |
+| eval | [eval](/docs/ppl/commands/eval/) | Calculate and create new fields |
+| eventstats | [eventstats](/docs/ppl/commands/eventstats/) | Calculate statistics while preserving events |
+| mvexpand | [expand](/docs/ppl/commands/expand/) | Expand multi-value fields |
+| fields | [fields](/docs/ppl/commands/fields/) | Include or exclude fields |
+| fillnull | [fillnull](/docs/ppl/commands/fillnull/) | Replace null values |
+| head | [head](/docs/ppl/commands/head/) | Retrieve the first N results |
+| join | [join](/docs/ppl/commands/join/) | Combine results from multiple sources |
+| lookup | [lookup](/docs/ppl/commands/lookup/) | Enrich data with lookups |
+| rare | [rare](/docs/ppl/commands/rare/) | Find the least common values |
+| rename | [rename](/docs/ppl/commands/rename/) | Rename fields in results |
+| rex | [rex](/docs/ppl/commands/rex/) | Extract with regular expression pattern |
+| search | [search](/docs/ppl/commands/search/) | Basic searching of data |
+| sort | [sort](/docs/ppl/commands/sort/) | Sort results by specified fields |
+| spath | [spath](/docs/ppl/commands/spath/) | Extracting fields from structured text data |
+| stats | [stats](/docs/ppl/commands/stats/) | Statistical aggregation of data |
+| timechart | [timechart](/docs/ppl/commands/timechart/) | Statistical aggregation of time-series data |
+| top | [top](/docs/ppl/commands/top/) | Find the most common values |
+| trendline | [trendline](/docs/ppl/commands/trendline/) | Calculate moving averages of fields |
+| where | [where](/docs/ppl/commands/where/) | Filter results based on conditions |
+
+## Example Query Conversions
+
+**Simple search:**
+- SPL: `error failed`
+- PPL: `source=logs-otel-v1* error failed`
+
+**Aggregation:**
+- SPL: `index=logs-otel-v1* | stats count by resource.attributes.service.name | sort -count`
+- PPL: ``source=logs-otel-v1* | stats count by `resource.attributes.service.name` | sort -count``
+
+**Time-based query:**
+- SPL: `index=logs-otel-v1* | stats count by span(@timestamp, 5m)`
+- PPL: `source=logs-otel-v1* | stats count by span(@timestamp, 5m)`
+
+**Complex calculation:**
+- SPL: `index=logs-otel-v1* | eval severity_category=case(severityNumber >= 17, "high", 1==1, "low")`
+- PPL: `source=logs-otel-v1* | eval severity_category=case(severityNumber >= 17 then "high", else "low")`
+
+
+## Basic search and filtering
+
+### Simple text search
+Search for log entries containing specific text terms.
+
+**SPL:**
+```
+error failed
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* error failed
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%20error%20failed%0A%7C%20head%2010" />
+
+![Basic search results showing error logs with highlighted terms](/docs/images/ppl/spl-basic-search-example.png)
+
+### Filter by severity level
+Find logs with a specific severity level.
+
+**SPL:**
+```
+index=logs-otel-v1* severityText="ERROR"
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* severityText="ERROR"
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%0A%7C%20head%2010" />
+
+### Filter by service and severity
+Combine multiple conditions to find errors from a specific service.
+
+**SPL:**
+```
+index=logs-otel-v1* resource.attributes.service.name="load-generator" AND severityText="ERROR"
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* `resource.attributes.service.name`="load-generator" AND severityText="ERROR"
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%20%60resource.attributes.service.name%60%3D%22load-generator%22%20AND%20severityText%3D%22ERROR%22%0A%7C%20head%2010" />
+
+### Multiple severity levels
+Find logs matching multiple severity levels using OR.
+
+**SPL:**
+```
+index=logs-otel-v1* severityText="ERROR" OR severityText="WARN"
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* severityText="ERROR" OR severityText="WARN"
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%20severityText%3D%22ERROR%22%20OR%20severityText%3D%22WARN%22%0A%7C%20head%2010" />
+
+## Aggregation and statistics
+
+### Count logs by service
+Count the number of log entries grouped by service name.
+
+**SPL:**
+```
+index=logs-otel-v1* | stats count by resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | stats count by `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20stats%20count%20by%20%60resource.attributes.service.name%60" />
+
+![Count logs by service visualization showing bar chart of log counts grouped by service name](/docs/images/ppl/count-logs-by-service-visualization.png)
+
+### Multiple statistics per service
+Calculate both count and average severity for each service.
+
+**SPL:**
+```
+index=logs-otel-v1* | stats count as log_count, avg(severityNumber) as avg_severity by resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | stats count as log_count, avg(severityNumber) as avg_severity by `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20stats%20count%20as%20log_count%2C%20avg%28severityNumber%29%20as%20avg_severity%20by%20%60resource.attributes.service.name%60" />
+
+### Sort results by count
+Sort the aggregated results by log count in descending order.
+
+**SPL:**
+```
+index=logs-otel-v1* | stats count as log_count by resource.attributes.service.name | sort -log_count
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | stats count as log_count by `resource.attributes.service.name` | sort -log_count
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20stats%20count%20as%20log_count%20by%20%60resource.attributes.service.name%60%0A%7C%20sort%20-log_count" />
+
+![Sort results by count visualization showing bar chart with log counts sorted in descending order](/docs/images/ppl/sort-results-by-count-visualization.png)
+
+## Conditional logic
+
+### Categorize severity levels
+Create human-readable categories from numeric severity values.
+
+**SPL:**
+```
+index=logs-otel-v1* | eval severity_category=case(severityNumber >= 17, "high", severityNumber >= 9, "medium", 1==1, "low")
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | eval severity_category=case(severityNumber >= 17, "high", severityNumber >= 9, "medium" else "low")
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%20%7C%20eval%20severity_category%3Dcase%28severityNumber%20%3E%3D%2017%2C%20%22high%22%2C%20severityNumber%20%3E%3D%209%2C%20%22medium%22%20else%20%22low%22%29" />
+
+## Field operations
+
+### Select specific fields
+Return only specific fields in the results.
+
+**SPL:**
+```
+index=logs-otel-v1* | fields @timestamp, resource.attributes.service.name, severityText
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | fields @timestamp, `resource.attributes.service.name`, severityText
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20fields%20%40timestamp%2C%20%60resource.attributes.service.name%60%2C%20severityText%0A%7C%20head%2010" />
+
+
+## Time-based operations
+
+
+### Time bucketing
+Group logs into 5-minute time intervals and count by service.
+
+**SPL:**
+```
+index=logs-otel-v1* | stats count by span(@timestamp, 5m) as time_bucket, resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | stats count by span(@timestamp, 5m) as time_bucket, `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20stats%20count%20by%20span%28%40timestamp%2C%205m%29%20as%20time_bucket%2C%20%60resource.attributes.service.name%60%0A%7C%20sort%20%2B%20time_bucket" />
+
+### Time series visualization
+Create time-based charts showing log volume over time.
+
+**SPL:**
+```
+index=logs-otel-v1* | timechart span=5m count by resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | timechart span=5m count by `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20timechart%20span%3D5m%20count%20by%20%60resource.attributes.service.name%60" />
+
+## String operations
+
+### Search within field
+Use pattern matching to find logs where the body field contains "error".
+
+**SPL:**
+```
+index=logs-otel-v1* | where like(body, "%error%")
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | where like(body, "%error%")
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20where%20like%28body%2C%20%22%25error%25%22%29%0A%7C%20head%2010" />
+
+### Create descriptive labels
+Combine service name and severity into a readable label.
+
+**SPL:**
+```
+index=logs-otel-v1* | eval service_info=resource.attributes.service.name + " (" + severityText + ")"
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | eval service_info=concat(`resource.attributes.service.name`, " (", severityText, ")")
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20eval%20service_info%3Dconcat%28%60resource.attributes.service.name%60%2C%20%22%20%28%22%2C%20severityText%2C%20%22%29%22%29%0A%7C%20fields%20%60resource.attributes.service.name%60%2C%20severityText%2C%20service_info%0A%7C%20head%2010" />
+
+## Deduplication and sampling
+
+### Remove duplicates
+Get only one log entry per unique service name.
+
+**SPL:**
+```
+index=logs-otel-v1* | dedup resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | dedup `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20dedup%20%60resource.attributes.service.name%60%0A%7C%20head%2010" />
+
+### Handle missing service names
+Replace empty service names with a default value for cleaner reporting.
+
+**SPL:**
+```
+index=logs-otel-v1* | fillnull value="unknown" resource.attributes.service.name
+```
+
+**PPL:**
+```sql
+source=logs-otel-v1* | fillnull with "unknown" in `resource.attributes.service.name`
+```
+
+<PlaygroundLink query="source%3Dlogs-otel-v1*%0A%7C%20fillnull%20with%20%22unknown%22%20in%20%60resource.attributes.service.name%60%0A%7C%20fields%20%60resource.attributes.service.name%60%0A%7C%20head%2010" />
+
+## See also
+
+- [PPL Overview](/docs/ppl/) - Complete PPL language reference
+- [`search` command](/docs/ppl/commands/search/) - Full search syntax
+- [`stats` command](/docs/ppl/commands/stats/) - Aggregation functions
+- [Observability Examples](/docs/ppl/examples/) - Real-world PPL queries for observability data
