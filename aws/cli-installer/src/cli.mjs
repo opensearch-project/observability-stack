@@ -30,12 +30,17 @@ export function parseCli(argv) {
     .option('--pipeline-name <name>', 'Pipeline name and resource prefix', DEFAULTS.pipelineName)
     .option('--region <region>', 'AWS region (e.g. us-east-1)');
 
+  // OpenSearch backend type
+  program
+    .option('--serverless', 'Use OpenSearch Serverless (AOSS) instead of a managed domain')
+    .option('--aoss-collection-name <name>', 'Collection name for OpenSearch Serverless');
+
   // OpenSearch — reuse
   program
     .option('--opensearch-endpoint <url>', 'Reuse an existing OpenSearch endpoint')
     .option('--opensearch-user <user>', 'OpenSearch master username', 'admin')
     .option('--opensearch-password <password>', 'Master password for existing OpenSearch domain (for FGAC mapping)');
-  // OpenSearch — create
+  // OpenSearch — create (managed domain)
   program
     .option('--os-domain-name <name>', 'Domain name for new OpenSearch domain')
     .option('--os-instance-type <type>', 'Instance type', DEFAULTS.osInstanceType)
@@ -99,11 +104,12 @@ function parseDestroyArgs(argv) {
  */
 function optsToConfig(opts) {
   const mode = opts.advanced ? 'advanced' : 'quick';
+  const opensearchType = opts.serverless ? 'serverless' : 'managed';
 
   // Determine actions based on which flags were provided
   let osAction = '';
   if (opts.opensearchEndpoint) osAction = 'reuse';
-  else if (opts.osDomainName) osAction = 'create';
+  else if (opts.osDomainName || opts.aossCollectionName) osAction = 'create';
 
   let iamAction = '';
   if (opts.iamRoleArn) iamAction = 'reuse';
@@ -121,7 +127,9 @@ function optsToConfig(opts) {
     mode,
     pipelineName: opts.pipelineName,
     region: opts.region || '',
+    opensearchType,
     osAction,
+    aossCollectionName: opts.aossCollectionName || '',
     opensearchEndpoint: opts.opensearchEndpoint || '',
     opensearchUser: opts.opensearchUser || 'admin',
     opensearchPassword: opts.opensearchPassword || '',
@@ -161,7 +169,11 @@ function optsToConfig(opts) {
  */
 export function applyQuickDefaults(cfg) {
   if (!cfg.osAction) cfg.osAction = 'create';
-  if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
+  if (cfg.opensearchType === 'serverless') {
+    if (!cfg.aossCollectionName) cfg.aossCollectionName = cfg.pipelineName;
+  } else {
+    if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
+  }
   if (!cfg.iamAction) cfg.iamAction = 'create';
   if (!cfg.iamRoleName) cfg.iamRoleName = `${cfg.pipelineName}-osi-role`;
   if (!cfg.apsAction) cfg.apsAction = 'create';
@@ -177,7 +189,11 @@ export function applyQuickDefaults(cfg) {
  */
 export function fillDryRunPlaceholders(cfg) {
   if (cfg.osAction === 'create' && !cfg.opensearchEndpoint) {
-    cfg.opensearchEndpoint = `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
+    if (cfg.opensearchType === 'serverless') {
+      cfg.opensearchEndpoint = `https://${cfg.aossCollectionName}.${cfg.region}.aoss.amazonaws.com`;
+    } else {
+      cfg.opensearchEndpoint = `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
+    }
   }
   if (cfg.iamAction === 'create' && !cfg.iamRoleArn) {
     cfg.iamRoleArn = `arn:aws:iam::${cfg.accountId || '123456789012'}:role/${cfg.iamRoleName}`;
@@ -214,7 +230,7 @@ export function validateConfig(cfg) {
   if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
     errors.push('--opensearch-endpoint required when reusing OpenSearch');
   }
-  if (cfg.osAction === 'reuse' && !cfg.opensearchPassword) {
+  if (cfg.osAction === 'reuse' && cfg.opensearchType !== 'serverless' && !cfg.opensearchPassword) {
     errors.push('--opensearch-password required when reusing an existing OpenSearch domain (needed for FGAC mapping)');
   }
   if (cfg.iamAction === 'reuse' && !cfg.iamRoleArn) {

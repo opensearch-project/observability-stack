@@ -8,6 +8,7 @@ import {
   createApsWorkspace,
   createOsiPipeline,
   mapOsiRoleInDomain,
+  createAossDataAccessPolicy,
   setupDashboards,
   createConnectedDataSourceRole,
   createConnectedDataSource,
@@ -109,9 +110,15 @@ export async function executePipeline(cfg) {
     console.error();
   }
 
-  // Map OSI role in managed domain FGAC
-  if (cfg.opensearchEndpoint && cfg.iamRoleArn) {
+  // Map OSI role in managed domain FGAC (skip for serverless — IAM-only)
+  if (cfg.opensearchType !== 'serverless' && cfg.opensearchEndpoint && cfg.iamRoleArn) {
     await mapOsiRoleInDomain(cfg);
+    console.error();
+  }
+
+  // Create AOSS data access policy (serverless only, after IAM role exists)
+  if (cfg.opensearchType === 'serverless' && cfg.aossCollectionName && cfg.iamRoleArn) {
+    await createAossDataAccessPolicy(cfg);
     console.error();
   }
 
@@ -173,7 +180,9 @@ export async function executePipeline(cfg) {
     `${theme.label(pad('OSI Pipeline:'))} ${osiUrl ? link(osiUrl) : cfg.pipelineName}`,
     `${theme.label(pad('OSI Pipeline Role:'))} ${cfg.iamRoleArn}`,
     `${theme.label(pad('OpenSearch:'))} ${link(cfg.opensearchEndpoint)}`,
+    ...(cfg.opensearchType !== 'serverless' ? [
     `${theme.label(pad('OpenSearch Master Password:'))} Secrets Manager: observability-stack/${cfg.pipelineName}/master-password`,
+    ] : []),
     `${theme.label(pad('OpenSearch UI:'))} ${link(cfg.dashboardsUrl)}`,
     `${theme.label(pad('Prometheus:'))} ${link(cfg.prometheusUrl)}`,
     `${theme.label(pad('Connected Data Source:'))} ${cfg.connectedDataSourceArn || 'n/a'}`,
@@ -205,7 +214,16 @@ function printSummary(cfg) {
 
   // OpenSearch
   const osEntries = [];
-  if (cfg.osAction === 'reuse') {
+  if (cfg.opensearchType === 'serverless') {
+    osEntries.push(['Type', 'Serverless (AOSS)']);
+    if (cfg.osAction === 'reuse') {
+      osEntries.push(['Action', 'reuse existing collection']);
+      osEntries.push(['Endpoint', cfg.opensearchEndpoint]);
+    } else {
+      osEntries.push(['Action', 'create new AOSS collection']);
+      osEntries.push(['Collection name', cfg.aossCollectionName]);
+    }
+  } else if (cfg.osAction === 'reuse') {
     osEntries.push(['Action', 'reuse existing']);
     osEntries.push(['Endpoint', cfg.opensearchEndpoint]);
     osEntries.push(['Type', 'Managed domain']);

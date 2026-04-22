@@ -4,6 +4,7 @@
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
 import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand } from '@aws-sdk/client-opensearchserverless';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
@@ -177,6 +178,29 @@ export async function destroy(cfg) {
       }
     }
   } catch (e) { printWarning(`AMP cleanup: ${e.message}`); }
+
+  // 9. AOSS collection + policies (if serverless was used)
+  try {
+    const aoss = new OpenSearchServerlessClient({ region });
+    const { collectionSummaries } = await aoss.send(new ListCollectionsCommand({
+      collectionFilters: { name: pipelineName },
+    }));
+    const collection = collectionSummaries?.find((c) => c.name === pipelineName);
+    if (collection) {
+      await aoss.send(new DeleteCollectionCommand({ id: collection.id }));
+      printSuccess(`AOSS collection '${pipelineName}' deletion initiated`);
+
+      // Clean up policies
+      for (const [type, name] of [['encryption', `${pipelineName}-enc`], ['network', `${pipelineName}-net`]]) {
+        try { await aoss.send(new DeleteSecurityPolicyCommand({ name, type })); printSuccess(`${type} policy '${name}' deleted`); }
+        catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`${type} policy: ${e.message}`); }
+      }
+      try { await aoss.send(new DeleteAccessPolicyCommand({ name: `${pipelineName}-access`, type: 'data' })); printSuccess(`Data access policy deleted`); }
+      catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
+    }
+  } catch (e) {
+    if (!/ResourceNotFoundException/i.test(e.message)) printWarning(`AOSS cleanup: ${e.message}`);
+  }
 
   console.error();
   printSuccess('Destroy complete');

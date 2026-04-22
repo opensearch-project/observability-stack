@@ -4,7 +4,7 @@ import {
   saveCursor, clearFromCursor,
 } from './ui.mjs';
 import { createDefaultConfig, DEFAULTS, DEFAULT_REGION } from './config.mjs';
-import { listDomains, listWorkspaces, listApplications } from './aws.mjs';
+import { listDomains, listCollections, listWorkspaces, listApplications } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
 
@@ -69,10 +69,26 @@ async function stepCore(cfg, session) {
     cfg.region = region;
   }
 
+  // OpenSearch backend type
+  const osType = await eSelect({
+    message: 'OpenSearch backend',
+    choices: [
+      { name: `Managed domain    ${theme.muted('— provisioned cluster with FGAC')}`, value: 'managed' },
+      { name: `Serverless (AOSS) ${theme.muted('— auto-scaling, IAM-only auth')}`, value: 'serverless' },
+    ],
+    default: cfg.opensearchType || 'managed',
+  });
+  if (osType === GoBack) return GoBack;
+  cfg.opensearchType = osType;
+
   // Quick mode: auto-derive all resources from pipeline name
   if (cfg.mode === 'quick') {
     cfg.osAction = 'create';
-    cfg.osDomainName = cfg.pipelineName;
+    if (cfg.opensearchType === 'serverless') {
+      cfg.aossCollectionName = cfg.pipelineName;
+    } else {
+      cfg.osDomainName = cfg.pipelineName;
+    }
     cfg.iamAction = 'create';
     cfg.iamRoleName = `${cfg.pipelineName}-osi-role`;
     cfg.apsAction = 'create';
@@ -83,7 +99,11 @@ async function stepCore(cfg, session) {
     cfg.appName = cfg.pipelineName;
     console.error();
     printInfo(`Will create:`);
-    printSubStep(`OpenSearch domain: ${theme.accent(cfg.osDomainName)}`);
+    if (cfg.opensearchType === 'serverless') {
+      printSubStep(`AOSS collection: ${theme.accent(cfg.aossCollectionName)}`);
+    } else {
+      printSubStep(`OpenSearch domain: ${theme.accent(cfg.osDomainName)}`);
+    }
     printSubStep(`IAM role: ${theme.accent(cfg.iamRoleName)}`);
     printSubStep(`APS workspace: ${theme.accent(cfg.apsWorkspaceAlias)}`);
     printSubStep(`Connected Data Source role: ${theme.accent(cfg.connectedDataSourceRoleName)}`);
@@ -95,7 +115,8 @@ async function stepCore(cfg, session) {
 async function stepOpenSearch(cfg) {
   if (cfg.mode !== 'advanced') return 'skip';
 
-  printStep('OpenSearch');
+  const isServerless = cfg.opensearchType === 'serverless';
+  printStep(isServerless ? 'OpenSearch Serverless' : 'OpenSearch');
   console.error();
 
   while (true) {
@@ -113,6 +134,41 @@ async function stepOpenSearch(cfg) {
     if (osChoice === 'reuse') {
       cfg.osAction = 'reuse';
 
+      if (isServerless) {
+        // Serverless reuse path
+        const collections = await fetchWithSpinner(
+          'Loading AOSS collections',
+          () => listCollections(cfg.region),
+        );
+
+        if (collections.length > 0) {
+          const choices = collections.map((c) => ({
+            name: c.status === 'ACTIVE'
+              ? `${c.name} ${theme.muted(`— ${c.endpoint}`)}`
+              : `${c.name} ${theme.muted(`— ${c.status}`)}`,
+            value: { endpoint: c.endpoint, id: c.id },
+            disabled: c.status !== 'ACTIVE' ? `(${c.status})` : false,
+          }));
+          choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
+
+          const selected = await eSelect({ message: 'Select collection', choices });
+          if (selected === GoBack) { clearFromCursor(); continue; }
+          if (selected === CUSTOM_INPUT) {
+            const ep = await promptEndpoint();
+            if (ep === GoBack) { clearFromCursor(); continue; }
+            cfg.opensearchEndpoint = ep;
+          } else {
+            cfg.opensearchEndpoint = selected.endpoint;
+            cfg.collectionId = selected.id;
+          }
+        } else {
+          printInfo('No collections found — enter endpoint manually');
+          const ep = await promptEndpoint();
+          if (ep === GoBack) { clearFromCursor(); continue; }
+          cfg.opensearchEndpoint = ep;
+        }
+      } else {
+      // Managed domain reuse path
       const domains = await fetchWithSpinner(
         'Loading OpenSearch domains',
         () => listDomains(cfg.region),
@@ -166,9 +222,15 @@ async function stepOpenSearch(cfg) {
         if (pass === GoBack) { clearFromCursor(); continue; }
         cfg.opensearchPassword = pass;
       }
+      } // end managed reuse else
     } else {
       cfg.osAction = 'create';
 
+      if (isServerless) {
+        const collName = await eInput({ message: 'Collection name', default: cfg.aossCollectionName || cfg.pipelineName });
+        if (collName === GoBack) { clearFromCursor(); continue; }
+        cfg.aossCollectionName = collName;
+      } else {
       const domainName = await eInput({ message: 'Domain name', default: cfg.osDomainName || cfg.pipelineName });
       if (domainName === GoBack) { clearFromCursor(); continue; }
       cfg.osDomainName = domainName;
@@ -196,6 +258,7 @@ async function stepOpenSearch(cfg) {
       const engineVer = await eInput({ message: 'Engine version', default: cfg.osEngineVersion || DEFAULTS.osEngineVersion });
       if (engineVer === GoBack) { clearFromCursor(); continue; }
       cfg.osEngineVersion = engineVer;
+      } // end managed create else
     }
     return;
   }

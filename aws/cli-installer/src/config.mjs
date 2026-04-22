@@ -5,6 +5,7 @@ export const DEFAULT_REGION = process.env.AWS_DEFAULT_REGION || process.env.AWS_
 
 export const DEFAULTS = {
   pipelineName: `obs-stack-${Math.floor(Date.now() / 1000)}`,
+  opensearchType: 'managed',
   osInstanceType: 'r6g.large.search',
   osInstanceCount: 1,
   osVolumeSize: 100,
@@ -22,7 +23,9 @@ export function createDefaultConfig() {
     mode: '',
     pipelineName: DEFAULTS.pipelineName,
     region: '',
+    opensearchType: DEFAULTS.opensearchType,
     osAction: '',
+    aossCollectionName: '',
     opensearchEndpoint: '',
     opensearchUser: 'admin',
     opensearchPassword: '',

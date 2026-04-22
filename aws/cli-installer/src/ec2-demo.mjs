@@ -21,7 +21,7 @@ import {
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 
 const TAG_KEY = 'observability-stack:pipeline-name';
-const INSTANCE_TYPE = 't3.xlarge';
+const INSTANCE_TYPE = 't3.2xlarge';
 
 function tags(pipelineName, extra = {}) {
   return [

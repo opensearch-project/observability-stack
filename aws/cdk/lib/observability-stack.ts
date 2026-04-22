@@ -25,27 +25,32 @@ export class ObservabilityStack extends cdk.Stack {
 
     cdk.Tags.of(this).add('observability-stack', this.stackName);
 
-    // FGAC role mapping
-    const fgacFn = new NodejsFunction(this, 'FgacMappingFn', {
-      runtime: Runtime.NODEJS_22_X,
-      handler: 'handler',
-      entry: path.join(__dirname, '..', 'custom-resources', 'fgac-mapping', 'index.ts'),
-      timeout: cdk.Duration.minutes(5),
-      bundling: { externalModules: ['@aws-sdk/*'] },
-    });
-    secretsmanager.Secret.fromSecretCompleteArn(this, 'MasterPassword', infra.masterPasswordSecretArn).grantRead(fgacFn);
+    const isServerless = infra.opensearchType === 'serverless';
 
-    const fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
-    const fgacMapping = new cdk.CustomResource(this, 'FgacMapping', {
-      serviceToken: fgacProvider.serviceToken,
-      properties: {
-        OpenSearchEndpoint: infra.domainEndpoint,
-        MasterUserSecretArn: infra.masterPasswordSecretArn,
-        MasterUserName: 'admin',
-        RoleArns: JSON.stringify([infra.pipelineRoleArn, '*']),
-        Region: this.region,
-      },
-    });
+    // FGAC role mapping (managed domains only — serverless uses IAM)
+    let fgacMapping: cdk.CustomResource | undefined;
+    if (!isServerless) {
+      const fgacFn = new NodejsFunction(this, 'FgacMappingFn', {
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'handler',
+        entry: path.join(__dirname, '..', 'custom-resources', 'fgac-mapping', 'index.ts'),
+        timeout: cdk.Duration.minutes(5),
+        bundling: { externalModules: ['@aws-sdk/*'] },
+      });
+      secretsmanager.Secret.fromSecretCompleteArn(this, 'MasterPassword', infra.masterPasswordSecretArn).grantRead(fgacFn);
+
+      const fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
+      fgacMapping = new cdk.CustomResource(this, 'FgacMapping', {
+        serviceToken: fgacProvider.serviceToken,
+        properties: {
+          OpenSearchEndpoint: infra.domainEndpoint,
+          MasterUserSecretArn: infra.masterPasswordSecretArn,
+          MasterUserName: 'admin',
+          RoleArns: JSON.stringify([infra.pipelineRoleArn, '*']),
+          Region: this.region,
+        },
+      });
+    }
 
     // OSIS pipeline
     const pipeline = new IngestionPipeline(this, 'IngestionPipeline', {
@@ -56,6 +61,7 @@ export class ObservabilityStack extends cdk.Stack {
       region: this.region,
       minOcu: props.minOcu ?? 1,
       maxOcu: props.maxOcu ?? 4,
+      serverless: isServerless,
     });
 
     // OpenSearch Application + UI init
@@ -64,7 +70,9 @@ export class ObservabilityStack extends cdk.Stack {
       domainEndpoint: infra.domainEndpoint,
       dqsDataSourceArn: infra.dqsDataSourceArn,
     });
-    app.node.addDependency(fgacMapping);
+    if (fgacMapping) {
+      app.node.addDependency(fgacMapping);
+    }
 
     if (props.enableDemo ?? false) {
       new DemoWorkload(this, 'DemoWorkload', { pipeline });

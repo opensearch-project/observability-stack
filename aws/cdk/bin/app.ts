@@ -11,12 +11,17 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-// Slow-changing infra: OpenSearch domain, AMP workspace, DQS data source
+const opensearchType = (app.node.tryGetContext('opensearchType') as 'managed' | 'serverless') || 'managed';
+
+// Slow-changing infra: OpenSearch domain/collection, AMP workspace, DQS data source
 const infra = new InfraStack(app, 'ObsInfra', {
   env,
-  osInstanceType: 'r6g.large.search',
-  osInstanceCount: 1,
-  osVolumeSize: 100,
+  opensearchType,
+  ...(opensearchType !== 'serverless' && {
+    osInstanceType: 'r6g.large.search',
+    osInstanceCount: 1,
+    osVolumeSize: 100,
+  }),
 });
 
 // Fast-iteration stack: FGAC, OSIS pipeline, OpenSearch App, UI init

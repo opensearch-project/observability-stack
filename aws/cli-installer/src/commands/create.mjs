@@ -47,7 +47,7 @@ function connector(width, specs) {
 }
 
 function renderArchitectureDiagram(cfg) {
-  const osLabel = 'OpenSearch';
+  const osLabel = cfg.opensearchType === 'serverless' ? 'AOSS Collection' : 'OpenSearch';
   const pathLabel = `/${cfg.pipelineName}/v1/*`;
   const m = theme.muted;
   const a = theme.accent;
