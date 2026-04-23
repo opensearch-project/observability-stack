@@ -96,7 +96,7 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 **CLI installer:**
 ```bash
-node bin/cli-installer.mjs --destroy --pipeline-name obs-stack --region us-west-2
+node bin/cli-installer.mjs destroy --pipeline-name obs-stack --region us-west-2
 ```
 
 The destroy command automatically detects and cleans up both managed domains and serverless collections associated with the pipeline name.
