@@ -93,7 +93,8 @@ function parseDestroyArgs(argv) {
     .description('Tear down all AWS resources created by the CLI for a given pipeline name')
     .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
     .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION)
-    .option('--opensearch-password <password>', 'Master password (if domain was not created by CLI)');
+    .option('--opensearch-password <password>', 'Master password (if domain was not created by CLI)')
+    .option('--aoss-collection-name <name>', 'Collection name if it differs from the pipeline name');
 
   program.parse(argv.slice(1));
   return { _command: 'destroy', ...program.opts() };

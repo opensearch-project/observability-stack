@@ -44,9 +44,6 @@ import {
   BatchGetCollectionCommand,
   CreateSecurityPolicyCommand,
   CreateAccessPolicyCommand,
-  DeleteCollectionCommand,
-  DeleteSecurityPolicyCommand,
-  DeleteAccessPolicyCommand,
   ListCollectionsCommand,
 } from '@aws-sdk/client-opensearchserverless';
 import {

@@ -146,7 +146,7 @@ async function stepOpenSearch(cfg) {
             name: c.status === 'ACTIVE'
               ? `${c.name} ${theme.muted(`— ${c.endpoint}`)}`
               : `${c.name} ${theme.muted(`— ${c.status}`)}`,
-            value: { endpoint: c.endpoint, id: c.id },
+            value: { endpoint: c.endpoint, id: c.id, name: c.name },
             disabled: c.status !== 'ACTIVE' ? `(${c.status})` : false,
           }));
           choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
@@ -157,15 +157,22 @@ async function stepOpenSearch(cfg) {
             const ep = await promptEndpoint();
             if (ep === GoBack) { clearFromCursor(); continue; }
             cfg.opensearchEndpoint = ep;
+            const collName = await eInput({ message: 'Collection name', validate: (v) => v.trim().length > 0 || 'Collection name is required' });
+            if (collName === GoBack) { clearFromCursor(); continue; }
+            cfg.aossCollectionName = collName;
           } else {
             cfg.opensearchEndpoint = selected.endpoint;
             cfg.collectionId = selected.id;
+            cfg.aossCollectionName = selected.name;
           }
         } else {
           printInfo('No collections found — enter endpoint manually');
           const ep = await promptEndpoint();
           if (ep === GoBack) { clearFromCursor(); continue; }
           cfg.opensearchEndpoint = ep;
+          const collName = await eInput({ message: 'Collection name', validate: (v) => v.trim().length > 0 || 'Collection name is required' });
+          if (collName === GoBack) { clearFromCursor(); continue; }
+          cfg.aossCollectionName = collName;
         }
       } else {
       // Managed domain reuse path
