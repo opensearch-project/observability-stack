@@ -161,12 +161,15 @@ export async function initOpenSearchUI(cfg) {
   // f. Create index patterns with dataSource reference
   const svcMapPattern = 'otel-v2-apm-service-map*';
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
+  const isServerless = cfg.opensearchType === 'serverless';
+  const dsRefType = isServerless ? 'OpenSearch Serverless' : 'data-source';
 
   const patterns = [
     { title: 'logs-otel-v1*', timeFieldName: 'time', signalType: 'logs', schemaMappings: logsSchema },
     { title: 'otel-v1-apm-span*', timeFieldName: 'endTime', signalType: 'traces' },
     { title: svcMapPattern, timeFieldName: 'timestamp' },
   ];
+  if (isServerless) patterns.forEach((p) => { p.type = 'INDEXES'; });
 
   const patternIds = {};
   for (const p of patterns) {
@@ -181,7 +184,7 @@ export async function initOpenSearchUI(cfg) {
     }
     const resp = await osuiPost(base, `/w/${wsId}/api/saved_objects/index-pattern`, {
       attributes: p,
-      references: dsId ? [{ id: dsId, name: 'dataSource', type: 'data-source' }] : [],
+      references: dsId ? [{ id: dsId, name: 'dataSource', type: dsRefType }] : [],
     }, region);
     patternIds[p.title] = resp.data?.id;
     printSuccess(`Index pattern created: ${p.title}`);
