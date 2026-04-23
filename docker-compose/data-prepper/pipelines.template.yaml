@@ -110,6 +110,7 @@ service-map-pipeline:
     # Route RED metrics to local Prometheus via remote write
     - prometheus:
         url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/write"
+        insecure: true
         threshold:
           max_events: 500
           flush_interval: 5s
