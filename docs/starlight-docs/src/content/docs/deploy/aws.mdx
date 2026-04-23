@@ -4,10 +4,22 @@ title: AWS Managed Services
 
 Deploy the Observability Stack to AWS using managed services. This creates the same observability platform as the local Docker Compose stack, backed by:
 
-- **Amazon OpenSearch Service** — logs, traces, and service map storage
+- **Amazon OpenSearch Service** or **Amazon OpenSearch Serverless** — logs, traces, and service map storage
 - **Amazon Managed Service for Prometheus** — time-series metrics
 - **Amazon OpenSearch Ingestion (OSIS)** — OTLP ingestion pipeline (replaces OTel Collector + Data Prepper)
 - **OpenSearch Dashboards** — visualization and exploration
+
+## Choose an OpenSearch backend
+
+| | Managed (AOS) | Serverless (AOSS) |
+|---|---|---|
+| **Scaling** | Fixed instance count | Auto-scales with OCU |
+| **Authentication** | FGAC + basic auth | IAM only |
+| **Index management** | Built-in index types | Explicit index templates |
+| **Master password** | Yes (Secrets Manager) | No |
+| **Best for** | Predictable workloads, fine-grained control | Variable workloads, zero cluster management |
+
+Both backends use the same OSIS ingestion pipeline and Prometheus workspace. The choice only affects the OpenSearch storage layer.
 
 ## Choose a deployment method
 
@@ -15,8 +27,14 @@ Deploy the Observability Stack to AWS using managed services. This creates the s
 
 Interactive single-command deploy. Creates all resources, configures dashboards, and optionally launches an EC2 instance running the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) for sample telemetry.
 
+**Managed (default):**
 ```bash
 npx @opensearch-project/observability-stack
+```
+
+**Serverless:**
+```bash
+npx @opensearch-project/observability-stack --serverless
 ```
 
 Takes ~15 minutes. See [aws/cli-installer/README.md](https://github.com/opensearch-project/observability-stack/tree/main/aws/cli-installer) for full options.
@@ -29,12 +47,20 @@ Some loading time is cut from the video.
 
 ### CDK
 
-Infrastructure as code using AWS CDK. Deploys two stacks — one for the OpenSearch domain and Prometheus workspace (~17 min), one for the OSIS pipeline, dashboards, and optional demo workload (~6 min).
+Infrastructure as code using AWS CDK. Deploys two stacks — one for the OpenSearch domain (or serverless collection) and Prometheus workspace (~17 min), one for the OSIS pipeline, dashboards, and optional demo workload (~6 min).
 
+**Managed (default):**
 ```bash
 cd aws/cdk
 npm install
 cdk deploy --all
+```
+
+**Serverless:**
+```bash
+cd aws/cdk
+npm install
+cdk deploy --all --context opensearchType=serverless
 ```
 
 See [aws/cdk/README.md](https://github.com/opensearch-project/observability-stack/tree/main/aws/cdk) for configuration, architecture details, and SigV4 telemetry setup.
@@ -70,8 +96,10 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 **CLI installer:**
 ```bash
-node bin/cli-installer.mjs --destroy --pipeline-name obs-stack --region us-west-2
+node bin/cli-installer.mjs destroy --pipeline-name obs-stack --region us-west-2
 ```
+
+The destroy command automatically detects and cleans up both managed domains and serverless collections associated with the pipeline name.
 
 **CDK:**
 ```bash

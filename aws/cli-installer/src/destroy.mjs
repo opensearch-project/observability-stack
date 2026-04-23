@@ -4,6 +4,7 @@
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
 import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand } from '@aws-sdk/client-opensearchserverless';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
@@ -91,7 +92,7 @@ export async function destroy(cfg) {
     }
   } catch (e) { printWarning(`Application: ${e.message}`); }
 
-  // 3. Connected Data Source (Prometheus datasource)
+  // 4. Connected Data Source (Prometheus datasource)
   const dqsName = pipelineName.replace(/-/g, '_') + '_prometheus';
   try {
     await os.send(new DeleteDirectQueryDataSourceCommand({ DataSourceName: dqsName }));
@@ -101,7 +102,7 @@ export async function destroy(cfg) {
     else printInfo('No Connected Data Source found');
   }
 
-  // 4. OSIS pipeline
+  // 5. OSIS pipeline
   const osis = new OSISClient({ region });
   try {
     await osis.send(new GetPipelineCommand({ PipelineName: pipelineName }));
@@ -118,7 +119,7 @@ export async function destroy(cfg) {
     else printWarning(`OSIS: ${e.message}`);
   }
 
-  // 5. IAM roles
+  // 6. IAM roles
   const iam = new IAMClient({ region });
   for (const roleName of [`${pipelineName}-osi-role`, `${pipelineName}-connected-data-source-prometheus-role`]) {
     try {
@@ -137,7 +138,7 @@ export async function destroy(cfg) {
     }
   }
 
-  // 6. Secrets Manager (master password)
+  // 7. Secrets Manager (master password)
   try {
     const { SecretsManagerClient, DeleteSecretCommand } = await import('@aws-sdk/client-secrets-manager');
     const sm = new SecretsManagerClient({ region });
@@ -150,7 +151,7 @@ export async function destroy(cfg) {
     if (e.name !== 'ResourceNotFoundException') printWarning(`Secret cleanup: ${e.message}`);
   }
 
-  // 7. OpenSearch domain (if tagged with this stack)
+  // 8. OpenSearch domain (if tagged with this stack)
   try {
     const { ResourceGroupsTaggingAPIClient, GetResourcesCommand } = await import('@aws-sdk/client-resource-groups-tagging-api');
     const tagging = new ResourceGroupsTaggingAPIClient({ region });
@@ -165,7 +166,7 @@ export async function destroy(cfg) {
     }
   } catch (e) { printWarning(`Domain cleanup: ${e.message}`); }
 
-  // 8. AMP workspace (if tagged with this stack)
+  // 9. AMP workspace (if tagged with this stack)
   try {
     const { AmpClient, ListWorkspacesCommand, DeleteWorkspaceCommand } = await import('@aws-sdk/client-amp');
     const amp = new AmpClient({ region });
@@ -177,6 +178,31 @@ export async function destroy(cfg) {
       }
     }
   } catch (e) { printWarning(`AMP cleanup: ${e.message}`); }
+
+  // 10. AOSS collection + policies (if serverless was used).
+  // Collection name defaults to pipelineName but can be overridden via --aoss-collection-name.
+  const collectionName = cfg.aossCollectionName || pipelineName;
+  try {
+    const aoss = new OpenSearchServerlessClient({ region });
+    const { collectionSummaries } = await aoss.send(new ListCollectionsCommand({
+      collectionFilters: { name: collectionName },
+    }));
+    const collection = collectionSummaries?.find((c) => c.name === collectionName);
+    if (collection) {
+      await aoss.send(new DeleteCollectionCommand({ id: collection.id }));
+      printSuccess(`AOSS collection '${collectionName}' deletion initiated`);
+
+      // Clean up policies
+      for (const [type, name] of [['encryption', `${collectionName}-enc`], ['network', `${collectionName}-net`]]) {
+        try { await aoss.send(new DeleteSecurityPolicyCommand({ name, type })); printSuccess(`${type} policy '${name}' deleted`); }
+        catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`${type} policy: ${e.message}`); }
+      }
+      try { await aoss.send(new DeleteAccessPolicyCommand({ name: `${collectionName}-access`, type: 'data' })); printSuccess(`Data access policy deleted`); }
+      catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
+    }
+  } catch (e) {
+    if (!/ResourceNotFoundException/i.test(e.message)) printWarning(`AOSS cleanup: ${e.message}`);
+  }
 
   console.error();
   printSuccess('Destroy complete');

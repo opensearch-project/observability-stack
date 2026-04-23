@@ -39,6 +39,14 @@ import {
   TagResourcesCommand,
 } from '@aws-sdk/client-resource-groups-tagging-api';
 import {
+  OpenSearchServerlessClient,
+  CreateCollectionCommand as CreateAossCollectionCommand,
+  BatchGetCollectionCommand,
+  CreateSecurityPolicyCommand,
+  CreateAccessPolicyCommand,
+  ListCollectionsCommand,
+} from '@aws-sdk/client-opensearchserverless';
+import {
   printStep,
   printSuccess,
   printError,
@@ -183,6 +191,7 @@ export async function checkRequirements(cfg) {
 // ── OpenSearch (managed domain) ─────────────────────────────────────────────
 
 export async function createOpenSearch(cfg) {
+  if (cfg.opensearchType === 'serverless') return createServerlessCollection(cfg);
   return createManagedDomain(cfg);
 }
 
@@ -300,9 +309,191 @@ async function createManagedDomain(cfg) {
   throw new Error('Timed out waiting for OpenSearch domain');
 }
 
+// ── OpenSearch Serverless (AOSS) collection ────────────────────────────────
+
+async function createServerlessCollection(cfg) {
+  const collectionName = cfg.aossCollectionName;
+  printStep(`Creating AOSS collection '${collectionName}'...`);
+  console.error();
+
+  const client = new OpenSearchServerlessClient({ region: cfg.region });
+
+  // Check if collection already exists
+  try {
+    const list = await client.send(new ListCollectionsCommand({
+      collectionFilters: { name: collectionName },
+    }));
+    const existing = list.collectionSummaries?.find((c) => c.name === collectionName);
+    if (existing) {
+      if (existing.status === 'ACTIVE') {
+        cfg.collectionId = existing.id;
+        cfg.opensearchEndpoint = `https://${existing.id}.${cfg.region}.aoss.amazonaws.com`;
+        printSuccess(`Collection '${collectionName}' already exists: ${cfg.opensearchEndpoint}`);
+        return;
+      }
+      if (existing.status === 'CREATING') {
+        cfg.collectionId = existing.id;
+        printInfo(`Collection '${collectionName}' is being created — waiting...`);
+      }
+    }
+  } catch { /* proceed to create */ }
+
+  if (!cfg.collectionId) {
+    // Encryption policy (required before collection creation)
+    const encPolicyName = `${collectionName}-enc`;
+    try {
+      await client.send(new CreateSecurityPolicyCommand({
+        name: encPolicyName,
+        type: 'encryption',
+        policy: JSON.stringify({
+          Rules: [{ ResourceType: 'collection', Resource: [`collection/${collectionName}`] }],
+          AWSOwnedKey: true,
+        }),
+      }));
+      printSuccess(`Encryption policy '${encPolicyName}' created`);
+    } catch (e) {
+      if (/ConflictException|already exists/i.test(e.message)) {
+        printSuccess(`Encryption policy '${encPolicyName}' already exists`);
+      } else throw e;
+    }
+
+    // Network policy (public access)
+    const netPolicyName = `${collectionName}-net`;
+    try {
+      await client.send(new CreateSecurityPolicyCommand({
+        name: netPolicyName,
+        type: 'network',
+        policy: JSON.stringify([{
+          Rules: [
+            { ResourceType: 'collection', Resource: [`collection/${collectionName}`] },
+            { ResourceType: 'dashboard', Resource: [`collection/${collectionName}`] },
+          ],
+          AllowFromPublic: true,
+        }]),
+      }));
+      printSuccess(`Network policy '${netPolicyName}' created`);
+    } catch (e) {
+      if (/ConflictException|already exists/i.test(e.message)) {
+        printSuccess(`Network policy '${netPolicyName}' already exists`);
+      } else throw e;
+    }
+
+    // Create collection
+    try {
+      const result = await client.send(new CreateAossCollectionCommand({
+        name: collectionName,
+        type: 'SEARCH',
+        tags: [{ key: TAG_KEY, value: cfg.pipelineName }],
+      }));
+      cfg.collectionId = result.createCollectionDetail?.id;
+      printSuccess(`Collection creation initiated (id: ${cfg.collectionId})`);
+    } catch (e) {
+      if (/ConflictException|already exists/i.test(e.message)) {
+        const list = await client.send(new ListCollectionsCommand({
+          collectionFilters: { name: collectionName },
+        }));
+        const existing = list.collectionSummaries?.find((c) => c.name === collectionName);
+        if (existing) {
+          cfg.collectionId = existing.id;
+          printSuccess(`Collection '${collectionName}' already exists`);
+        }
+      } else {
+        printError('Failed to create AOSS collection');
+        console.error(`  ${chalk.dim(e.message)}`);
+        throw new Error('Failed to create AOSS collection');
+      }
+    }
+  }
+
+  // Poll until ACTIVE
+  const spinner = createSpinner('Waiting for AOSS collection (2-5 min)...');
+  spinner.start();
+  const maxWait = 600_000; // 10 min
+  const interval = 10_000;
+  const start = Date.now();
+
+  while (Date.now() - start < maxWait) {
+    try {
+      const resp = await client.send(new BatchGetCollectionCommand({
+        ids: [cfg.collectionId],
+      }));
+      const detail = resp.collectionDetails?.[0];
+      if (detail?.status === 'ACTIVE') {
+        cfg.opensearchEndpoint = detail.collectionEndpoint;
+        spinner.succeed(`Collection ready: ${cfg.opensearchEndpoint} (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
+        break;
+      }
+      if (detail?.status === 'FAILED') {
+        spinner.fail('Collection creation failed');
+        throw new Error('AOSS collection creation failed');
+      }
+    } catch (err) {
+      if (err.message?.includes('creation failed')) throw err;
+    }
+    await sleep(interval);
+  }
+
+  if (!cfg.opensearchEndpoint) {
+    spinner.fail('Timed out waiting for AOSS collection');
+    throw new Error('Timed out waiting for AOSS collection');
+  }
+}
+
+/**
+ * Create the AOSS data access policy after the IAM role exists.
+ * Grants the pipeline role and the caller index/collection permissions.
+ */
+export async function createAossDataAccessPolicy(cfg) {
+  const collectionName = cfg.aossCollectionName;
+  const policyName = `${collectionName}-access`;
+  printStep(`Creating AOSS data access policy '${policyName}'...`);
+
+  const principals = [cfg.iamRoleArn];
+  if (cfg.callerPrincipal?.arn && cfg.callerPrincipal.arn !== cfg.iamRoleArn) {
+    principals.push(cfg.callerPrincipal.arn);
+  }
+
+  const client = new OpenSearchServerlessClient({ region: cfg.region });
+  try {
+    await client.send(new CreateAccessPolicyCommand({
+      name: policyName,
+      type: 'data',
+      policy: JSON.stringify([{
+        Rules: [
+          {
+            ResourceType: 'index',
+            Resource: [`index/${collectionName}/*`],
+            Permission: [
+              'aoss:CreateIndex', 'aoss:UpdateIndex', 'aoss:DescribeIndex',
+              'aoss:ReadDocument', 'aoss:WriteDocument',
+            ],
+          },
+          {
+            ResourceType: 'collection',
+            Resource: [`collection/${collectionName}`],
+            Permission: [
+              'aoss:CreateCollectionItems', 'aoss:DeleteCollectionItems',
+              'aoss:UpdateCollectionItems', 'aoss:DescribeCollectionItems',
+            ],
+          },
+        ],
+        Principal: principals,
+      }]),
+    }));
+    printSuccess(`Data access policy created`);
+  } catch (e) {
+    if (/ConflictException|already exists/i.test(e.message)) {
+      printSuccess(`Data access policy '${policyName}' already exists`);
+    } else {
+      printWarning(`Could not create data access policy: ${e.message}`);
+    }
+  }
+}
+
 // ── FGAC role mapping for managed domains ────────────────────────────────
 
 export async function mapOsiRoleInDomain(cfg) {
+  if (cfg.opensearchType === 'serverless') return;
   if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
 
   printStep('Mapping roles in OpenSearch FGAC...');
@@ -423,19 +614,32 @@ export async function createIamRole(cfg) {
     throw new Error('Failed to create IAM role');
   }
 
-  // Permissions policy
-  const statements = [
-    {
-      Effect: 'Allow',
-      Action: ['es:DescribeDomain', 'es:ESHttp*'],
-      Resource: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/*`,
-    },
-    {
-      Effect: 'Allow',
-      Action: ['aps:RemoteWrite'],
-      Resource: `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/*`,
-    },
-  ];
+  // Permissions policy — different actions for managed vs serverless
+  const statements = cfg.opensearchType === 'serverless'
+    ? [
+        {
+          Effect: 'Allow',
+          Action: ['aoss:APIAccessAll', 'aoss:BatchGetCollection', 'aoss:DashboardsAccessAll'],
+          Resource: '*',
+        },
+        {
+          Effect: 'Allow',
+          Action: ['aps:RemoteWrite'],
+          Resource: `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/*`,
+        },
+      ]
+    : [
+        {
+          Effect: 'Allow',
+          Action: ['es:DescribeDomain', 'es:ESHttp*'],
+          Resource: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/*`,
+        },
+        {
+          Effect: 'Allow',
+          Action: ['aps:RemoteWrite'],
+          Resource: `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/*`,
+        },
+      ];
 
   const permissionsPolicy = JSON.stringify({
     Version: '2012-10-17',
@@ -847,17 +1051,25 @@ async function fetchAppEndpoint(client, cfg) {
  */
 function buildAppDataSources(cfg) {
   const dataSources = [];
-  // Derive the domain name from the endpoint URL if reusing,
-  // otherwise use cfg.osDomainName (which may be set by applyQuickDefaults)
-  let domainName = cfg.osDomainName;
-  if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
-    const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
-    if (m) domainName = m[1];
-  }
-  if (domainName) {
-    dataSources.push({
-      dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
-    });
+  if (cfg.opensearchType === 'serverless') {
+    if (cfg.collectionId) {
+      dataSources.push({
+        dataSourceArn: `arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${cfg.collectionId}`,
+      });
+    }
+  } else {
+    // Derive the domain name from the endpoint URL if reusing,
+    // otherwise use cfg.osDomainName (which may be set by applyQuickDefaults)
+    let domainName = cfg.osDomainName;
+    if (cfg.opensearchEndpoint && cfg.osAction === 'reuse') {
+      const m = cfg.opensearchEndpoint.match(/search-(.+?)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com/);
+      if (m) domainName = m[1];
+    }
+    if (domainName) {
+      dataSources.push({
+        dataSourceArn: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${domainName}`,
+      });
+    }
   }
   if (cfg.connectedDataSourceArn) {
     dataSources.push({ dataSourceArn: cfg.connectedDataSourceArn });
@@ -915,6 +1127,23 @@ export async function listDomains(region) {
   } catch { /* listing failed */ }
 
   return results;
+}
+
+/**
+ * List AOSS collections in the given region.
+ * Returns [{ name, id, endpoint, status }].
+ */
+export async function listCollections(region) {
+  try {
+    const client = new OpenSearchServerlessClient({ region });
+    const { collectionSummaries } = await client.send(new ListCollectionsCommand({}));
+    return (collectionSummaries || []).map((c) => ({
+      name: c.name,
+      id: c.id,
+      endpoint: `https://${c.id}.${region}.aoss.amazonaws.com`,
+      status: c.status,
+    }));
+  } catch { return []; }
 }
 
 /**
@@ -1091,6 +1320,7 @@ export async function getStackResources(region, stackName) {
  */
 function arnToType(arn) {
   if (/^arn:aws:osis:/.test(arn)) return 'OSI Pipeline';
+  if (/^arn:aws:aoss:/.test(arn)) return 'AOSS Collection';
   if (/^arn:aws:es:.*:domain\//.test(arn)) return 'OpenSearch Domain';
   if (/^arn:aws:iam:.*:role\//.test(arn)) return 'IAM Role';
   if (/^arn:aws:aps:.*:workspace\//.test(arn)) return 'APS Workspace';
@@ -1233,6 +1463,16 @@ export async function describeResource(region, resource) {
       if (resp.Description) entries.push(['Description', resp.Description]);
       if (resp.OpenSearchArns?.length) {
         for (const a of resp.OpenSearchArns) entries.push(['OpenSearch ARN', a]);
+      }
+    } else if (type === 'AOSS Collection') {
+      const client = new OpenSearchServerlessClient({ region });
+      const resp = await client.send(new BatchGetCollectionCommand({ ids: [name] }));
+      const c = resp.collectionDetails?.[0];
+      if (c) {
+        if (c.status) entries.push(['Status', c.status]);
+        if (c.collectionEndpoint) entries.push(['Endpoint', c.collectionEndpoint]);
+        if (c.type) entries.push(['Type', c.type]);
+        if (c.createdDate) entries.push(['Created', new Date(c.createdDate).toISOString()]);
       }
     } else if (type === 'OpenSearch Application') {
       const client = new OpenSearchClient({ region });

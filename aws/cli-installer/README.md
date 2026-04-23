@@ -1,20 +1,26 @@
 # Observability Stack AWS CLI
 
-Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain, OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
+Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain (or serverless collection), OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
 
 ## Quick Start
 
+**Managed domain (default):**
 ```bash
 npx @opensearch-project/observability-stack
 ```
 
-Takes ~15 minutes. When complete, the CLI prints a dashboard URL — open it and you're in.
+**Serverless collection (AOSS):**
+```bash
+npx @opensearch-project/observability-stack --serverless
+```
+
+Takes ~15 minutes for managed, ~5 minutes for serverless. When complete, the CLI prints a dashboard URL — open it and you're in.
 
 ## What Gets Created
 
 | Resource | Description |
 |---|---|
-| OpenSearch domain | Stores logs, traces, and service map data |
+| OpenSearch domain **or** serverless collection | Stores logs, traces, and service map data |
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
 | Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
@@ -26,9 +32,16 @@ All resources are tagged with `observability-stack:pipeline-name` for identifica
 
 ## Usage
 
-**Create everything from scratch:**
+**Create a managed domain deployment from scratch:**
 ```bash
 node bin/cli-installer.mjs --managed \
+  --pipeline-name obs-stack-<your-alias> \
+  --region us-east-1
+```
+
+**Create a serverless (AOSS) deployment from scratch:**
+```bash
+node bin/cli-installer.mjs --serverless \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1
 ```
@@ -48,6 +61,13 @@ node bin/cli-installer.mjs --managed \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1 \
   --skip-demo
+```
+
+**Launch demo workload against an existing pipeline:**
+```bash
+node bin/launch-demo.mjs \
+  --pipeline-name obs-stack-<your-alias> \
+  --region us-east-1
 ```
 
 **Interactive mode** (TUI wizard):
@@ -73,7 +93,6 @@ Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipel
 
 ## Known Limitations
 
-- **AOS (managed domains) only** — AOSS (serverless) has blocking bugs and is not supported yet.
 - **Index pattern fields need manual refresh** — After data starts flowing, go to Management → Index Patterns → select pattern → click 🔄 to pick up new fields.
 - **Demo data takes 10-15 minutes** — The EC2 instance needs time to bootstrap Docker, pull images, and start sending telemetry.
 - **Idempotent but not updateable** — Running twice safely no-ops, but won't update existing resources with new config.
@@ -84,7 +103,9 @@ Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipel
 
 ```
 aws/cli-installer/
-├── bin/cli-installer.mjs          # Entry point
+├── bin/
+│   ├── cli-installer.mjs         # Entry point (full pipeline)
+│   └── launch-demo.mjs           # Standalone EC2 demo launcher against an existing pipeline
 ├── src/
 │   ├── main.mjs                # CLI orchestration + executePipeline flow
 │   ├── cli.mjs                 # Argument parsing + config

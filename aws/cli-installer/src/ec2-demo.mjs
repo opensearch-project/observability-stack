@@ -7,7 +7,8 @@ import {
   EC2Client, RunInstancesCommand, DescribeInstancesCommand, TerminateInstancesCommand,
   CreateSecurityGroupCommand, AuthorizeSecurityGroupEgressCommand, DeleteSecurityGroupCommand,
   DescribeSecurityGroupsCommand, RevokeSecurityGroupEgressCommand,
-  DescribeSubnetsCommand, waitUntilInstanceRunning, waitUntilInstanceTerminated,
+  DescribeSubnetsCommand, DescribeInstanceTypeOfferingsCommand,
+  waitUntilInstanceRunning, waitUntilInstanceTerminated,
 } from '@aws-sdk/client-ec2';
 import {
   IAMClient, CreateRoleCommand, PutRolePolicyCommand, CreateInstanceProfileCommand,
@@ -42,12 +43,22 @@ async function getLatestAL2023Ami(ssm) {
   return Parameter.Value;
 }
 
-async function getDefaultVpcSubnet(ec2) {
+async function getDefaultVpcSubnet(ec2, instanceType) {
   const { Subnets } = await ec2.send(new DescribeSubnetsCommand({
     Filters: [{ Name: 'default-for-az', Values: ['true'] }],
   }));
   if (!Subnets?.length) throw new Error('No default VPC subnet found. Ensure a default VPC exists in this region.');
-  return Subnets[0];
+
+  const { InstanceTypeOfferings } = await ec2.send(new DescribeInstanceTypeOfferingsCommand({
+    LocationType: 'availability-zone',
+    Filters: [{ Name: 'instance-type', Values: [instanceType] }],
+  }));
+  const supportedAzs = new Set((InstanceTypeOfferings || []).map(o => o.Location));
+  const match = Subnets.find(s => supportedAzs.has(s.AvailabilityZone));
+  if (!match) {
+    throw new Error(`No default VPC subnet is in an AZ that supports ${instanceType}. Supported AZs: ${[...supportedAzs].join(', ') || '(none)'}`);
+  }
+  return match;
 }
 
 function buildUserData(cfg) {
@@ -123,6 +134,17 @@ cat > docker-compose/otel-collector/config.yaml << 'COLLECTOREOF'
 ${collectorConfig}
 COLLECTOREOF
 
+# Patch otel-demo frontend-proxy: the upstream envoy template references
+# \${TELEMETRY_DOCS_HOST}/\${TELEMETRY_DOCS_PORT} but those aren't wired through
+# docker-compose, so envoy bootstraps with an empty socket address and crash-loops.
+# Inject the vars into .env and forward them into the frontend-proxy service.
+if ! grep -q '^TELEMETRY_DOCS_HOST=' .env; then
+  printf '\nTELEMETRY_DOCS_HOST=otel-collector\nTELEMETRY_DOCS_PORT=4318\n' >> .env
+fi
+if ! grep -q 'TELEMETRY_DOCS_HOST' docker-compose.otel-demo.yml; then
+  sed -i '/^      - FLAGD_UI_PORT$/a\\      - TELEMETRY_DOCS_HOST\\n      - TELEMETRY_DOCS_PORT' docker-compose.otel-demo.yml
+fi
+
 # Write a standalone compose file for managed mode (no local backends)
 cat > /opt/obs-stack/docker-compose.managed.yml << 'MANAGEDEOF'
 # Managed mode: only collector + workload services, no local backends
@@ -163,6 +185,11 @@ services:
     logging: *logging
 MANAGEDEOF
 
+# Kafka's healthcheck can exceed compose's dependency grace window on first boot,
+# leaving kafka-dependent services in 'Created' state. Retry once — second pass
+# finds kafka healthy and starts the stragglers.
+docker compose -f docker-compose.managed.yml up -d || true
+sleep 60
 docker compose -f docker-compose.managed.yml up -d
 `).toString('base64');
 }
@@ -253,7 +280,7 @@ export async function launchDemoInstance(cfg) {
   const ssm = new SSMClient({ region: cfg.region });
 
   const spinner = createSpinner('Looking up AMI and subnet...');
-  const [ami, subnet] = await Promise.all([getLatestAL2023Ami(ssm), getDefaultVpcSubnet(ec2)]);
+  const [ami, subnet] = await Promise.all([getLatestAL2023Ami(ssm), getDefaultVpcSubnet(ec2, INSTANCE_TYPE)]);
   spinner.stop(`AMI: ${ami}`);
 
   const sgSpinner = createSpinner('Creating security group...');

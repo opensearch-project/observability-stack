@@ -1,15 +1,18 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { OpenSearchConstruct } from './opensearch';
+import { OpenSearchServerlessConstruct } from './opensearch-serverless';
 import { PrometheusConstruct } from './prometheus';
 
 export interface InfraStackProps extends cdk.StackProps {
+  opensearchType?: 'managed' | 'serverless';
   osInstanceType?: string;
   osInstanceCount?: number;
   osVolumeSize?: number;
 }
 
 export class InfraStack extends cdk.Stack {
+  public readonly opensearchType: string;
   public readonly domainEndpoint: string;
   public readonly domainArn: string;
   public readonly masterPasswordSecretArn: string;
@@ -24,21 +27,35 @@ export class InfraStack extends cdk.Stack {
 
     cdk.Tags.of(this).add('observability-stack', this.stackName);
 
-    const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
-      instanceType: props.osInstanceType ?? 'r6g.large.search',
-      instanceCount: props.osInstanceCount ?? 1,
-      volumeSize: props.osVolumeSize ?? 100,
-    });
+    this.opensearchType = props.opensearchType ?? 'managed';
+
+    if (this.opensearchType === 'serverless') {
+      const collectionName = `obs-${this.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+      const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
+        collectionName,
+      });
+
+      this.domainEndpoint = serverless.collectionEndpoint;
+      this.domainArn = serverless.collectionArn;
+      this.masterPasswordSecretArn = '';
+      this.pipelineRoleArn = serverless.pipelineRole.roleArn;
+    } else {
+      const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
+        instanceType: props.osInstanceType ?? 'r6g.large.search',
+        instanceCount: props.osInstanceCount ?? 1,
+        volumeSize: props.osVolumeSize ?? 100,
+      });
+
+      this.domainEndpoint = opensearch.domain.domainEndpoint;
+      this.domainArn = opensearch.domain.domainArn;
+      this.masterPasswordSecretArn = opensearch.masterPasswordSecret.secretArn;
+      this.pipelineRoleArn = opensearch.pipelineRole.roleArn;
+    }
 
     const prometheus = new PrometheusConstruct(this, 'Prometheus', {
-      domainArn: opensearch.domain.domainArn,
+      domainArn: this.domainArn,
     });
 
-    // Store for cross-stack refs
-    this.domainEndpoint = opensearch.domain.domainEndpoint;
-    this.domainArn = opensearch.domain.domainArn;
-    this.masterPasswordSecretArn = opensearch.masterPasswordSecret.secretArn;
-    this.pipelineRoleArn = opensearch.pipelineRole.roleArn;
     this.ampWorkspaceArn = prometheus.workspace.attrArn;
     this.ampWorkspaceId = prometheus.workspace.attrWorkspaceId;
     this.dqsDataSourceArn = prometheus.dataSourceArn;
@@ -48,9 +65,12 @@ export class InfraStack extends cdk.Stack {
     const exp = (name: string, value: string) =>
       new cdk.CfnOutput(this, name, { value, exportName: `${this.stackName}-${name}` });
 
+    exp('OpenSearchType', this.opensearchType);
     exp('DomainEndpoint', this.domainEndpoint);
     exp('DomainArn', this.domainArn);
-    exp('MasterPasswordSecretArn', this.masterPasswordSecretArn);
+    if (this.masterPasswordSecretArn) {
+      exp('MasterPasswordSecretArn', this.masterPasswordSecretArn);
+    }
     exp('PipelineRoleArn', this.pipelineRoleArn);
     exp('AmpWorkspaceArn', this.ampWorkspaceArn);
     exp('AmpWorkspaceId', this.ampWorkspaceId);
