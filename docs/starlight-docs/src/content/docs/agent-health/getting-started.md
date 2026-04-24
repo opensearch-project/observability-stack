@@ -76,10 +76,11 @@ Sample data IDs start with `demo-` prefix and are read-only.
 
 ![Agent Health Dashboard](/docs/images/agent-health/dashboard.png)
 
-The main dashboard displays:
-- Active experiments and their status
-- Recent evaluation runs
-- Quick statistics on pass/fail rates
+Agent Health opens to the Leaderboard Overview — an at-a-glance view of agent performance across all experiments, pre-loaded with sample data.
+
+The top section shows a performance trend chart tracking metrics over time. Use the dropdowns to switch between pass rate, cost, tokens, or latency, and adjust the time range (7 days, 30 days, or all time).
+
+The bottom section is a sortable metrics table showing every experiment and agent combination with columns for run count, pass rate, latency, and cost. Click any column header to sort. Click an experiment or agent name to filter the trend chart to just that selection — active filters appear which can be cleared as required. Each row links to the experiment’s detailed runs view.
 
 ## Run your first evaluation
 
