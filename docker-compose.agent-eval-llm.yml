@@ -1,0 +1,44 @@
+# LLM Eval Canary
+# Periodically runs LLM-as-judge (Bedrock Claude) on agent traces.
+# Requires AWS credentials via AWS_* env vars.
+#
+# Enable by uncommenting INCLUDE_COMPOSE_AGENT_EVAL_LLM in .env
+
+x-default-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "5m"
+    max-file: "2"
+    tag: "{{.Name}}"
+
+services:
+  example-agent-eval-canary-llm:
+    build:
+      context: ./docker-compose/agent-eval-canary-llm
+      dockerfile: Dockerfile
+    container_name: agent-eval-canary-llm
+    environment:
+      - OPENSEARCH_HOST=https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
+      - EVAL_CANARY_LLM_INTERVAL=${EVAL_CANARY_LLM_INTERVAL:-60}
+      - EVAL_CANARY_LLM_LOOKBACK_MINUTES=${EVAL_CANARY_LLM_LOOKBACK_MINUTES:-10}
+      - EVAL_CANARY_LLM_MAX_PER_CYCLE=${EVAL_CANARY_LLM_MAX_PER_CYCLE:-20}
+      - EVAL_CANARY_LLM_CONCURRENCY=${EVAL_CANARY_LLM_CONCURRENCY:-8}
+      - EVAL_JUDGE_MODEL=${EVAL_JUDGE_MODEL:-us.anthropic.claude-sonnet-4-20250514-v1:0}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+    depends_on:
+      - opensearch
+      - otel-collector
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    logging: *logging
