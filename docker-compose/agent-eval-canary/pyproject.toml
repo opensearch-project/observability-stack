@@ -1,0 +1,11 @@
+[project]
+name = "agent-eval-canary"
+version = "0.1.0"
+description = "Periodically scores un-evaluated agent traces in OpenSearch"
+requires-python = ">=3.10"
+dependencies = [
+    "opensearch-genai-observability-sdk-py[opensearch]>=0.2.7",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+]

@@ -1,0 +1,13 @@
+[project]
+name = "agent-eval-canary-llm"
+version = "0.1.0"
+description = "Periodically runs LLM-as-judge evaluations on agent traces"
+requires-python = ">=3.10"
+dependencies = [
+    "opensearch-genai-observability-sdk-py[opensearch]>=0.2.7",
+    "strands-agents-evals[opensearch]>=0.1.15",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-grpc",
+    "boto3",
+]
