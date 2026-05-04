@@ -108,6 +108,10 @@ export default defineConfig({
 							autogenerate: { directory: 'send-data/infrastructure' },
 						},
 						{
+							label: 'From Vendor Agents',
+							autogenerate: { directory: 'send-data/from-vendor' },
+						},
+						{
 							label: 'Data Pipeline',
 							autogenerate: { directory: 'send-data/data-pipeline' },
 						},
