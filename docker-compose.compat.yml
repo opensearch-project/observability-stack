@@ -1,0 +1,60 @@
+# docker-compose.compat.yml
+#
+# Vendor compatibility overlay. Adds an edge OTel Collector that accepts
+# Datadog, Jaeger, and Splunk HEC wire protocols and forwards OTLP to the
+# base collector.
+#
+# Activation:
+#   echo "INCLUDE_COMPOSE_COMPAT=docker-compose.compat.yml" >> .env
+#   docker compose up -d
+#
+#   vendor apps ──▶ otel-collector-compat ──OTLP──▶ otel-collector (base)
+#                   (this overlay)                  (unchanged)
+
+services:
+  otel-collector-compat:
+    image: otel/opentelemetry-collector-contrib:${OTEL_COLLECTOR_VERSION}
+    container_name: otel-collector-compat
+    pull_policy: always
+    command: ["--config=/etc/otelcol-config.yml"]
+    volumes:
+      - ./compat/collector/config.compat.yaml:/etc/otelcol-config.yml
+    ports:
+      # Datadog trace-agent (datadogreceiver)
+      - "${COMPAT_DATADOG_APM_PORT:-8126}:8126"
+      # DogStatsD (statsdreceiver, UDP)
+      - "${COMPAT_DATADOG_STATSD_PORT:-8125}:8125/udp"
+      # Jaeger native wire protocol. Modern Jaeger apps emit OTLP and should
+      # send directly to the base collector on 4317/4318 instead of this hop.
+      - "${COMPAT_JAEGER_GRPC_PORT:-14250}:14250"
+      - "${COMPAT_JAEGER_THRIFT_HTTP_PORT:-14268}:14268"
+      # Splunk HEC
+      - "${COMPAT_SPLUNK_HEC_PORT:-8088}:8088"
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    depends_on:
+      - otel-collector
+    deploy:
+      resources:
+        limits:
+          memory: ${COMPAT_COLLECTOR_MEMORY_LIMIT:-256M}
+
+  # Jaeger hotrod demo app. Emits OTLP directly to the base collector, so it
+  # does not exercise the compat collector. Included as a built-in trace
+  # generator for verifying the base pipeline end-to-end.
+  #
+  #   http://localhost:8080   hotrod UI
+  #   http://localhost:5601   OpenSearch Dashboards → Trace Analytics
+  hotrod:
+    image: jaegertracing/example-hotrod:1.60
+    container_name: hotrod
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+    command: ["all"]
+    networks:
+      - observability-stack-network
+    ports:
+      - "8080:8080"
+    depends_on:
+      - otel-collector

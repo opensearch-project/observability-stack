@@ -9,6 +9,7 @@ include:
   - path: ${INCLUDE_COMPOSE_AGENT_EVAL_LLM:-docker-compose/util/docker-compose.empty.yml}
   - path: ${INCLUDE_COMPOSE_LOCAL_OPENSEARCH:-docker-compose/util/docker-compose.empty.yml}
   - path: ${INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS:-docker-compose/util/docker-compose.empty.yml}
+  - path: ${INCLUDE_COMPOSE_COMPAT:-docker-compose/util/docker-compose.empty.yml}
 
 x-default-logging: &logging
   driver: "json-file"

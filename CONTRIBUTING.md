@@ -398,6 +398,7 @@ AI coding assistants are welcome to contribute! When contributing as an AI agent
 - Note performance considerations
 - Reference relevant specifications
 - Keep comments up to date
+- Avoid narrative prose and internal team voice (e.g., "we deliberately...") — comments are for future maintainers, not decision history
 
 ### Examples
 
@@ -406,6 +407,53 @@ AI coding assistants are welcome to contribute! When contributing as an AI agent
 - Show both basic and advanced usage
 - Follow language-specific conventions
 - Test examples before committing
+
+### Writing Tenets (for agents)
+
+Applies to all user-facing documentation: READMEs, public docs under `docs/`, migration guides, and PR descriptions.
+
+**Framing**
+
+- No us-vs-them. Write "Point your agents at observability-stack," not "at us." In open-source projects, the reader is part of the same community.
+- Don't leak internal conversation into docs. Design-doc voice ("this is the canonical case where...", "we deliberately omitted...") belongs in PR discussion or design documents, not user-facing artifacts.
+- Factual, not promotional. Avoid marketing phrases like "does ONE thing," "zero drift risk," or "honest limits."
+- Acknowledge nuance via asides (`:::note` in Starlight docs) or italic notes, not prose digressions.
+
+**Maintenance hygiene**
+
+- Don't pin version strings. Link to `main` of upstream repos (e.g., `opentelemetry-collector-contrib/tree/main/receiver/...`), not to a specific tag. Version pins go stale.
+- Don't duplicate source code in docs. Config YAML, pipeline definitions, and translation tables drift from the real source. Link to the source file instead.
+- Don't maintain per-vendor translation tables beyond 3–5 canonical well-known fields. Defer to upstream receiver READMEs and vendor documentation. Positioning this repo as a schema authority creates permanent maintenance burden.
+- Repo READMEs should link to public docs, not duplicate them. One source of truth per content type.
+
+**Accuracy**
+
+- Verify specific claims before writing them. Dates, version numbers, protocol behavior, UI terminology — check primary sources.
+- If a claim cannot be verified from primary sources, phrase it more vaguely. "Modern versions support X" beats "as of v1.42, X is supported" when the version claim is unverified.
+- Check existing conventions. Before using a UI name or terminology, grep the rest of the docs to see what other pages call it.
+- Run the documentation build (`npm run build` in `docs/starlight-docs`) before committing doc changes. Verify internal links are valid.
+
+**Public-doc page structure**
+
+Pages for users migrating TO observability-stack should cover, in order:
+
+1. Action-oriented lead (one sentence — what the reader can do)
+2. Decision table when multiple paths exist ("Do I need this?" / "Which path applies?")
+3. Configuration — concrete environment variables, example config, code snippet per path
+4. Verify step — one-command check that it's working
+5. What lands in OpenSearch — concrete example of end state (field names, index patterns)
+6. Caveats — real observed gotchas surfaced from validation, not theoretical ones
+7. Not covered — honest scope boundaries
+8. References — upstream sources, vendor docs
+
+**Repo READMEs** are for contributors, not migrators. Keep them short (20–40 lines for leaf READMEs; 100 max for overview). Link out to public docs for user-facing content. Include repo-local context only: config file paths, upstream receiver links, local dev workflow commands.
+
+**Caveats from real validation are more trustworthy than theoretical ones.** When end-to-end testing reveals a gotcha (e.g., an attribute gets overwritten, a field doesn't translate), document it in the caveats section. Lead with what the user will see, not why it happens.
+
+**Scope discipline**
+
+- Prune aggressively when in doubt. Deletion is cheaper than maintenance.
+- Don't commit working files — audit tables, compatibility matrices, session notes, TODO lists, WIP drafts. If it's not useful to a future reader with no context, it's not a docs artifact.
 
 ## Community
 
