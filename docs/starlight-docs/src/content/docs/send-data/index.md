@@ -56,6 +56,10 @@ Language-specific guides for instrumenting your services. Covers Python, Java, N
 
 Collect telemetry from your infrastructure. Covers host metrics, container monitoring, Kubernetes observability, and cloud provider integrations.
 
+### [From Vendor Agents](/docs/send-data/from-vendor/)
+
+Accept telemetry from existing Datadog, Jaeger, or Splunk agents without re-instrumenting your applications. Point your vendor agents at the observability stack by changing one environment variable.
+
 ### [Data Pipeline](/docs/send-data/data-pipeline/)
 
 Configure the backend processing layer. Covers Data Prepper pipelines for trace and log processing, Prometheus for metrics storage, and index management in OpenSearch.

@@ -1,0 +1,78 @@
+# config.compat.yaml
+#
+# Edge collector config. Translates vendor wire protocols to OTLP and forwards
+# to the base collector, which handles enrichment and downstream export.
+#
+#   vendor apps ──▶ otel-collector-compat ──OTLP──▶ otel-collector (base)
+#                   (this config)                   (unchanged)
+
+receivers:
+  # Datadog trace-agent protocol. Also accepts metrics and logs endpoints;
+  # all three are wired into the service pipelines below.
+  # See: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/datadogreceiver
+  datadog:
+    endpoint: 0.0.0.0:8126
+    read_timeout: 60s
+    trace_id_cache_size: 100
+
+  # StatsD / DogStatsD over UDP.
+  # See: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/statsdreceiver
+  statsd:
+    endpoint: 0.0.0.0:8125
+    aggregation_interval: 60s
+    enable_metric_type: true
+    is_monotonic_counter: false
+
+  # Jaeger native wire protocol (Thrift HTTP + gRPC). For legacy
+  # jaeger-client-* applications. Modern Jaeger apps emit OTLP and send
+  # directly to the base collector on 4317/4318 without this hop.
+  # See: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/jaegerreceiver
+  jaeger:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:14250
+      thrift_http:
+        endpoint: 0.0.0.0:14268
+
+  # Splunk HTTP Event Collector (logs and metrics).
+  # See: https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/splunkhecreceiver
+  splunk_hec:
+    endpoint: 0.0.0.0:8088
+
+processors:
+  # Batch spans/events to reduce RPC volume against the base collector.
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # Forward to the base collector. Downstream routing (Data Prepper,
+  # Prometheus, etc.) is configured there.
+  otlp_grpc:
+    endpoint: otel-collector:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers: [datadog, jaeger]
+      processors: [batch]
+      exporters: [otlp_grpc, debug]
+
+    metrics:
+      receivers: [datadog, statsd, splunk_hec]
+      processors: [batch]
+      exporters: [otlp_grpc, debug]
+
+    logs:
+      receivers: [datadog, splunk_hec]
+      processors: [batch]
+      exporters: [otlp_grpc, debug]
+
+  telemetry:
+    logs:
+      level: info
