@@ -118,10 +118,13 @@ services:
   # The service name is kept as "prometheus" so PROMETHEUS_HOST/PORT in .env
   # continue to work everywhere without changes.
   prometheus:
-    image: cortexproject/cortex:v1.18.1
+    image: cortexproject/cortex:${CORTEX_VERSION}
     container_name: prometheus
     command:
       - '-config.file=/etc/cortex/cortex.yaml'
+      # Cortex retention mirrors PROMETHEUS_RETENTION. Compactor deletes
+      # blocks whose max-time is older than this; set to 0 to disable.
+      - '-compactor.blocks-retention-period=${PROMETHEUS_RETENTION}'
     volumes:
       - ./docker-compose/cortex/cortex.yaml:/etc/cortex/cortex.yaml:ro
       - prometheus-data:/data
@@ -273,9 +276,8 @@ services:
       - PROMETHEUS_HOST=${PROMETHEUS_HOST}
       - PROMETHEUS_PORT=${PROMETHEUS_PORT}
       # alertmanager.uri is set on the Prometheus datasource unconditionally.
-      # The service itself only starts with the otel-demo flag (alertmanager
-      # lives in docker-compose.otel-demo.yml), so this URI dangles when the
-      # demo is off — harmless, since no alerts are firing to route anyway.
+      # Alertmanager now runs always (defined in docker-compose.yml, not the
+      # otel-demo overlay), so this URI is always valid.
       - ALERTMANAGER_HOST=alertmanager
       - ALERTMANAGER_PORT=${ALERTMANAGER_PORT}
       - ISM_RETENTION_DAYS=${ISM_RETENTION_DAYS:-7}
