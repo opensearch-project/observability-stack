@@ -39,8 +39,10 @@ run_checks() {
   echo "  OTel Collector OTLP HTTP: OK"
 
   echo "==> Checking Prometheus is up..."
+  # Cortex runs under the "prometheus" service name and exposes /ready
+  # (not the vanilla Prometheus /-/healthy endpoint).
   retry_check "Prometheus" "$HEALTH_CHECK_RETRIES" "200" \
-    "http://localhost:${PROMETHEUS_PORT}/-/healthy"
+    "http://localhost:${PROMETHEUS_PORT}/ready"
   echo "  Prometheus: OK"
 
   echo "==> Checking OpenSearch Dashboards is up..."

@@ -13,6 +13,8 @@ USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
 PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus.observability-stack-network")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
+ALERTMANAGER_HOST = os.getenv("ALERTMANAGER_HOST", "alertmanager")
+ALERTMANAGER_PORT = os.getenv("ALERTMANAGER_PORT", "9093")
 _opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
 OPENSEARCH_ENDPOINT = f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
 ISM_RETENTION_DAYS = int(os.getenv("ISM_RETENTION_DAYS", "7"))
@@ -305,7 +307,15 @@ def create_prometheus_datasource(workspace_id):
 
     print("🔧 Creating Prometheus datasource...")
 
-    prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
+    # Cortex exposes the Prometheus-compatible query API under /prometheus
+    # (e.g. /prometheus/api/v1/query_range) while the Ruler admin API lives
+    # at the unprefixed root (/api/v1/rules/{namespace}). The SQL plugin's
+    # PrometheusClient exposes `prometheus.uri` and `prometheus.ruler.uri`
+    # exactly for this split — both must be set for query + rule management
+    # to work against Cortex.
+    prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}/prometheus"
+    ruler_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
+    alertmanager_endpoint = f"http://{ALERTMANAGER_HOST}:{ALERTMANAGER_PORT}"
 
     payload = {
         "name": datasource_name,
@@ -313,9 +323,8 @@ def create_prometheus_datasource(workspace_id):
         "connector": "prometheus",
         "properties": {
             "prometheus.uri": prometheus_endpoint,
-            "prometheus.auth.type": "basicauth",
-            "prometheus.auth.username": "",
-            "prometheus.auth.password": "",
+            "prometheus.ruler.uri": ruler_endpoint,
+            "alertmanager.uri": alertmanager_endpoint,
         },
     }
 
