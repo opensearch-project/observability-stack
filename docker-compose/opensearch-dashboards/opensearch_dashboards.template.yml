@@ -84,6 +84,7 @@ data_source.ssl.verificationMode: none
 datasetManagement.enabled: true
 data.savedQueriesNewUI.enabled: true
 opensearchDashboards.branding.useExpandedHeader: false
+opensearchDashboards.enableIconSideNav: true
 
 uiSettings.overrides.home:useNewHomePage: true
 uiSettings.overrides.query:enhancements:enabled: true
