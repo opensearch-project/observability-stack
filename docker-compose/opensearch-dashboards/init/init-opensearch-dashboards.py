@@ -704,7 +704,11 @@ def create_opensearch_datasource(workspace_id):
 
     print("🔧 Creating OpenSearch datasource...")
 
-    opensearch_endpoint = OPENSEARCH_ENDPOINT
+    # OSD_DATASOURCE_ENDPOINT lets operators override the endpoint written
+    # onto the saved object — useful when OSD runs outside the compose
+    # network and cannot resolve the `opensearch` service name. Falls back
+    # to the intra-network hostname when unset.
+    opensearch_endpoint = os.getenv("OSD_DATASOURCE_ENDPOINT", OPENSEARCH_ENDPOINT)
 
     payload = {
         "attributes": {
