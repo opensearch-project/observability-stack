@@ -126,6 +126,15 @@ def main():
     if total_loaded == 0:
         print("⚠️  No rule groups loaded")
 
+    # Sentinel file consumed by the compose healthcheck so `docker compose
+    # up --wait` blocks until rules are actually loaded. Only written when
+    # no group failed so a partial load doesn't mark the container healthy.
+    try:
+        with open("/tmp/rules-loaded", "w") as f:
+            f.write("ok\n")
+    except OSError as e:
+        print(f"⚠️  Could not write /tmp/rules-loaded sentinel: {e}")
+
 
 if __name__ == "__main__":
     main()

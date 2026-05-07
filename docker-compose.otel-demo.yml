@@ -786,6 +786,16 @@ services:
       - ./docker-compose/prometheus/rules-otel-demo:/rules/otel_demo:ro
     <<: *network
     restart: "no"
+    # Mirror the base cortex-rules-init healthcheck: the script touches
+    # /tmp/rules-loaded on a clean load, and `--wait` blocks on it so callers
+    # that query /api/v1/rules/otel_demo after --wait see the rules already in
+    # Cortex. 40×3s=120s covers pip install + load time.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 10s
     logging: *logging
 
   # OTel Demo Monitors Init - Creates OpenSearch alerting monitors for demo

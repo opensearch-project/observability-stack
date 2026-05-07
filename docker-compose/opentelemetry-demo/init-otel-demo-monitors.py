@@ -59,6 +59,14 @@ def get_existing_monitor(monitor_name):
         return None
 
 
+# Cluster health GREEN is necessary but not sufficient: the alerting plugin's
+# internal indices (.opendistro-alerting-*, .opensearch-alerting-*) finish
+# allocating ~30-60s later. Until they do, POST /_plugins/_alerting/monitors
+# returns 500 with "all shards failed"/"alerting_exception". Retry on those.
+MONITOR_CREATE_MAX_ATTEMPTS = 12
+MONITOR_CREATE_RETRY_SLEEP_SECONDS = 5
+
+
 def create_monitor(monitor_payload):
     """Create an alerting monitor in OpenSearch (idempotent)"""
     monitor_name = monitor_payload.get("name", "unknown")
@@ -68,25 +76,57 @@ def create_monitor(monitor_payload):
         print(f"  Monitor already exists: {monitor_name}")
         return existing_id
 
-    try:
-        response = requests.post(
-            f"{OPENSEARCH_URL}/_plugins/_alerting/monitors",
-            auth=(USERNAME, PASSWORD),
-            headers={"Content-Type": "application/json"},
-            json=monitor_payload,
-            verify=False,
-            timeout=10,
-        )
-        if response.status_code in (200, 201):
-            monitor_id = response.json().get("_id")
-            print(f"  Created monitor: {monitor_name}")
-            return monitor_id
-        else:
-            print(f"  Monitor creation failed ({response.status_code}): {response.text[:200]}")
+    last_detail = ""
+    for attempt in range(1, MONITOR_CREATE_MAX_ATTEMPTS + 1):
+        try:
+            response = requests.post(
+                f"{OPENSEARCH_URL}/_plugins/_alerting/monitors",
+                auth=(USERNAME, PASSWORD),
+                headers={"Content-Type": "application/json"},
+                json=monitor_payload,
+                verify=False,
+                timeout=10,
+            )
+            if response.status_code in (200, 201):
+                monitor_id = response.json().get("_id")
+                print(f"  Created monitor: {monitor_name}")
+                return monitor_id
+
+            body = response.text or ""
+            last_detail = f"HTTP {response.status_code}: {body[:200]}"
+            transient = (
+                500 <= response.status_code < 600
+                or "all shards failed" in body
+                or "alerting_exception" in body
+            )
+            if transient and attempt < MONITOR_CREATE_MAX_ATTEMPTS:
+                print(
+                    f"  Monitor create attempt {attempt}/{MONITOR_CREATE_MAX_ATTEMPTS} "
+                    f"for '{monitor_name}' got {last_detail} — retrying in "
+                    f"{MONITOR_CREATE_RETRY_SLEEP_SECONDS}s"
+                )
+                time.sleep(MONITOR_CREATE_RETRY_SLEEP_SECONDS)
+                continue
+            print(f"  Monitor creation failed ({response.status_code}): {body[:200]}")
             return None
-    except requests.exceptions.RequestException as e:
-        print(f"  Error creating monitor '{monitor_name}': {e}")
-        return None
+        except requests.exceptions.RequestException as e:
+            last_detail = f"RequestException: {e}"
+            if attempt < MONITOR_CREATE_MAX_ATTEMPTS:
+                print(
+                    f"  Monitor create attempt {attempt}/{MONITOR_CREATE_MAX_ATTEMPTS} "
+                    f"for '{monitor_name}' hit {last_detail} — retrying in "
+                    f"{MONITOR_CREATE_RETRY_SLEEP_SECONDS}s"
+                )
+                time.sleep(MONITOR_CREATE_RETRY_SLEEP_SECONDS)
+                continue
+            print(f"  Error creating monitor '{monitor_name}': {e}")
+            return None
+
+    print(
+        f"  Monitor creation for '{monitor_name}' exhausted "
+        f"{MONITOR_CREATE_MAX_ATTEMPTS} attempts; last detail: {last_detail}"
+    )
+    return None
 
 
 def create_otel_demo_monitors():

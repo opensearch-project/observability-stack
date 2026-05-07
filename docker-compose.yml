@@ -120,6 +120,21 @@ services:
   prometheus:
     image: cortexproject/cortex:${CORTEX_VERSION}
     container_name: prometheus
+    # One-time cleanup shim: if this is the first boot of Cortex on a volume
+    # that still has vanilla-Prometheus artifacts (/data/chunks_head with no
+    # /data/tsdb), remove them before starting Cortex so the volume isn't
+    # polluted with dormant dirs Cortex never reads. Skips on fresh deploys
+    # (chunks_head absent) and on subsequent restarts (tsdb present).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ ! -d /data/tsdb ] && [ -d /data/chunks_head ]; then
+          echo "First boot after upgrade from vanilla Prometheus — removing stale TSDB artifacts"
+          rm -rf /data/chunks_head /data/wal /data/wbl /data/lock /data/queries.active
+        fi
+        exec /bin/cortex "$$@"
+      - --
     command:
       - '-config.file=/etc/cortex/cortex.yaml'
       # Cortex retention mirrors PROMETHEUS_RETENTION. Compactor deletes
@@ -207,6 +222,17 @@ services:
     networks:
       - observability-stack-network
     restart: "no"
+    # The init script touches /tmp/rules-loaded after a clean load. Without
+    # this check `--wait` returns the moment pip starts (container "running"),
+    # well before rules are actually in Cortex — so any caller that queries
+    # /api/v1/rules immediately after --wait sees an empty list. 40×3s=120s
+    # covers pip install + load.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 10s
     logging: *logging
 
   # OpenSearch Stack Monitors Init - Creates alerting monitors that watch the
