@@ -13,12 +13,13 @@
 #
 # Usage:
 #   1. Copy .env.splunk-poc.example to .env.splunk-poc and fill in Splunk credentials.
-#   2. docker compose \
+#   2. finch compose \
 #        --env-file .env --env-file .env.splunk-poc \
 #        -f docker-compose.yml \
-#        -f docker-compose.otel-demo.yml \
 #        -f docker-compose.splunk-demo.yml \
 #        up -d
+#   (The otel-demo overlay is pulled in automatically via the base compose's include: directive
+#   because .env.splunk-poc sets INCLUDE_COMPOSE_OTEL_DEMO.)
 
 services:
   splunk-otel-collector:

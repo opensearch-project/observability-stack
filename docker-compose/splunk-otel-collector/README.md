@@ -27,10 +27,11 @@ Demo apps are redirected via `OTEL_COLLECTOR_HOST=splunk-otel-collector` (set in
 cp .env.splunk-poc.example .env.splunk-poc
 # edit .env.splunk-poc with your Splunk Access Token, Realm, HEC Token
 
-docker compose \
+# Base compose's include: directive pulls in the otel-demo overlay automatically
+# because .env.splunk-poc sets INCLUDE_COMPOSE_OTEL_DEMO.
+finch compose \
   --env-file .env --env-file .env.splunk-poc \
   -f docker-compose.yml \
-  -f docker-compose.otel-demo.yml \
   -f docker-compose.splunk-demo.yml \
   up -d
 ```
