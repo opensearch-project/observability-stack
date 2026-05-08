@@ -1,82 +1,69 @@
-# Splunk OTel Distribution — POC
+# Splunk OTel Distribution POC
 
-Runs Splunk's OpenTelemetry Collector distribution as a tee in front of observability-stack's base collector, so demo telemetry lands in both Splunk Observability Cloud and OpenSearch at the same time.
+Local POC. Inserts Splunk's [OpenTelemetry Collector distribution](https://github.com/signalfx/splunk-otel-collector) between the otel-demo apps and the base `otel-collector`. Demo telemetry fans out to Splunk Observability Cloud and OpenSearch at the same time.
 
-Local POC only. Not a production configuration, not part of the default stack.
+Branch: `feat/splunk-distribution-poc`. Not intended for upstream.
 
 ## Dataflow
 
 ```
 otel-demo apps
-     │ OTLP
+     │ OTLP (OTEL_COLLECTOR_HOST=splunk-otel-collector)
      ▼
-splunk-otel-collector (Splunk distribution)
-     │
-     ├── signalfx         → Splunk Infrastructure Monitoring
-     ├── otlphttp         → Splunk APM (trace OTLP endpoint)
-     ├── splunk_hec       → Splunk Log Observer
-     └── otlp (tee)       → otel-collector → Data Prepper → OpenSearch (unchanged)
+splunk-otel-collector
+     ├── signalfx exporter         → Splunk Infrastructure Monitoring
+     ├── otlphttp/splunk-apm       → Splunk APM (ingest/v2/trace/otlp)
+     ├── splunk_hec                → Splunk Log Observer (see caveats)
+     └── otlp/tee                  → base otel-collector (unchanged OpenSearch path)
 ```
-
-Demo apps are redirected via `OTEL_COLLECTOR_HOST=splunk-otel-collector` (set in `.env.splunk-poc`). No demo code changes required.
 
 ## Run
 
 ```bash
-# From the repo root
 cp .env.splunk-poc.example .env.splunk-poc
-# edit .env.splunk-poc with your Splunk Access Token, Realm, HEC Token
+# fill in SPLUNK_ACCESS_TOKEN, SPLUNK_REALM, SPLUNK_HEC_TOKEN
 
-# Base compose's include: directive pulls in the otel-demo overlay automatically
-# because .env.splunk-poc sets INCLUDE_COMPOSE_OTEL_DEMO.
-finch compose \
-  --env-file .env --env-file .env.splunk-poc \
-  -f docker-compose.yml \
-  -f docker-compose.splunk-demo.yml \
-  up -d
+# finch compose's --env-file doesn't feed ${VAR} substitution in compose files, only
+# container env. Append the POC vars into .env before `up`, restore after.
+cat .env.splunk-poc >> .env
+finch compose -f docker-compose.yml -f docker-compose.splunk-demo.yml up -d
+git checkout -- .env
+```
+
+Teardown:
+
+```bash
+finch compose -f docker-compose.yml -f docker-compose.splunk-demo.yml down
 ```
 
 ## Verify
 
-Splunk Observability Cloud (URL varies by realm, e.g. `https://app.us1.signalfx.com`):
-
-- **APM → Services** — look for demo services (frontend, cart, checkout, ad, ...)
-- **Infrastructure → Metrics Explorer** — filter on `service.name`
-- **Log Observer** — filter on `sourcetype=otel`, `source=otel-demo`
-
-OpenSearch Dashboards (http://localhost:5601 by default):
-
-- Trace Analytics — same demo services should appear in the existing OSD trace UI
-- Discover on `logs-otel-v1-*` — log records from the demo
-
-Splunk collector's own health endpoint: `http://localhost:13133`.
-
-Splunk collector's exposed OTLP ports on the host (non-default to avoid collision with base collector):
-
-- gRPC: `localhost:14317`
-- HTTP: `localhost:14318`
-
-## Dev commands
+Counters on the Splunk collector (send success numbers; non-zero = data flowing):
 
 ```bash
-# Tail Splunk collector logs
-docker logs -f splunk-otel-collector
-
-# Verify collector internal metrics (self-monitoring)
-curl -s http://localhost:13133
-
-# Tear down just the Splunk overlay
-docker compose -f docker-compose.yml -f docker-compose.otel-demo.yml -f docker-compose.splunk-demo.yml rm -sf splunk-otel-collector
+finch run --rm --network observability-stack-network curlimages/curl:latest \
+  -s http://splunk-otel-collector:8888/metrics \
+  | grep -E '^otelcol_exporter_sent_(spans|metric_points)_total'
 ```
 
-## Scope
+Host-exposed endpoints on `splunk-otel-collector`:
 
-- **Out of scope:** `smartagentreceiver` (proprietary to Splunk's distribution, requires host bundle), `host_metrics` (meaningless in Docker), discovery mode, gateway forwarding.
-- **In scope:** OTLP traces/metrics/logs from the otel-demo apps, fanned out to Splunk Observability Cloud + OpenSearch.
+- `localhost:13133` - health check (200 = ready)
+- `localhost:14317` - OTLP gRPC
+- `localhost:14318` - OTLP HTTP
 
-## References
+In Splunk Observability Cloud: **APM > Services** shows demo services (frontend, cart, checkout, ad, recommendation, …). **Infrastructure > Metrics Explorer** shows host metadata from `splunk-otel-collector` and app metrics from the demo.
 
-- [Splunk OpenTelemetry Collector distribution](https://github.com/signalfx/splunk-otel-collector)
-- [Splunk agent_config.yaml](https://github.com/signalfx/splunk-otel-collector/blob/main/cmd/otelcol/config/collector/agent_config.yaml) — reference for the fuller config this one is trimmed from
-- [signalfxexporter README](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/signalfxexporter)
-- [splunkhecexporter README](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter)
+OpenSearch side is unaffected: Trace Analytics in OSD renders the same demo services via the tee.
+
+## Caveats from validation
+
+- **Splunk HEC logs return HTTP 404** on `/v1/log` with the access token reused as HEC token. The `splunk_hec` exporter retries indefinitely without blocking other pipelines. Logs still land in OpenSearch via `otlp/tee`. Cause is likely one of: access token lacks log-ingest scope, trial tier without Log Observer, or a distinct HEC token is required.
+- `smartagentreceiver` and `host_metrics` from Splunk's default `agent_config.yaml` are not included. The first is proprietary to Splunk's distribution bundle; the second is meaningless in a container.
+
+## Reference
+
+- [Splunk OTel Collector distribution](https://github.com/signalfx/splunk-otel-collector)
+- [Splunk default `agent_config.yaml`](https://github.com/signalfx/splunk-otel-collector/blob/main/cmd/otelcol/config/collector/agent_config.yaml)
+- [signalfxexporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/signalfxexporter)
+- [splunkhecexporter](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/splunkhecexporter)

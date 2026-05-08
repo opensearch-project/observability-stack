@@ -1,25 +1,5 @@
-# Splunk OTel Distribution — Side-by-side POC Overlay
-#
-# Inserts Splunk's OTel Collector distribution as a tee in front of the base otel-collector.
-# Demo apps send OTLP to splunk-otel-collector (via OTEL_COLLECTOR_HOST override), which fans
-# out to:
-#   - Splunk Observability Cloud (APM + IM + Log Observer)
-#   - base otel-collector → Data Prepper → OpenSearch (unchanged existing path)
-#
-# Purpose: see the same demo data in both Splunk's UI and OpenSearch Dashboards at the same
-# time, to ground-truth what Splunk Observability Cloud accepts and how it renders.
-#
-# NOT a production configuration. Local POC only.
-#
-# Usage:
-#   1. Copy .env.splunk-poc.example to .env.splunk-poc and fill in Splunk credentials.
-#   2. finch compose \
-#        --env-file .env --env-file .env.splunk-poc \
-#        -f docker-compose.yml \
-#        -f docker-compose.splunk-demo.yml \
-#        up -d
-#   (The otel-demo overlay is pulled in automatically via the base compose's include: directive
-#   because .env.splunk-poc sets INCLUDE_COMPOSE_OTEL_DEMO.)
+# Splunk OTel distribution overlay for the side-by-side POC.
+# See docker-compose/splunk-otel-collector/README.md to run.
 
 services:
   splunk-otel-collector:
@@ -30,8 +10,7 @@ services:
     volumes:
       - ./docker-compose/splunk-otel-collector/config.yaml:/etc/otelcol-config.yml
     ports:
-      # Host-exposed on non-default ports to avoid collision with the base collector.
-      # Demo apps reach splunk-otel-collector over the internal Docker network on 4317/4318.
+      # Non-default host ports to avoid collision with the base collector's 4317/4318.
       - "14317:4317"
       - "14318:4318"
       - "13133:13133"
