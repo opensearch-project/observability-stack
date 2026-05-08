@@ -1,0 +1,60 @@
+# Splunk OTel Distribution — Side-by-side POC Overlay
+#
+# Inserts Splunk's OTel Collector distribution as a tee in front of the base otel-collector.
+# Demo apps send OTLP to splunk-otel-collector (via OTEL_COLLECTOR_HOST override), which fans
+# out to:
+#   - Splunk Observability Cloud (APM + IM + Log Observer)
+#   - base otel-collector → Data Prepper → OpenSearch (unchanged existing path)
+#
+# Purpose: see the same demo data in both Splunk's UI and OpenSearch Dashboards at the same
+# time, to ground-truth what Splunk Observability Cloud accepts and how it renders.
+#
+# NOT a production configuration. Local POC only.
+#
+# Usage:
+#   1. Copy .env.splunk-poc.example to .env.splunk-poc and fill in Splunk credentials.
+#   2. docker compose \
+#        --env-file .env --env-file .env.splunk-poc \
+#        -f docker-compose.yml \
+#        -f docker-compose.otel-demo.yml \
+#        -f docker-compose.splunk-demo.yml \
+#        up -d
+
+services:
+  splunk-otel-collector:
+    image: quay.io/signalfx/splunk-otel-collector:${SPLUNK_COLLECTOR_VERSION:-latest}
+    container_name: splunk-otel-collector
+    pull_policy: always
+    command: ["--config=/etc/otelcol-config.yml"]
+    volumes:
+      - ./docker-compose/splunk-otel-collector/config.yaml:/etc/otelcol-config.yml
+    ports:
+      # Host-exposed on non-default ports to avoid collision with the base collector.
+      # Demo apps reach splunk-otel-collector over the internal Docker network on 4317/4318.
+      - "14317:4317"
+      - "14318:4318"
+      - "13133:13133"
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    environment:
+      - SPLUNK_ACCESS_TOKEN
+      - SPLUNK_REALM
+      - SPLUNK_API_URL=https://api.${SPLUNK_REALM}.observability.splunkcloud.com
+      - SPLUNK_INGEST_URL=https://ingest.${SPLUNK_REALM}.observability.splunkcloud.com
+      - SPLUNK_HEC_TOKEN
+      - SPLUNK_HEC_URL=https://ingest.${SPLUNK_REALM}.observability.splunkcloud.com/v1/log
+      - SPLUNK_LISTEN_INTERFACE=0.0.0.0
+      - SPLUNK_MEMORY_TOTAL_MIB=512
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+    depends_on:
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:13133"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

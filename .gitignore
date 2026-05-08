@@ -30,3 +30,7 @@ charts/*/charts/*.tgz
 
 # Terraform plan files
 *.plan
+
+# Splunk distribution POC
+.env.splunk-poc
+docker-compose/splunk-otel-collector/*.local.*
