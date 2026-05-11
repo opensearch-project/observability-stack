@@ -17,6 +17,45 @@ receivers:
             - "http://*"
             - "https://*"
 
+  # Self-scrape: pulls the collector's own process and pipeline metrics
+  # from the Prometheus endpoint exposed on :8888 (see service.telemetry
+  # section below) so otelcol_* series land in Cortex. The base-stack
+  # alerts (OtelCollectorExportFailures, OtelCollectorHighMemory,
+  # OtelCollectorQueueNearCapacity, PrometheusTargetDown) depend on this.
+  prometheus/self:
+    config:
+      scrape_configs:
+        - job_name: otel-collector
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["localhost:8888"]
+          relabel_configs:
+            - target_label: service.name
+              replacement: otel-collector
+
+  # Scrape envoy's /stats/prometheus so ingress-level HTTP RPS/latency is
+  # visible to Cortex. Envoy translates downstream gRPC failures (cart,
+  # payment, ad, product-catalog — driven by flagd feature flags) into
+  # HTTP 5xx at the customer-facing boundary, so a single scrape unlocks
+  # full RED visibility from the edge. The scrape is a no-op when the
+  # otel-demo compose file isn't enabled (no DNS → drop).
+  prometheus/envoy:
+    config:
+      scrape_configs:
+        - job_name: envoy-frontend-proxy
+          scrape_interval: 15s
+          metrics_path: /stats/prometheus
+          # Use relabel_configs to set service.name (dotted key that the
+          # prometheusremotewrite exporter will demote to service_name).
+          # Setting a bare `labels: {service_name: ...}` collides with the
+          # collector's resourcedetection/target_info enrichment — both
+          # get emitted and Cortex joins them with a semicolon.
+          static_configs:
+            - targets: ["frontend-proxy:10000"]
+          relabel_configs:
+            - target_label: service.name
+              replacement: frontend-proxy
+
 processors:
   # Memory limiter prevents OOM by dropping data when memory usage is high
   # Critical for stability under load
@@ -100,11 +139,18 @@ exporters:
       insecure: true
       insecure_skip_verify: true
 
-  # Prometheus OTLP HTTP exporter sends metrics to Prometheus
-  otlphttp/prometheus:
-    endpoint: "http://prometheus:9090/api/v1/otlp"
+  # Prometheus remote-write exporter sends metrics to Cortex.
+  # resource_to_telemetry_conversion promotes OTel resource attributes
+  # (service.name, service.version, deployment.environment, …) onto every
+  # exported sample, so every metric lands in Cortex with a `service_name`
+  # label. Without this, only flagd carried service_name and every other
+  # service was only addressable via `job="opentelemetry-demo/<svc>"`.
+  prometheusremotewrite/cortex:
+    endpoint: "http://prometheus:9090/api/v1/push"
     tls:
       insecure: true
+    resource_to_telemetry_conversion:
+      enabled: true
 
 service:
   # Pipelines define the flow: receivers -> processors -> exporters
@@ -115,11 +161,11 @@ service:
       processors: [resourcedetection, memory_limiter, transform, batch]
       exporters: [otlp/opensearch, debug]
 
-    # Metrics pipeline: OTLP -> processing -> Prometheus
+    # Metrics pipeline: OTLP + self-scrape + envoy scrape -> processing -> Cortex
     metrics:
-      receivers: [otlp]
+      receivers: [otlp, prometheus/self, prometheus/envoy]
       processors: [resourcedetection, memory_limiter, batch]
-      exporters: [otlphttp/prometheus, debug]
+      exporters: [prometheusremotewrite/cortex, debug]
 
     # Logs pipeline: OTLP -> processing -> Data Prepper
     logs:

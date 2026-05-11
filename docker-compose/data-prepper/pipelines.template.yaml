@@ -85,7 +85,9 @@ traces-raw-pipeline:
         index_type: trace-analytics-plain-raw
 
 # Service map generation pipeline (APM)
-# Builds service dependency maps and RED metrics from trace relationships
+# Builds service dependency maps and RED metrics from trace relationships.
+# Splits into two sub-pipelines so we can strip high-cardinality `randomKey`
+# labels from the Cortex branch without polluting the service-map branch.
 service-map-pipeline:
   delay: 100
   source:
@@ -107,10 +109,39 @@ service-map-pipeline:
         index_type: otel-v2-apm-service-map
         routes: [otel_apm_service_map_route]
         insecure: true
-    # Route RED metrics to local Prometheus via remote write
+    # Fan out service-derived RED metrics to a dedicated pipeline that strips
+    # the per-event randomKey UUID before Cortex rejects it for cardinality.
+    - pipeline:
+        name: "service-metrics-cortex-pipeline"
+        routes: [service_processed_metrics]
+
+# Strips the per-event `randomKey` UUID from span-derived RED metrics
+# before the Cortex remote-write sink. Without this, data-prepper tags
+# every latency bucket with a fresh UUID, blowing past Cortex's default
+# 50k series-per-metric limit in minutes.
+service-metrics-cortex-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "service-map-pipeline"
+  processor:
+    # Drop only the per-event randomKey. Do NOT strip telemetry.sdk.language:
+    # otel_apm_service_map is configured to group_by it and emits one sample
+    # per (service, operation, remoteService, sdk.language) per window, so
+    # removing the label collapses multi-language services onto the same
+    # series+timestamp and Cortex rejects them as duplicate samples.
+    # Note: data-prepper event keys use JSON-pointer-style paths; labels
+    # set by otel_apm_service_map land under /attributes/<key>, so both
+    # the top-level and attributes-scoped paths are listed to be safe.
+    - delete_entries:
+        with_keys:
+          - "/attributes/randomKey"
+          - "randomKey"
+  sink:
+    # Route RED metrics to local Cortex via remote write.
+    # Cortex's distributor push endpoint is /api/v1/push (not Prometheus's /api/v1/write).
     - prometheus:
-        url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/write"
+        url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/push"
         threshold:
           max_events: 500
           flush_interval: 5s
-        routes: [service_processed_metrics]

@@ -13,8 +13,9 @@ Observability Stack is an open-source stack designed for modern distributed syst
 - **OpenTelemetry Collector**: Receives OTLP data and routes it to appropriate backends
 - **Data Prepper**: Transforms and enriches logs and traces before storage
 - **OpenSearch**: Stores and indexes logs and traces for search and analysis
-- **Prometheus**: Stores time-series metrics data
-- **OpenSearch Dashboards**: Provides web-based visualization and exploration
+- **Prometheus**: Stores time-series metrics data — runs the Cortex engine under the service name `prometheus` (same API surface, plus Ruler and Alertmanager endpoints)
+- **Alertmanager**: Routes alerts from Cortex-side PromQL rules to notification channels
+- **OpenSearch Dashboards**: Provides web-based visualization and exploration — includes the Alert Manager UI for viewing both OpenSearch monitors and Cortex alerts in one place
 - **PPL (Piped Processing Language)**: Native query language for logs and traces — pipe-based, human-readable, 50+ commands
 
 ## See it in action 
@@ -148,6 +149,20 @@ To stop the stack and remove all data volumes:
 docker compose down -v
 ```
 
+## Upgrading from Previous Releases
+
+This release swaps vanilla Prometheus for Cortex (kept under the same `prometheus` service name) and adds an always-on Alertmanager. Existing deployments can upgrade in place, with two caveats worth calling out:
+
+- **Historical metrics do not carry over.** Cortex writes to a different on-disk layout (`/data/tsdb`, `/data/ruler-storage`) than vanilla Prometheus (`/prometheus/chunks_head`, `/prometheus/wal`). Cortex does not read the old TSDB blocks, so any metrics stored in the `prometheus-data` volume before the upgrade are unreadable after it. New OTLP writes work immediately.
+- **The in-place upgrade migrates OSD state automatically**, but if you prefer a clean slate, wipe volumes before bringing the new stack up:
+  ```bash
+  docker compose down -v
+  docker compose up -d
+  ```
+  The `docker compose down -v` path is the safest if you're on an older build. The automatic migration reconciles the `ObservabilityStack_Prometheus` datasource to add the new `prometheus.ruler.uri` / `alertmanager.uri` properties, cleans up the old saved-object wrapper, and removes stale vanilla-Prometheus directories from the data volume on first Cortex boot.
+
+See [Alerting](docs/starlight-docs/src/content/docs/alerting/index.md) for a tour of the new Cortex rules, Alertmanager routing, and the Alert Manager UI in OpenSearch Dashboards.
+
 ## Instrumenting Your Agent
 
 Observability Stack accepts telemetry data via the OpenTelemetry Protocol (OTLP) and follows the [OpenTelemetry Gen-AI Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) for standardized attribute naming and structure for AI agents.
@@ -264,8 +279,9 @@ docker compose ps
 |------|---------|----------|-------------|
 | **4317** | OTel Collector | gRPC | OTLP gRPC receiver — used by most OpenTelemetry SDKs |
 | **4318** | OTel Collector | HTTP | OTLP HTTP receiver — used by Strands SDK, browser-based exporters |
-| **5601** | OpenSearch Dashboards | HTTP | Web UI for logs, traces, and dashboards |
-| **9090** | Prometheus | HTTP | Prometheus Web UI and API |
+| **5601** | OpenSearch Dashboards | HTTP | Web UI for logs, traces, dashboards, and Alert Manager |
+| **9090** | Prometheus (Cortex) | HTTP | PromQL query API (`/prometheus/...`) and Ruler admin API (`/api/v1/rules/...`) |
+| **9093** | Alertmanager | HTTP | Alert routing UI and API for Cortex-side PromQL alerts |
 | **9200** | OpenSearch | HTTPS | REST API (self-signed cert, use `curl -k`) |
 | **21890** | Data Prepper | gRPC | Internal OTLP receiver (from OTel Collector) |
 

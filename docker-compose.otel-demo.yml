@@ -39,6 +39,8 @@ services:
     environment:
       - KAFKA_ADDR
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=accounting
@@ -68,6 +70,8 @@ services:
       - FLAGD_HOST
       - FLAGD_PORT
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_LOGS_EXPORTER=otlp
@@ -99,6 +103,8 @@ services:
       - FLAGD_PORT
       - VALKEY_ADDR
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=cart
@@ -137,6 +143,8 @@ services:
       - KAFKA_ADDR
       - GOMEMLIMIT=16MiB
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=checkout
@@ -178,6 +186,8 @@ services:
       - IPV6_ENABLED
       - VERSION=${IMAGE_VERSION}
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=currency
@@ -204,6 +214,8 @@ services:
       - FLAGD_HOST
       - FLAGD_PORT
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=email
@@ -227,6 +239,8 @@ services:
       - FLAGD_PORT
       - KAFKA_ADDR
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_INSTRUMENTATION_KAFKA_EXPERIMENTAL_SPAN_ATTRIBUTES=true
       - OTEL_INSTRUMENTATION_MESSAGING_EXPERIMENTAL_RECEIVE_TELEMETRY_ENABLED=true
@@ -263,6 +277,8 @@ services:
       - RECOMMENDATION_ADDR
       - SHIPPING_ADDR
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_RESOURCE_ATTRIBUTES
       - ENV_PLATFORM
       - OTEL_SERVICE_NAME=frontend
@@ -387,6 +403,8 @@ services:
       - LOCUST_AUTOSTART
       - LOCUST_BROWSER_TRAFFIC_ENABLED=false
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=load-generator
@@ -420,6 +438,8 @@ services:
       - FLAGD_HOST
       - FLAGD_PORT
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=payment
@@ -448,6 +468,8 @@ services:
       - FLAGD_PORT
       - GOMEMLIMIT=16MiB
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=product-catalog
@@ -478,6 +500,8 @@ services:
       - PRODUCT_REVIEWS_PORT
       - OTEL_PYTHON_LOG_CORRELATION=true
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=product-reviews
@@ -518,6 +542,8 @@ services:
     environment:
       - IPV6_ENABLED
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_PHP_AUTOLOAD_ENABLED=true
       - QUOTE_PORT
@@ -548,6 +574,8 @@ services:
       - FLAGD_PORT
       - OTEL_PYTHON_LOG_CORRELATION=true
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=recommendation
@@ -578,6 +606,8 @@ services:
       - SHIPPING_PORT
       - QUOTE_ADDR
       - OTEL_EXPORTER_OTLP_ENDPOINT
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=shipping
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
@@ -631,6 +661,8 @@ services:
     environment:
       - FLAGD_UI_PORT
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=flagd-ui
@@ -661,6 +693,8 @@ services:
       - KAFKA_LISTENERS=PLAINTEXT://${KAFKA_HOST}:9092,CONTROLLER://${KAFKA_HOST}:9093
       - KAFKA_CONTROLLER_QUORUM_VOTERS=1@${KAFKA_HOST}:9093
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      - OTEL_METRICS_EXPORTER
+      - OTEL_LOGS_EXPORTER
       - OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
       - OTEL_RESOURCE_ATTRIBUTES
       - OTEL_SERVICE_NAME=kafka
@@ -731,4 +765,54 @@ services:
     <<: *network
     logging: *logging
 
+  # ******************
+  # Demo-only Alerting Extensions
+  # ******************
+  # Demo-only rule loader. Runs alongside the base cortex-rules-init container
+  # (defined in docker-compose.yml) and loads the `otel_demo` Cortex namespace
+  # only. Named separately rather than overlaying the base service because
+  # Docker Compose >= v2.38 rejects service-name overlays on `include:`-imported
+  # resources. Both containers hit the same idempotent Ruler upsert API.
+  cortex-rules-init-otel-demo:
+    image: python:3.11-alpine
+    container_name: cortex-rules-init-otel-demo
+    # `sleep infinity` after success so `docker compose up --wait` is happy.
+    command: sh -c "pip install requests pyyaml && python /init.py && exec sleep infinity"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    volumes:
+      - ./docker-compose/cortex/init-cortex-rules.py:/init.py
+      - ./docker-compose/prometheus/rules-otel-demo:/rules/otel_demo:ro
+    <<: *network
+    restart: "no"
+    # Mirror the base cortex-rules-init healthcheck: the script touches
+    # /tmp/rules-loaded on a clean load, and `--wait` blocks on it so callers
+    # that query /api/v1/rules/otel_demo after --wait see the rules already in
+    # Cortex. 40×3s=120s covers pip install + load time.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 10s
+    logging: *logging
+
+  # OTel Demo Monitors Init - Creates OpenSearch alerting monitors for demo
+  # traces/logs (checkout, payment, cart, frontend). Idempotent.
+  otel-demo-monitors-init:
+    image: python:3.11-alpine
+    container_name: otel-demo-monitors-init
+    command: sh -c "pip install requests && python /init.py"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ./docker-compose/opentelemetry-demo/init-otel-demo-monitors.py:/init.py
+    <<: *network
+    restart: "no"
+    logging: *logging
 

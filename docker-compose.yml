@@ -26,6 +26,8 @@ networks:
 volumes:
   prometheus-data:
     driver: local
+  alertmanager-data:
+    driver: local
 
 services:
   # OpenTelemetry Collector - Receives telemetry data via OTLP protocol
@@ -110,30 +112,38 @@ services:
           memory: ${DATA_PREPPER_MEMORY_LIMIT}
     logging: *logging
 
-  # Prometheus - Time-series database for metrics storage
+  # Cortex - Prometheus-compatible metrics backend with Ruler + Alertmanager APIs
+  # Replaces vanilla Prometheus to expose the full Prometheus HTTP API surface
+  # (query, ruler, alertmanager) at a single endpoint for OpenSearch Dashboards.
+  # The service name is kept as "prometheus" so PROMETHEUS_HOST/PORT in .env
+  # continue to work everywhere without changes.
   prometheus:
-    image: prom/prometheus:${PROMETHEUS_VERSION}
+    image: cortexproject/cortex:${CORTEX_VERSION}
     container_name: prometheus
-    pull_policy: always
+    # One-time cleanup shim: if this is the first boot of Cortex on a volume
+    # that still has vanilla-Prometheus artifacts (/data/chunks_head with no
+    # /data/tsdb), remove them before starting Cortex so the volume isn't
+    # polluted with dormant dirs Cortex never reads. Skips on fresh deploys
+    # (chunks_head absent) and on subsequent restarts (tsdb present).
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        if [ ! -d /data/tsdb ] && [ -d /data/chunks_head ]; then
+          echo "First boot after upgrade from vanilla Prometheus — removing stale TSDB artifacts"
+          rm -rf /data/chunks_head /data/wal /data/wbl /data/lock /data/queries.active
+        fi
+        exec /bin/cortex "$$@"
+      - --
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      # Retention period from environment variable
-      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION}'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
-      # Enable remote write receiver for OpenTelemetry Collector
-      - '--web.enable-remote-write-receiver'
-      - '--web.enable-lifecycle'
-      - '--web.route-prefix=/'
-      - '--enable-feature=exemplar-storage'
-      - '--web.enable-otlp-receiver'
+      - '-config.file=/etc/cortex/cortex.yaml'
+      # Cortex retention mirrors PROMETHEUS_RETENTION. Compactor deletes
+      # blocks whose max-time is older than this; set to 0 to disable.
+      - '-compactor.blocks-retention-period=${PROMETHEUS_RETENTION}'
     volumes:
-      - ./docker-compose/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      # Persist metrics data across container restarts
-      - prometheus-data:/prometheus
+      - ./docker-compose/cortex/cortex.yaml:/etc/cortex/cortex.yaml:ro
+      - prometheus-data:/data
     ports:
-      # Web UI and API endpoint
       - "${PROMETHEUS_PORT}:9090"
     networks:
       - observability-stack-network
@@ -142,6 +152,109 @@ services:
       resources:
         limits:
           memory: ${PROMETHEUS_MEMORY_LIMIT}
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "-q", "http://localhost:9090/ready"]
+      start_period: 30s
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  # Prometheus Alertmanager - Alert routing, grouping, deduplication, and silencing.
+  # Runs whether or not the otel-demo is enabled: the base stack rules (collector
+  # health, scrape-target health) alert into it, and demo rules alert in when the
+  # demo overlay is enabled too. The OSD Prometheus datasource's alertmanager.uri
+  # points at this service's HTTP API.
+  alertmanager:
+    image: prom/alertmanager:${ALERTMANAGER_VERSION}
+    container_name: alertmanager
+    pull_policy: always
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        cp /tmp/alertmanager.template.yml /tmp/alertmanager.yml &&
+        sed -i 's|OPENSEARCH_USER|'$$OPENSEARCH_USER'|g' /tmp/alertmanager.yml &&
+        sed -i 's|OPENSEARCH_PASSWORD|'$$OPENSEARCH_PASSWORD'|g' /tmp/alertmanager.yml &&
+        exec /bin/alertmanager \
+          --config.file=/tmp/alertmanager.yml \
+          --storage.path=/alertmanager \
+          --web.listen-address=:9093
+    volumes:
+      - ./docker-compose/alertmanager/alertmanager.template.yml:/tmp/alertmanager.template.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT}:9093"
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${ALERTMANAGER_MEMORY_LIMIT}
+    healthcheck:
+      test: ["CMD", "wget", "--tries=1", "--spider", "-q", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  # Cortex Rules Initialization - Loads alerting rules via the Cortex Ruler API.
+  # Scans /rules/<namespace>/*.yml and POSTs each group. Idempotent.
+  # Base stack rules (/rules/stack) are always loaded. The otel-demo overlay
+  # extends this container to also mount /rules/otel_demo.
+  cortex-rules-init:
+    image: python:3.11-alpine
+    container_name: cortex-rules-init
+    # `sleep infinity` after the script succeeds so `docker compose up --wait`
+    # doesn't trip over a clean exit — `--wait` treats any exited container as
+    # a failure unless a dependent uses `service_completed_successfully`.
+    command: sh -c "pip install requests pyyaml && python /init.py && exec sleep infinity"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    volumes:
+      - ./docker-compose/cortex/init-cortex-rules.py:/init.py
+      - ./docker-compose/prometheus/rules-stack:/rules/stack:ro
+    networks:
+      - observability-stack-network
+    restart: "no"
+    # The init script touches /tmp/rules-loaded after a clean load. Without
+    # this check `--wait` returns the moment pip starts (container "running"),
+    # well before rules are actually in Cortex — so any caller that queries
+    # /api/v1/rules immediately after --wait sees an empty list. 40×3s=120s
+    # covers pip install + load.
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
+      interval: 3s
+      timeout: 2s
+      retries: 40
+      start_period: 10s
+    logging: *logging
+
+  # OpenSearch Stack Monitors Init - Creates alerting monitors that watch the
+  # health of the observability stack itself (cluster health, etc). Idempotent
+  # by monitor name. The init script hardcodes https://opensearch:9200, so it
+  # hard-depends on local OpenSearch — without it there's nothing to target.
+  opensearch-stack-monitors-init:
+    image: python:3.11-alpine
+    container_name: opensearch-stack-monitors-init
+    command: sh -c "pip install requests && python /init.py"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+        required: true
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/init/init-stack-monitors.py:/init.py
+    networks:
+      - observability-stack-network
+    restart: "no"
     logging: *logging
 
   # OpenSearch Prometheus Exporter - Exposes OpenSearch metrics for Prometheus scraping
@@ -183,11 +296,24 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}
       - OPENSEARCH_PORT=${OPENSEARCH_PORT}
       - OPENSEARCH_PROTOCOL=${OPENSEARCH_PROTOCOL}
+      # Overrides the endpoint stored on the seeded `local_cluster` data-source
+      # saved object. Blank default uses the intra-network hostname, which is
+      # correct when OpenSearch Dashboards runs inside the compose network.
+      # Set in `.env` (e.g. `https://localhost:9200`) when running OSD on the
+      # host, since the host process cannot resolve the `opensearch` service
+      # name — any MDS-scoped OSD feature dialing this SO's endpoint would
+      # otherwise fail with `getaddrinfo ENOTFOUND opensearch`.
+      - OSD_DATASOURCE_ENDPOINT=${OSD_DATASOURCE_ENDPOINT:-}
       - OPENSEARCH_DASHBOARDS_HOST=${OPENSEARCH_DASHBOARDS_HOST}
       - OPENSEARCH_DASHBOARDS_PORT=${OPENSEARCH_DASHBOARDS_PORT}
       - OPENSEARCH_DASHBOARDS_PROTOCOL=${OPENSEARCH_DASHBOARDS_PROTOCOL}
       - PROMETHEUS_HOST=${PROMETHEUS_HOST}
       - PROMETHEUS_PORT=${PROMETHEUS_PORT}
+      # alertmanager.uri is set on the Prometheus datasource unconditionally.
+      # Alertmanager now runs always (defined in docker-compose.yml, not the
+      # otel-demo overlay), so this URI is always valid.
+      - ALERTMANAGER_HOST=alertmanager
+      - ALERTMANAGER_PORT=${ALERTMANAGER_PORT}
       - ISM_RETENTION_DAYS=${ISM_RETENTION_DAYS:-7}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
