@@ -1,0 +1,40 @@
+suite: cortex rules configmap
+templates:
+  - templates/cortex-rules-configmap.yaml
+tests:
+  - it: should render stack rules ConfigMap by default
+    release:
+      name: obs-stack
+    asserts:
+      - hasDocuments:
+          count: 1
+      - containsDocument:
+          kind: ConfigMap
+          apiVersion: v1
+          name: obs-stack-observability-stack-cortex-rules-stack
+
+  - it: should render otel-demo rules when otel-demo enabled
+    release:
+      name: obs-stack
+    set:
+      opentelemetry-demo.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+      - containsDocument:
+          kind: ConfigMap
+          apiVersion: v1
+          name: obs-stack-observability-stack-cortex-rules-stack
+          any: true
+      - containsDocument:
+          kind: ConfigMap
+          apiVersion: v1
+          name: obs-stack-observability-stack-cortex-rules-otel-demo
+          any: true
+
+  - it: should not render when cortex disabled
+    set:
+      cortex.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

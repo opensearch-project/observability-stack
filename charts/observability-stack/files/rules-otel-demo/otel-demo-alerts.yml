@@ -1,0 +1,156 @@
+# Prometheus Alerting Rules for the OpenTelemetry Demo Application
+# Only active when the otel-demo compose file is enabled.
+# Mounted into Prometheus via the prometheus service override in docker-compose.otel-demo.yml.
+#
+# These rules target span-derived RED metrics emitted by Data Prepper's
+# otel_apm_service_map processor (namespace="span_derived"). Every traced
+# service produces latency_seconds_* regardless of whether it speaks gRPC
+# or HTTP, so one expression shape covers the whole demo.
+# The label is `service` (not `service_name`) for span-derived metrics.
+#
+# Rule groups:
+#   - otel_demo_frontend:   Frontend and proxy latency/errors (span-derived)
+#   - otel_demo_checkout:   Checkout pipeline health — checkout, payment, cart
+#   - otel_demo_services:   General microservice health across all demo services
+#
+# NOTE: Thresholds are tuned to fire under normal OTel Demo load-generator traffic
+#       so the alerting pipeline can be validated end-to-end.
+
+groups:
+  # Frontend alerts — monitors user-facing latency and error rates
+  - name: otel_demo_frontend
+    interval: 30s
+    rules:
+      # Fires when the frontend is handling any traced requests
+      - alert: OtelDemoFrontendHighErrorRate
+        expr: >
+          sum(rate(latency_seconds_count{namespace="span_derived", service="frontend"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: otel-demo
+          service: frontend
+        annotations:
+          summary: "OTel Demo frontend receiving traced traffic"
+          description: "Frontend is actively serving requests. In a real setup this would trigger on error rate > 5%."
+
+      # Fires when frontend P99 latency exceeds 5ms (always true under load)
+      - alert: OtelDemoFrontendHighLatency
+        expr: >
+          histogram_quantile(0.99,
+            sum by (le) (rate(latency_seconds_bucket{namespace="span_derived", service="frontend"}[5m]))
+          ) > 0.005
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+          service: frontend
+        annotations:
+          summary: "OTel Demo frontend P99 latency above 5ms"
+          description: "Frontend tail latency elevated. Expected under load-generator traffic."
+
+      # Fires when frontend-proxy is routing any traced traffic
+      - alert: OtelDemoFrontendProxyErrors
+        expr: >
+          sum(rate(latency_seconds_count{namespace="span_derived", service="frontend-proxy"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+          service: frontend-proxy
+        annotations:
+          summary: "OTel Demo frontend proxy active traffic"
+          description: "Envoy proxy is actively routing requests. Monitor for elevated 5xx rates."
+
+  # Checkout pipeline alerts — monitors the critical purchase flow
+  - name: otel_demo_checkout
+    interval: 30s
+    rules:
+      # Fires when the checkout service has active traced traffic
+      - alert: OtelDemoCheckoutErrors
+        expr: >
+          sum(rate(latency_seconds_count{namespace="span_derived", service="checkout"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: otel-demo
+          service: checkout
+        annotations:
+          summary: "OTel Demo checkout service processing requests"
+          description: "Checkout flow is active. Monitor for error rate spikes."
+
+      # Fires when the payment service has active traced traffic
+      - alert: OtelDemoPaymentFailures
+        expr: >
+          sum(rate(latency_seconds_count{namespace="span_derived", service="payment"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: otel-demo
+          service: payment
+        annotations:
+          summary: "OTel Demo payment service processing requests"
+          description: "Payment pipeline is active. Check for paymentFailure feature flag if error rate increases."
+
+      # Fires when the cart service has active traced traffic
+      - alert: OtelDemoCartErrors
+        expr: >
+          sum(rate(latency_seconds_count{namespace="span_derived", service="cart"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+          service: cart
+        annotations:
+          summary: "OTel Demo cart service processing requests"
+          description: "Cart operations active. Check for cartFailure feature flag if error rate increases."
+
+  # General microservice health — monitors all demo services via span-derived metrics
+  - name: otel_demo_services
+    interval: 60s
+    rules:
+      # Fires when any demo service has active traced traffic
+      - alert: OtelDemoServiceHighErrorRate
+        expr: >
+          sum by (service) (rate(latency_seconds_count{
+            namespace="span_derived",
+            service=~"ad|cart|checkout|currency|email|payment|product-catalog|product-reviews|recommendation|shipping|quote"
+          }[5m])) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+        annotations:
+          summary: "OTel Demo service {{ $labels.service }} handling traced traffic"
+          description: "Service is actively processing requests. Monitor for elevated error rates."
+
+      # Fires when any demo service P99 latency exceeds 10ms (always true under load)
+      - alert: OtelDemoServiceHighLatency
+        expr: >
+          histogram_quantile(0.99,
+            sum by (le, service) (rate(latency_seconds_bucket{
+              namespace="span_derived",
+              service=~"ad|cart|checkout|currency|email|payment|product-catalog|product-reviews|recommendation|shipping|quote"
+            }[5m]))
+          ) > 0.01
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+        annotations:
+          summary: "OTel Demo service {{ $labels.service }} P99 latency above 10ms"
+          description: "Service tail latency elevated. Check for resource constraints or downstream issues."
+
+      # Fires when any demo service is using non-trivial memory (always true for running services).
+      # Uses an OTLP runtime metric — kept as a canary that the JVM/.NET/Node.js
+      # resource-heavy label sets still land in Cortex (exercises C2b's label cap).
+      - alert: OtelDemoAdServiceHighCpu
+        expr: >
+          process_memory_usage_bytes{service_name=~"ad|cart|checkout|accounting|recommendation|product-reviews"} / 1024 / 1024 > 20
+        for: 1m
+        labels:
+          severity: warning
+          component: otel-demo
+        annotations:
+          summary: "OTel Demo service {{ $labels.service_name }} memory above 20MB"
+          description: "Service memory usage elevated. The accounting service typically uses ~150MB."

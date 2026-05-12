@@ -18,6 +18,35 @@ data:
               allowed_origins:
                 - "http://*"
                 - "https://*"
+      # Self-scrape pulls the collector's own otelcol_* metrics from the
+      # :8888 Prometheus endpoint (see service.telemetry below) so they
+      # land in Cortex. The base-stack alerts (OtelCollectorExportFailures,
+      # OtelCollectorHighMemory, OtelCollectorQueueNearCapacity,
+      # PrometheusTargetDown) depend on this.
+      prometheus/self:
+        config:
+          scrape_configs:
+            - job_name: otel-collector
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["localhost:8888"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: otel-collector
+      # Scrape envoy's /stats/prometheus for ingress-level RED visibility
+      # when the otel-demo overlay is running. Harmless no-op otherwise —
+      # DNS resolution for frontend-proxy just fails and the scrape drops.
+      prometheus/envoy:
+        config:
+          scrape_configs:
+            - job_name: envoy-frontend-proxy
+              scrape_interval: 15s
+              metrics_path: /stats/prometheus
+              static_configs:
+                - targets: ["frontend-proxy:10000"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: frontend-proxy
     processors:
       memory_limiter:
         check_interval: 5s
@@ -77,10 +106,15 @@ data:
         tls:
           insecure: true
           insecure_skip_verify: true
-      otlphttp/prometheus:
-        endpoint: "http://{{ .Release.Name }}-prometheus-server:80/api/v1/otlp"
+      # Cortex remote-write sink. resource_to_telemetry_conversion promotes
+      # OTel resource attributes (service.name, service.version, …) onto
+      # every sample so Cortex-side series carry `service_name` labels.
+      prometheusremotewrite/cortex:
+        endpoint: "http://{{ .Release.Name }}-prometheus-server:80/api/v1/push"
         tls:
           insecure: true
+        resource_to_telemetry_conversion:
+          enabled: true
     extensions:
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
@@ -102,9 +136,9 @@ data:
           processors: [resourcedetection, memory_limiter, transform, batch]
           exporters: [otlp/opensearch, debug]
         metrics:
-          receivers: [otlp]
+          receivers: [otlp, prometheus/self, prometheus/envoy]
           processors: [resourcedetection, memory_limiter, batch]
-          exporters: [otlphttp/prometheus, debug]
+          exporters: [prometheusremotewrite/cortex, debug]
         logs:
           receivers: [otlp]
           processors: [resourcedetection, memory_limiter, transform, batch]

@@ -1,0 +1,21 @@
+{{- if .Values.cortex.enabled }}
+# Service name preserved as <release>-prometheus-server so existing
+# references in otel-collector/data-prepper/init-dashboards keep working
+# after the Prometheus → Cortex swap.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-prometheus-server
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cortex
+spec:
+  selector:
+    app.kubernetes.io/component: cortex
+  ports:
+    - name: http
+      # Listen on :80 to match the vanilla prometheus-server Service ABI
+      # (callers continue to use PROMETHEUS_PORT=80).
+      port: 80
+      targetPort: 9090
+{{- end }}

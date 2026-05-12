@@ -114,7 +114,7 @@ resource "helm_release" "observability_stack" {
   chart     = "${path.module}/../../charts/observability-stack"
   namespace = kubernetes_namespace.observability.metadata[0].name
 
-  timeout         = 900
+  timeout         = 1800
   wait            = true
   wait_for_jobs   = true
   cleanup_on_fail = true

@@ -1,0 +1,16 @@
+{{- if .Values.alertmanager.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-alertmanager
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: alertmanager
+spec:
+  selector:
+    app.kubernetes.io/component: alertmanager
+  ports:
+    - name: http
+      port: 9093
+      targetPort: 9093
+{{- end }}

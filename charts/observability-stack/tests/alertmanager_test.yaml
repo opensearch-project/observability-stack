@@ -1,0 +1,73 @@
+suite: alertmanager
+templates:
+  - templates/alertmanager-deployment.yaml
+  - templates/alertmanager-service.yaml
+  - templates/alertmanager-secret.yaml
+  - templates/alertmanager-pvc.yaml
+tests:
+  - it: should render deployment, secret, service, pvc by default
+    release:
+      name: obs-stack
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: templates/alertmanager-deployment.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/alertmanager-service.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/alertmanager-secret.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/alertmanager-pvc.yaml
+
+  - it: should not render when disabled
+    set:
+      alertmanager.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/alertmanager-deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/alertmanager-service.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/alertmanager-secret.yaml
+
+  - it: service should be named <release>-alertmanager on port 9093
+    release:
+      name: obs-stack
+    template: templates/alertmanager-service.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: obs-stack-alertmanager
+      - equal:
+          path: spec.ports[0].port
+          value: 9093
+
+  - it: deployment should use configured image tag
+    release:
+      name: obs-stack
+    template: templates/alertmanager-deployment.yaml
+    set:
+      alertmanager.image.tag: v0.27.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "prom/alertmanager:v0.27.0"
+
+  - it: secret should inline the opensearchPassword into alertmanager.yml
+    release:
+      name: obs-stack
+    template: templates/alertmanager-secret.yaml
+    set:
+      opensearchPassword: "TestSecret_abc123"
+    asserts:
+      - isKind:
+          of: Secret
+      - matchRegex:
+          path: stringData["alertmanager.yml"]
+          pattern: "TestSecret_abc123"

@@ -1,0 +1,57 @@
+suite: otel-collector configmap
+templates:
+  - templates/otel-collector-configmap.yaml
+tests:
+  - it: should render configmap by default
+    release:
+      name: obs-stack
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: otel-collector-config
+
+  - it: should use prometheusremotewrite/cortex as the metrics exporter
+    release:
+      name: obs-stack
+    asserts:
+      - matchRegex:
+          path: data.relay
+          pattern: "prometheusremotewrite/cortex:"
+      - notMatchRegex:
+          path: data.relay
+          pattern: "otlphttp/prometheus:"
+      - matchRegex:
+          path: data.relay
+          pattern: "/api/v1/push"
+
+  - it: should enable resource_to_telemetry_conversion on the cortex exporter
+    release:
+      name: obs-stack
+    asserts:
+      - matchRegex:
+          path: data.relay
+          pattern: "resource_to_telemetry_conversion:\\s+enabled: true"
+
+  - it: should include prometheus/self and prometheus/envoy receivers
+    release:
+      name: obs-stack
+    asserts:
+      - matchRegex:
+          path: data.relay
+          pattern: "prometheus/self:"
+      - matchRegex:
+          path: data.relay
+          pattern: "prometheus/envoy:"
+
+  - it: metrics pipeline should route to the cortex exporter
+    release:
+      name: obs-stack
+    asserts:
+      - matchRegex:
+          path: data.relay
+          pattern: "receivers:\\s*\\[otlp,\\s*prometheus/self,\\s*prometheus/envoy\\]"
+      - matchRegex:
+          path: data.relay
+          pattern: "exporters:\\s*\\[prometheusremotewrite/cortex,\\s*debug\\]"

@@ -42,6 +42,10 @@ spec:
               value: "{{ .Release.Name }}-prometheus-server"
             - name: PROMETHEUS_PORT
               value: "80"
+            - name: ALERTMANAGER_HOST
+              value: "{{ .Release.Name }}-alertmanager"
+            - name: ALERTMANAGER_PORT
+              value: "9093"
             - name: OPENSEARCH_ENDPOINT
               value: "https://opensearch-cluster-master:9200"
             - name: ANONYMOUS_AUTH_ENABLED

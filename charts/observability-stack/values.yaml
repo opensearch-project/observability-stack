@@ -145,6 +145,7 @@ opensearch-dashboards:
       uiSettings.overrides.home:useNewHomePage: true
       uiSettings.overrides.query:enhancements:enabled: true
       uiSettings.overrides.explore:experimental: true
+      observability.alertManager.enabled: true
 
 # -- Data Prepper
 data-prepper:
@@ -241,120 +242,44 @@ opentelemetry-collector:
       servicePort: 8888
       protocol: TCP
 
-# -- Prometheus
-prometheus:
+# -- Cortex (drop-in Prometheus replacement with Ruler + Alertmanager)
+# Exposed as Service `<release>-prometheus-server` so existing callers
+# (otel-collector, data-prepper, init-dashboards) keep working.
+cortex:
   enabled: true
-  server:
-    # Retention — how long Prometheus keeps metrics. Increase for longer history.
-    retention: "15d"
-    persistentVolume:
-      enabled: true
-      size: 50Gi
-    resources:
-      requests:
-        memory: "2Gi"
-        cpu: "500m"
-      limits:
-        memory: "4Gi"
-        cpu: "1000m"
-    extraFlags:
-      - "web.enable-remote-write-receiver"
-      - "web.enable-otlp-receiver"
-      - "web.enable-lifecycle"
-      - "enable-feature=exemplar-storage"
-    global:
-      scrape_interval: 60s
-      scrape_timeout: 10s
-      evaluation_interval: 60s
-      external_labels:
-        cluster: 'observability-stack'
-        environment: 'development'
-  # Disable default K8s scrape configs — they add ~60k series from API server internals.
-  # We keep node-exporter and kube-state-metrics (scraped via service endpoints below),
-  # and add explicit scrape for OTel Collector and Prometheus self-monitoring.
-  scrapeConfigs:
-    # Disable noisy defaults
-    kubernetes-api-servers: { enabled: false }
-    kubernetes-nodes: { enabled: false }
-    kubernetes-nodes-cadvisor: { enabled: false }
-    kubernetes-pods: { enabled: false }
-    kubernetes-pods-slow: { enabled: false }
-    kubernetes-service-endpoints: { enabled: false }
-    kubernetes-service-endpoints-slow: { enabled: false }
-    kubernetes-services: { enabled: false }
-    prometheus-pushgateway: { enabled: false }
-    # Keep self-monitoring
-    prometheus:
-      static_configs:
-        - targets: ['localhost:9090']
-  # Dynamic scrape targets — uses tpl so {{ .Release.Name }} is resolved at render time
-  extraScrapeConfigs: |
-    - job_name: otel-collector
-      static_configs:
-        - targets: ['{{ .Release.Name }}-opentelemetry-collector:8888']
-          labels:
-            service: 'otel-collector'
-            component: 'telemetry-ingestion'
-      scrape_interval: 10s
-    - job_name: opensearch
-      static_configs:
-        - targets: ['{{ .Release.Name }}-observability-stack-opensearch-exporter:9114']
-          labels:
-            service: 'opensearch'
-            component: 'search-storage'
-      scrape_interval: 30s
-    - job_name: data-prepper
-      metrics_path: '/metrics/prometheus'
-      static_configs:
-        - targets: ['{{ .Release.Name }}-data-prepper:4900']
-          labels:
-            service: 'data-prepper'
-            component: 'telemetry-processing'
-      scrape_interval: 30s
-    - job_name: node-exporter
-      kubernetes_sd_configs:
-        - role: endpoints
-      relabel_configs:
-        - source_labels: [__meta_kubernetes_service_name]
-          regex: {{ .Release.Name }}-prometheus-node-exporter
-          action: keep
-    - job_name: kube-state-metrics
-      kubernetes_sd_configs:
-        - role: endpoints
-      relabel_configs:
-        - source_labels: [__meta_kubernetes_service_name]
-          regex: {{ .Release.Name }}-kube-state-metrics
-          action: keep
-        - source_labels: [__meta_kubernetes_endpoint_port_name]
-          regex: http
-          action: keep
-  scrapeConfigFiles: []
-  serverFiles:
-    prometheus.yml:
-      otlp:
-        keep_identifying_resource_attributes: true
-        promote_resource_attributes:
-          - service.instance.id
-          - service.name
-          - service.namespace
-          - service.version
-          - deployment.environment.name
-          - gen_ai.agent.id
-          - gen_ai.agent.name
-          - gen_ai.provider.name
-          - gen_ai.request.model
-          - gen_ai.response.model
-      storage:
-        tsdb:
-          out_of_order_time_window: 30m
-  alertmanager:
-    enabled: false
-  kube-state-metrics:
+  image:
+    repository: "cortexproject/cortex"
+    tag: "v1.18.1"
+    pullPolicy: IfNotPresent
+  persistence:
     enabled: true
-  prometheus-node-exporter:
+    size: 50Gi
+    # storageClass: "gp3"       # Uncomment for AWS; use the EKS overlay
+  # Block retention — hands off to -compactor.blocks-retention-period
+  retention: "15d"
+  resources:
+    requests:
+      memory: "500Mi"
+      cpu: "100m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+# -- Alertmanager
+# Routes Cortex-fired alerts to webhooks/Slack/PagerDuty/email and
+# indexes every alert into OpenSearch for history + search.
+alertmanager:
+  enabled: true
+  image:
+    repository: "prom/alertmanager"
+    tag: "v0.27.0"
+    pullPolicy: IfNotPresent
+  persistence:
     enabled: true
-  prometheus-pushgateway:
-    enabled: false
+    size: 5Gi
+  resources:
+    limits:
+      memory: "128Mi"
 
 # -- Global settings
 # opensearchUsername/Password are the single source of truth for all components.
@@ -420,6 +345,14 @@ opentelemetry-demo:
       - name: OTEL_COLLECTOR_NAME
         # Must match: <release-name>-opentelemetry-collector
         value: obs-stack-opentelemetry-collector
+  # Expose envoy's admin listener (ENVOY_ADMIN_PORT=10000) on the frontend-proxy
+  # Service so the OTel Collector's `prometheus/envoy` scrape target resolves.
+  # The upstream subchart only maps the app port 8080 by default.
+  components:
+    frontend-proxy:
+      ports:
+        - name: envoy-admin
+          value: 10000
   # Disable all bundled backends — we use our own stack
   opentelemetry-collector:
     enabled: false
