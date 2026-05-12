@@ -271,6 +271,10 @@ For advanced cluster topologies (dedicated cluster manager nodes, coordinating n
 - [Setup multi-node cluster on Kubernetes using Helm](https://opensearch.org/blog/setup-multinode-cluster-kubernetes/) — walkthrough for dedicated cluster manager, data, and coordinating nodes with the official Helm chart
 - [Sizing domains](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/sizing-domains.html) — AWS sizing calculator and methodology (applicable to self-managed clusters)
 
+## Docker Compose Sync
+
+This Helm chart mirrors the Docker Compose configuration for feature parity. See **[SYNC.md](SYNC.md)** for the current sync checkpoint, what stays in sync vs. what is intentionally different, and the full SOP for detecting and fixing drift.
+
 ## Key Values
 
 See `values.yaml` for all options. Notable settings:
