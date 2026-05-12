@@ -54,6 +54,18 @@ git log <SYNC_COMMIT>..HEAD --oneline -- \
   docker-compose/data-prepper/ \
   docker-compose/prometheus/ \
   docker-compose/opensearch-dashboards/
+
+# Discover any NEW services not yet covered by the path list above —
+# every new `docker-compose/<service>/` directory and every new top-level
+# service in any `docker-compose*.yml` should either be reflected in Helm
+# or explicitly listed in "What Is Intentionally Different" below.
+ls docker-compose/ | sort > /tmp/compose-services
+yq -r '.services | keys[]' docker-compose.yml docker-compose.*.yml 2>/dev/null | sort -u > /tmp/compose-svc-keys
+diff /tmp/compose-services <(grep -oE '^[a-z][a-z0-9-]+' charts/observability-stack/templates/*.yaml | sort -u) || true
+
+# When you find a new service, add it to BOTH:
+#   - the "What Stays in Sync" list (above) if it should be deployed in K8s
+#   - the path list in this Step 1 command for future drift checks
 ```
 
 #### Step 2: For each commit, check if the change needs Helm propagation

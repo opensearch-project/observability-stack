@@ -112,6 +112,19 @@ The readonly account is recommended as the default for day-to-day monitoring. Sw
 
 The OTel Collector config and Data Prepper pipeline config are rendered as parent-chart templates using `{{ .Release.Name }}`. This means the chart works with any release name — service hostnames are resolved automatically.
 
+## Production TLS
+
+The chart's defaults are tuned for development convenience and use insecure intra-cluster transport for the telemetry pipeline:
+
+- **OTel Collector → Data Prepper** runs over plaintext gRPC (`tls.insecure: true`, `insecure_skip_verify: true`)
+- **Data Prepper → OpenSearch** trusts the cluster's self-signed cert (`insecure: true`)
+- **OpenSearch Dashboards → OpenSearch** uses `verificationMode: none`
+
+For production, you should:
+- Front the cluster with a service mesh (e.g. Istio, Linkerd) for mTLS between pods, **or**
+- Issue a real CA-signed certificate for OpenSearch (cert-manager + a Secret) and flip `tls.insecure` / `insecure_skip_verify` to `false` in `templates/otel-collector-configmap.yaml`, plus the matching settings in the Data Prepper pipeline Secret and Dashboards config
+- Always use the [Gateway API](#exposing-dashboards-gateway-api) section below to terminate TLS for external Dashboards traffic
+
 ## Exposing Dashboards (Gateway API)
 
 The chart includes optional [Gateway API](https://gateway-api.sigs.k8s.io/) resources for exposing OpenSearch Dashboards with TLS. Disabled by default.
