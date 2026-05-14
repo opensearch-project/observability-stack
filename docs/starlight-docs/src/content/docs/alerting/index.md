@@ -65,7 +65,7 @@ OpenSearch Alerting is one of two alerting surfaces in the stack. The other is a
 
 ### Rule file locations
 
-Cortex rules are shipped as YAML files mounted into the `cortex-rules-init` container on startup. Two namespaces are loaded:
+Cortex rules are shipped as YAML files mounted into the `alerting-rules-monitors-init` container on startup (and `otel-demo-alerting-rules-monitors-init` when the otel-demo overlay is enabled). Two namespaces are loaded:
 
 - **`stack`** — watches the observability stack itself. Loaded always.
   - File: `docker-compose/prometheus/rules-stack/stack-alerts.yml`
@@ -77,7 +77,7 @@ Cortex rules are shipped as YAML files mounted into the `cortex-rules-init` cont
 To add or edit rules, change the YAML file and re-run the loader:
 
 ```bash
-docker compose up -d --force-recreate cortex-rules-init
+docker compose up -d --force-recreate alerting-rules-monitors-init
 ```
 
 The loader upserts via `POST /api/v1/rules/{namespace}`, so re-runs are idempotent and edits take effect immediately. Inspect loaded groups at `http://localhost:9090/api/v1/rules/stack` or `http://localhost:9090/api/v1/rules/otel_demo` (Cortex returns YAML from this Ruler API endpoint).
