@@ -768,50 +768,40 @@ services:
   # ******************
   # Demo-only Alerting Extensions
   # ******************
-  # Demo-only rule loader. Runs alongside the base cortex-rules-init container
-  # (defined in docker-compose.yml) and loads the `otel_demo` Cortex namespace
-  # only. Named separately rather than overlaying the base service because
-  # Docker Compose >= v2.38 rejects service-name overlays on `include:`-imported
-  # resources. Both containers hit the same idempotent Ruler upsert API.
-  cortex-rules-init-otel-demo:
+  # Demo-only one-shot loader for OTel Demo alerting:
+  #   1. Cortex ruler rules from /rules/otel_demo
+  #   2. OpenSearch alerting monitors for demo traces/logs (checkout, payment, …)
+  # Mirrors the base `alerting-rules-monitors-init` container — both stages run
+  # regardless of each other's outcome and the container exits non-zero on any
+  # failure. Named separately from the base container rather than overlaying it
+  # because Docker Compose >= v2.38 rejects service-name overlays on
+  # `include:`-imported resources. Both containers hit idempotent upsert APIs.
+  otel-demo-alerting-rules-monitors-init:
     image: python:3.11-alpine
-    container_name: cortex-rules-init-otel-demo
-    # `sleep infinity` after success so `docker compose up --wait` is happy.
-    command: sh -c "pip install requests pyyaml && python /init.py && exec sleep infinity"
+    container_name: otel-demo-alerting-rules-monitors-init
+    command:
+      - sh
+      - -c
+      - |
+        pip install requests pyyaml || exit 1
+        fail=0
+        echo "=== Loading Cortex rules (otel_demo) ==="
+        python /init-cortex-rules.py || fail=1
+        echo "=== Creating OpenSearch monitors (otel_demo) ==="
+        python /init-otel-demo-monitors.py || fail=1
+        exit $$fail
     depends_on:
       prometheus:
         condition: service_healthy
-    volumes:
-      - ./docker-compose/cortex/init-cortex-rules.py:/init.py
-      - ./docker-compose/prometheus/rules-otel-demo:/rules/otel_demo:ro
-    <<: *network
-    restart: "no"
-    # Mirror the base cortex-rules-init healthcheck: the script touches
-    # /tmp/rules-loaded on a clean load, and `--wait` blocks on it so callers
-    # that query /api/v1/rules/otel_demo after --wait see the rules already in
-    # Cortex. 40×3s=120s covers pip install + load time.
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
-      interval: 3s
-      timeout: 2s
-      retries: 40
-      start_period: 10s
-    logging: *logging
-
-  # OTel Demo Monitors Init - Creates OpenSearch alerting monitors for demo
-  # traces/logs (checkout, payment, cart, frontend). Idempotent.
-  otel-demo-monitors-init:
-    image: python:3.11-alpine
-    container_name: otel-demo-monitors-init
-    command: sh -c "pip install requests && python /init.py"
-    depends_on:
       opensearch:
         condition: service_healthy
     environment:
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
     volumes:
-      - ./docker-compose/opentelemetry-demo/init-otel-demo-monitors.py:/init.py
+      - ./docker-compose/cortex/init-cortex-rules.py:/init-cortex-rules.py
+      - ./docker-compose/prometheus/rules-otel-demo:/rules/otel_demo:ro
+      - ./docker-compose/opentelemetry-demo/init-otel-demo-monitors.py:/init-otel-demo-monitors.py
     <<: *network
     restart: "no"
     logging: *logging

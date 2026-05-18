@@ -1,5 +1,5 @@
 # Observability Stack health alerting rules
-# Loaded into Cortex's `stack` ruler namespace by cortex-rules-init (base compose).
+# Loaded into Cortex's `stack` ruler namespace by alerting-rules-monitors-init (base compose).
 # These rules run whether or not the otel-demo overlay is enabled.
 #
 # Every rule here targets metrics emitted or scraped by the stack itself

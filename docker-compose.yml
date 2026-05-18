@@ -202,56 +202,39 @@ services:
       retries: 10
     logging: *logging
 
-  # Cortex Rules Initialization - Loads alerting rules via the Cortex Ruler API.
-  # Scans /rules/<namespace>/*.yml and POSTs each group. Idempotent.
-  # Base stack rules (/rules/stack) are always loaded. The otel-demo overlay
-  # extends this container to also mount /rules/otel_demo.
-  cortex-rules-init:
+  # Alerting Rules + Monitors Init - One-shot loader for stack-wide alerting:
+  #   1. Cortex ruler rules from /rules/stack (Prometheus rule groups)
+  #   2. OpenSearch alerting monitors that watch the stack itself (cluster health, etc)
+  # Both stages are idempotent. The container runs both regardless of each
+  # other's outcome and exits non-zero if either failed, so a partial failure
+  # is visible but doesn't block the working half. The otel-demo overlay
+  # defines a sibling container that loads its own rules/monitors.
+  alerting-rules-monitors-init:
     image: python:3.11-alpine
-    container_name: cortex-rules-init
-    # `sleep infinity` after the script succeeds so `docker compose up --wait`
-    # doesn't trip over a clean exit — `--wait` treats any exited container as
-    # a failure unless a dependent uses `service_completed_successfully`.
-    command: sh -c "pip install requests pyyaml && python /init.py && exec sleep infinity"
+    container_name: alerting-rules-monitors-init
+    command:
+      - sh
+      - -c
+      - |
+        pip install requests pyyaml || exit 1
+        fail=0
+        echo "=== Loading Cortex rules ==="
+        python /init-cortex-rules.py || fail=1
+        echo "=== Creating OpenSearch monitors ==="
+        python /init-stack-monitors.py || fail=1
+        exit $$fail
     depends_on:
       prometheus:
         condition: service_healthy
-    volumes:
-      - ./docker-compose/cortex/init-cortex-rules.py:/init.py
-      - ./docker-compose/prometheus/rules-stack:/rules/stack:ro
-    networks:
-      - observability-stack-network
-    restart: "no"
-    # The init script touches /tmp/rules-loaded after a clean load. Without
-    # this check `--wait` returns the moment pip starts (container "running"),
-    # well before rules are actually in Cortex — so any caller that queries
-    # /api/v1/rules immediately after --wait sees an empty list. 40×3s=120s
-    # covers pip install + load.
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/rules-loaded"]
-      interval: 3s
-      timeout: 2s
-      retries: 40
-      start_period: 10s
-    logging: *logging
-
-  # OpenSearch Stack Monitors Init - Creates alerting monitors that watch the
-  # health of the observability stack itself (cluster health, etc). Idempotent
-  # by monitor name. The init script hardcodes https://opensearch:9200, so it
-  # hard-depends on local OpenSearch — without it there's nothing to target.
-  opensearch-stack-monitors-init:
-    image: python:3.11-alpine
-    container_name: opensearch-stack-monitors-init
-    command: sh -c "pip install requests && python /init.py"
-    depends_on:
       opensearch:
         condition: service_healthy
-        required: true
     environment:
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
     volumes:
-      - ./docker-compose/opensearch-dashboards/init/init-stack-monitors.py:/init.py
+      - ./docker-compose/cortex/init-cortex-rules.py:/init-cortex-rules.py
+      - ./docker-compose/prometheus/rules-stack:/rules/stack:ro
+      - ./docker-compose/opensearch-dashboards/init/init-stack-monitors.py:/init-stack-monitors.py
     networks:
       - observability-stack-network
     restart: "no"
