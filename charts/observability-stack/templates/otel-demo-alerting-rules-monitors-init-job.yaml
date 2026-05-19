@@ -1,0 +1,89 @@
+{{- if and .Values.cortex.enabled .Values.opensearch.enabled (index .Values "opentelemetry-demo" "enabled") }}
+# Demo-only Alerting Rules + Monitors Init — runs alongside the base
+# alerting-rules-monitors-init Job and loads:
+#   1. Cortex ruler rules from /rules/otel_demo
+#   2. OpenSearch alerting monitors for OTel Demo traces/logs
+#      (checkout, payment, cart, frontend RED signals)
+# Mirrors the `otel-demo-alerting-rules-monitors-init` container in
+# docker-compose.otel-demo.yml. Named separately from the base Job (rather
+# than overlaying its volume mounts) because Helm doesn't support
+# subchart-style service overlays — and the upstream API is idempotent
+# regardless of how the rules are partitioned across containers.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init-script
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "11"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  init-cortex-rules.py: |
+{{ .Files.Get "files/init-cortex-rules.py" | indent 4 }}
+  init-otel-demo-monitors.py: |
+{{ .Files.Get "files/init-otel-demo-monitors.py" | indent 4 }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "15"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-demo-alerting-rules-monitors-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: otel-demo-alerting-rules-monitors-init
+          image: python:3.11-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              pip install -q requests pyyaml || exit 1
+              fail=0
+              echo "=== Loading Cortex rules (otel_demo) ==="
+              python /scripts/init-cortex-rules.py || fail=1
+              echo "=== Creating OpenSearch monitors (otel_demo) ==="
+              python /scripts/init-otel-demo-monitors.py || fail=1
+              exit $fail
+          env:
+            - name: CORTEX_URL
+              value: "http://{{ .Release.Name }}-prometheus-server:80"
+            - name: OPENSEARCH_URL
+              value: "https://opensearch-cluster-master:9200"
+            - name: OPENSEARCH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: username
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: password
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+            - name: rules-otel-demo
+              mountPath: /rules/otel_demo
+      volumes:
+        - name: script
+          configMap:
+            name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init-script
+        - name: rules-otel-demo
+          configMap:
+            name: {{ include "observability-stack.fullname" . }}-cortex-rules-otel-demo
+{{- end }}

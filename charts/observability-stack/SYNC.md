@@ -6,10 +6,10 @@ This Helm chart mirrors the Docker Compose configuration for feature parity acro
 
 | Field | Value |
 |-------|-------|
-| **Last synced commit** | `367d855` |
-| **Commit message** | `config(opensearch-dashboards): enable icon side nav v2 (#227)` |
-| **Date** | 2026-05-07 |
-| **Synced by** | @sgguruda |
+| **Last synced commit** | `9dd153d` |
+| **Commit message** | `Upgrade data prepper to data-prepper-2.16.0-rc1 (#245)` |
+| **Date** | 2026-05-19 |
+| **Synced by** | @ashisagr |
 
 ## What Stays in Sync
 
