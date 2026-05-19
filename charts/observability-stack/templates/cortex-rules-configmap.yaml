@@ -1,0 +1,36 @@
+{{- if .Values.cortex.enabled }}
+# Cortex ruler rules, split per namespace. The init job mounts each
+# ConfigMap at /rules/<namespace>/ so init-cortex-rules.py picks up the
+# directory → namespace mapping its compose-side twin already does.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-cortex-rules-stack
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cortex
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  stack-alerts.yml: |
+{{ .Files.Get "files/rules-stack/stack-alerts.yml" | indent 4 }}
+{{- if index .Values "opentelemetry-demo" "enabled" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-cortex-rules-otel-demo
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cortex
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+data:
+  otel-demo-alerts.yml: |
+{{ .Files.Get "files/rules-otel-demo/otel-demo-alerts.yml" | indent 4 }}
+{{- end }}
+{{- end }}

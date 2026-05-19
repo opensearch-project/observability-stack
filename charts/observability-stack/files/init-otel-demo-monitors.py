@@ -12,7 +12,7 @@ import sys
 import time
 import requests
 
-OPENSEARCH_URL = "https://opensearch:9200"
+OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "https://opensearch:9200")
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
 if not PASSWORD:

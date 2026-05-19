@@ -1,0 +1,52 @@
+suite: otel-demo frontend-proxy ports
+# Targets the otel-demo subchart's component template directly so we lock
+# in the schema we depend on for the envoy admin port wiring. The chart's
+# `prometheus/envoy` scrape target ("frontend-proxy:10000") in the OTel
+# Collector configmap only resolves if the subchart actually publishes
+# port 10000 on the frontend-proxy Service; this test catches a subchart
+# bump that drops/renames `components.<name>.ports[].value`.
+templates:
+  - charts/opentelemetry-demo/templates/component.yaml
+release:
+  name: obs-stack
+set:
+  opentelemetry-demo.enabled: true
+tests:
+  # Both the Service and Deployment for frontend-proxy have
+  # metadata.name=frontend-proxy, so a metadata.name selector hits two
+  # docs and helm-unittest errors with "multiple indexes found". We
+  # disambiguate by selecting on a path unique to each kind:
+  #   • Service:    spec.type == ClusterIP
+  #   • Deployment: spec.replicas == 1
+  - it: frontend-proxy Service should expose envoy-admin port 10000
+    # spec.selector is Service-only. The default subchart values give every
+    # Service a `selector.opentelemetry.io/name` label set to the component
+    # name, so we can use that to pick out exactly the frontend-proxy
+    # Service across all 30+ component renders.
+    documentSelector:
+      path: spec.selector["opentelemetry.io/name"]
+      value: frontend-proxy
+    asserts:
+      - equal:
+          path: kind
+          value: Service
+      - contains:
+          path: spec.ports
+          content:
+            name: envoy-admin
+            port: 10000
+            targetPort: 10000
+
+  - it: frontend-proxy Deployment should expose envoy-admin containerPort 10000
+    documentSelector:
+      path: spec.template.metadata.labels["app.kubernetes.io/name"]
+      value: frontend-proxy
+    asserts:
+      - equal:
+          path: kind
+          value: Deployment
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: envoy-admin
+            containerPort: 10000

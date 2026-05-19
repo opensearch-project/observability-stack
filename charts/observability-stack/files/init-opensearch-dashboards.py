@@ -13,6 +13,8 @@ USERNAME = os.getenv("OPENSEARCH_USER", "admin")
 PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
 PROMETHEUS_HOST = os.getenv("PROMETHEUS_HOST", "prometheus")
 PROMETHEUS_PORT = os.getenv("PROMETHEUS_PORT", "9090")
+ALERTMANAGER_HOST = os.getenv("ALERTMANAGER_HOST", "alertmanager")
+ALERTMANAGER_PORT = os.getenv("ALERTMANAGER_PORT", "9093")
 _opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
 OPENSEARCH_ENDPOINT = os.getenv("OPENSEARCH_ENDPOINT", f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}")
 ISM_RETENTION_DAYS = int(os.getenv("ISM_RETENTION_DAYS", "7"))
@@ -67,6 +69,7 @@ def configure_ism_policies():
         pid = policy_body["policy"]["policy_id"]
         url = f"{OPENSEARCH_ENDPOINT}/_plugins/_ism/policies/{pid}"
         try:
+            # Get current policy to obtain seq_no/primary_term for update
             resp = requests.get(url, auth=(USERNAME, PASSWORD), verify=False, timeout=10)
             if resp.status_code == 200:
                 existing = resp.json()
@@ -91,7 +94,6 @@ def configure_ism_policies():
                 print(f"  ⚠️  Get {pid}: {resp.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"  ⚠️  Error configuring {pid}: {e}")
-
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -327,14 +329,62 @@ def get_existing_prometheus_datasource(datasource_name):
         return None
 
 
+def get_prometheus_datasource_properties(datasource_name):
+    """Fetch the full properties map for a Prometheus dataconnection.
+
+    The /api/saved_objects/_find?type=data-connection endpoint only exposes
+    connectionId + type; the authoritative read for `properties` is the SQL
+    plugin's /api/dataconnections endpoint.
+    """
+    try:
+        response = requests.get(
+            f"{BASE_URL}/api/dataconnections",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+        if response.status_code != 200:
+            print(f"⚠️  GET /api/dataconnections returned {response.status_code}: {response.text[:200]}")
+            return None
+        for entry in response.json() or []:
+            if entry.get("name") == datasource_name:
+                return entry.get("properties") or {}
+        return None
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error reading dataconnections: {e}")
+        return None
+
+
 def create_prometheus_datasource(workspace_id):
     """Create Prometheus datasource using direct query API"""
     datasource_name = "ObservabilityStack_Prometheus"
 
+    # Cortex exposes the Prometheus-compatible query API under /prometheus
+    # (e.g. /prometheus/api/v1/query_range) while the Ruler admin API lives
+    # at the unprefixed root (/api/v1/rules/{namespace}). The SQL plugin's
+    # PrometheusClient exposes `prometheus.uri` and `prometheus.ruler.uri`
+    # exactly for this split — both must be set for query + rule management
+    # to work against Cortex.
+    prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}/prometheus"
+    ruler_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
+    alertmanager_endpoint = f"http://{ALERTMANAGER_HOST}:{ALERTMANAGER_PORT}"
+
+    desired_properties = {
+        "prometheus.uri": prometheus_endpoint,
+        "prometheus.ruler.uri": ruler_endpoint,
+        "alertmanager.uri": alertmanager_endpoint,
+    }
+
     # Check if datasource already exists
     existing_id = get_existing_prometheus_datasource(datasource_name)
     if existing_id:
-        # Verify the datasource is functional (masterkey can decrypt it)
+        # Verify the datasource is functional (masterkey can decrypt it).
+        # On helm upgrades the plugins.query.datasources.encryption.masterkey
+        # may differ from the key used to encrypt the stored secret; the
+        # SQL plugin then surfaces a decryption error on every query. Detect
+        # and wipe so the fresh POST below re-creates it with the current key.
+        broken = False
         try:
             verify = requests.get(
                 f"{OPENSEARCH_ENDPOINT}/_plugins/_query/_datasources/{datasource_name}",
@@ -344,10 +394,7 @@ def create_prometheus_datasource(workspace_id):
                 timeout=10,
             )
             if verify.status_code == 200 and "error" not in verify.json():
-                print(f"✅ Prometheus datasource already exists: {existing_id}")
-                if workspace_id and workspace_id != "default":
-                    associate_prometheus_with_workspace(workspace_id, existing_id)
-                return existing_id
+                pass
             else:
                 print(f"⚠️  Prometheus datasource exists but is broken (encryption key mismatch). Deleting to recreate...")
                 requests.delete(
@@ -357,12 +404,26 @@ def create_prometheus_datasource(workspace_id):
                     verify=False,
                     timeout=10,
                 )
+                broken = True
         except requests.exceptions.RequestException:
             pass
 
-    print("🔧 Creating Prometheus datasource...")
+        if not broken:
+            print(f"✅ Prometheus datasource already exists: {existing_id}")
+            reconciled = reconcile_prometheus_datasource_properties(
+                datasource_name, desired_properties
+            )
+            # Reconciliation goes through DELETE + POST, so the saved-object
+            # id may have changed — re-read before associating.
+            datasource_id = existing_id
+            if reconciled:
+                datasource_id = get_existing_prometheus_datasource(datasource_name) or existing_id
+            # Associate with workspace if provided
+            if workspace_id and workspace_id != "default":
+                associate_prometheus_with_workspace(workspace_id, datasource_id)
+            return datasource_id
 
-    prometheus_endpoint = f"http://{PROMETHEUS_HOST}:{PROMETHEUS_PORT}"
+    print("🔧 Creating Prometheus datasource...")
 
     # Grant anonymous users access to the Prometheus datasource when anonymous auth is enabled
     anonymous_auth = os.getenv("ANONYMOUS_AUTH_ENABLED", "false").lower() == "true"
@@ -372,12 +433,7 @@ def create_prometheus_datasource(workspace_id):
         "name": datasource_name,
         "allowedRoles": allowed_roles,
         "connector": "prometheus",
-        "properties": {
-            "prometheus.uri": prometheus_endpoint,
-            "prometheus.auth.type": "basicauth",
-            "prometheus.auth.username": "",
-            "prometheus.auth.password": "",
-        },
+        "properties": desired_properties,
     }
 
     try:
@@ -406,6 +462,9 @@ def create_prometheus_datasource(workspace_id):
             error_text = response.text
             if "already exists with name" in error_text:
                 print(f"✅ Prometheus datasource already exists: {datasource_name}")
+                reconcile_prometheus_datasource_properties(
+                    datasource_name, desired_properties
+                )
                 # Fetch the datasource ID and associate
                 datasource_id = get_existing_prometheus_datasource(datasource_name)
                 if datasource_id and workspace_id and workspace_id != "default":
@@ -420,6 +479,203 @@ def create_prometheus_datasource(workspace_id):
     except requests.exceptions.RequestException as e:
         print(f"⚠️  Error creating Prometheus datasource: {e}")
         return None
+
+
+def _delete_stale_data_connection_saved_object(saved_object_id):
+    """Delete the orphaned data-connection saved-object left behind by the
+    SQL plugin's DELETE /api/dataconnections/{name} path.
+
+    The SQL plugin removes its own dataconnection record but not the wrapper
+    OSD saved-object, so without this call an in-place upgrade ends up with
+    two data-connection saved-objects sharing the same connectionId — one
+    orphaned (no SQL backing), one live. The orphan pollutes workspace
+    listings and re-breaks every time the migration runs.
+    """
+    url = f"{BASE_URL}/api/saved_objects/data-connection/{saved_object_id}?force=true"
+    try:
+        resp = requests.delete(
+            url,
+            auth=(USERNAME, PASSWORD),
+            headers={"osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+        if resp.status_code in (200, 204, 404):
+            print(
+                f"🧹 Deleted stale data-connection saved-object {saved_object_id}"
+            )
+            return True
+        print(
+            f"⚠️  Failed to delete stale data-connection saved-object "
+            f"({resp.status_code}): {resp.text[:200]}"
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error deleting stale data-connection saved-object: {e}")
+    return False
+
+
+def _delete_correlations_referencing_data_connection(data_connection_id):
+    """Remove any correlation saved-objects whose references point at
+    `data_connection_id`. They'll be re-created idempotently later in the
+    init flow with the new id, so the net effect is "migrate reference,
+    not break it". Without this, the APM-config correlation from the pre-PR
+    install dangles: it still exists, but its references[2].dataConnection.id
+    points at a saved-object whose SQL-plugin backing is gone.
+    """
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/api/saved_objects/_find?type=correlations&per_page=1000",
+            auth=(USERNAME, PASSWORD),
+            headers={"osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            print(
+                f"⚠️  Could not list correlations for dangling-reference scan "
+                f"({resp.status_code})"
+            )
+            return
+
+        for obj in resp.json().get("saved_objects", []):
+            refs = obj.get("references") or []
+            if not any(
+                r.get("type") == "data-connection" and r.get("id") == data_connection_id
+                for r in refs
+            ):
+                continue
+            obj_id = obj.get("id")
+            workspaces = obj.get("workspaces") or []
+            if workspaces and workspaces[0] != "default":
+                url = f"{BASE_URL}/w/{workspaces[0]}/api/saved_objects/correlations/{obj_id}"
+            else:
+                url = f"{BASE_URL}/api/saved_objects/correlations/{obj_id}"
+            del_resp = requests.delete(
+                url + "?force=true",
+                auth=(USERNAME, PASSWORD),
+                headers={"osd-xsrf": "true"},
+                verify=False,
+                timeout=10,
+            )
+            if del_resp.status_code in (200, 204, 404):
+                print(
+                    f"🧹 Deleted stale correlation {obj_id} "
+                    f"(referenced pre-migration dataconnection)"
+                )
+            else:
+                print(
+                    f"⚠️  Failed to delete stale correlation {obj_id} "
+                    f"({del_resp.status_code}): {del_resp.text[:200]}"
+                )
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error scanning correlations for stale references: {e}")
+
+
+def reconcile_prometheus_datasource_properties(datasource_name, desired_properties):
+    """Ensure an existing Prometheus datasource carries all desired properties.
+
+    Returns True when the datasource was rewritten (so callers can re-fetch
+    the saved-object id, which changes across DELETE+POST), False when it
+    was already in the desired state or when reconciliation could not run.
+
+    Why: in-place upgrades keep the pre-PR datasource (prometheus.uri only)
+    so the OSD Alert Manager UI silently shows zero alerts because the
+    alertmanager.uri / prometheus.ruler.uri it needs were never added. This
+    reads the authoritative properties via /api/dataconnections, diffs them
+    against the desired set, and rewrites only on a mismatch to keep re-runs
+    idempotent.
+
+    Update strategy: DELETE + POST. The SQL plugin does not expose a PUT/PATCH
+    update endpoint for Prometheus dataconnections — POST rejects with 400
+    "already exists" and PUT/PATCH return 404. DELETE on
+    /api/dataconnections/{name} succeeds, after which a fresh POST recreates
+    the dataconnection with the full property set.
+
+    The SQL plugin's DELETE does not remove the wrapping OSD saved-object or
+    update any correlation that references it, so this function also cleans
+    up the stale saved-object and any dangling correlation references before
+    re-POSTing. The correlations are re-created idempotently later in the
+    init flow against the new id.
+    """
+    current = get_prometheus_datasource_properties(datasource_name)
+    if current is None:
+        print(
+            "⚠️  Could not read Prometheus datasource properties "
+            f"for '{datasource_name}' — skipping reconciliation"
+        )
+        return False
+
+    missing = [k for k in desired_properties if k not in current]
+    mismatched = [
+        k for k in desired_properties
+        if k in current and current.get(k) != desired_properties[k]
+    ]
+    if not missing and not mismatched:
+        print("✅ Prometheus datasource properties already up to date")
+        return False
+
+    if missing:
+        print(f"🔧 Prometheus datasource missing properties: {missing}")
+    if mismatched:
+        print(f"🔧 Prometheus datasource properties changed: {mismatched}")
+
+    # Capture the pre-existing saved-object id BEFORE the SQL-plugin DELETE
+    # so we can clean up the orphaned saved-object and any correlations that
+    # still point at it.
+    stale_saved_object_id = get_existing_prometheus_datasource(datasource_name)
+
+    delete_url = f"{BASE_URL}/api/dataconnections/{datasource_name}"
+    try:
+        delete_resp = requests.delete(
+            delete_url,
+            auth=(USERNAME, PASSWORD),
+            headers={"osd-xsrf": "true"},
+            verify=False,
+            timeout=10,
+        )
+        if delete_resp.status_code not in (200, 204, 404):
+            print(
+                f"⚠️  Prometheus datasource DELETE failed "
+                f"({delete_resp.status_code}): {delete_resp.text[:200]}"
+            )
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error deleting Prometheus datasource: {e}")
+        return False
+
+    # Remove the now-orphaned saved-object wrapper + any correlations that
+    # reference it. Best-effort — failures here are logged but don't abort
+    # the migration, since the subsequent POST still restores a working
+    # datasource even if cleanup is incomplete.
+    if stale_saved_object_id:
+        _delete_correlations_referencing_data_connection(stale_saved_object_id)
+        _delete_stale_data_connection_saved_object(stale_saved_object_id)
+
+    payload = {
+        "name": datasource_name,
+        "allowedRoles": [],
+        "connector": "prometheus",
+        "properties": desired_properties,
+    }
+    try:
+        response = requests.post(
+            f"{BASE_URL}/api/directquery/dataconnections",
+            auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json=payload,
+            verify=False,
+            timeout=10,
+        )
+        if response.status_code == 200:
+            print("✅ Recreated Prometheus datasource with updated properties")
+            return True
+        print(
+            f"⚠️  Prometheus datasource recreate after delete failed "
+            f"({response.status_code}): {response.text[:200]}"
+        )
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️  Error recreating Prometheus datasource: {e}")
+    return False
 
 
 def associate_prometheus_with_workspace(workspace_id, datasource_id):
@@ -519,7 +775,11 @@ def create_opensearch_datasource(workspace_id):
 
     print("🔧 Creating OpenSearch datasource...")
 
-    opensearch_endpoint = OPENSEARCH_ENDPOINT
+    # OSD_DATASOURCE_ENDPOINT lets operators override the endpoint written
+    # onto the saved object — useful when OSD runs outside the compose
+    # network and cannot resolve the `opensearch` service name. Falls back
+    # to the intra-network hostname when unset.
+    opensearch_endpoint = os.getenv("OSD_DATASOURCE_ENDPOINT", OPENSEARCH_ENDPOINT)
 
     payload = {
         "attributes": {
@@ -1236,12 +1496,16 @@ def create_overview_dashboard(workspace_id):
     markdown_text = f"""## Welcome to OpenSearch Observability Stack!
 Your entire stack, fully visible. APM traces, logs, Prometheus metrics, service maps, and AI agent tracing — unified in one open-source platform built for modern infrastructure. Total observability, zero lock-in.
 
+[Observability Stack Website](https://observability.opensearch.org) | [GitHub](https://github.com/opensearch-project/observability-stack)
+
 ### Architecture
 {arch_img_tag}
 
 ---
 
 ### Getting started
+For full setup instructions and guides, see the [Documentation](https://observability.opensearch.org/docs/).
+
 1. **Send telemetry** to the OTel Collector via gRPC (`:4317`) or HTTP (`:4318`)
 2. **Explore logs** to see application log events
 3. **Explore traces** to follow requests across services
@@ -1419,6 +1683,7 @@ def _create_saved_object_directly(workspace_id, obj):
             print(f"  ✅ {title} (created directly)")
             return True
         elif response.status_code == 409:
+            # Already exists — update
             update_payload = {"attributes": obj.get("attributes", {}), "references": obj.get("references", [])}
             requests.put(
                 url, auth=(USERNAME, PASSWORD),
@@ -1436,7 +1701,13 @@ def _create_saved_object_directly(workspace_id, obj):
 
 
 def import_ndjson_dashboard(workspace_id, ndjson_path):
-    """Import a dashboard and its dependencies from an ndjson export file."""
+    """Import a dashboard and its dependencies from an ndjson export file.
+
+    Objects that reference virtual index patterns (e.g. Prometheus datasource)
+    are separated out and created individually via the saved-objects API, which
+    does not validate references. The remaining objects are bulk-imported via the
+    _import API.
+    """
     import json
     import io
 
@@ -1460,9 +1731,12 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
             obj = json.loads(line)
         except json.JSONDecodeError:
             continue
+        # Skip the export summary line (has exportedCount but no type)
         if "exportedCount" in obj and "type" not in obj:
             continue
+        # Remove workspace associations so objects land in the target workspace
         obj.pop("workspaces", None)
+        # Remove version field that can cause conflicts on import
         obj.pop("version", None)
 
         if _has_virtual_reference(obj):
@@ -1476,6 +1750,7 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
 
     total_success = 0
 
+    # Bulk-import objects without virtual references
     if importable:
         ndjson_body = "\n".join(importable) + "\n"
 
@@ -1501,6 +1776,7 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
         except requests.exceptions.RequestException as e:
             print(f"⚠️  Error during bulk import: {e}")
 
+    # Create objects with virtual references individually
     for obj in direct_create:
         if _create_saved_object_directly(workspace_id, obj):
             total_success += 1

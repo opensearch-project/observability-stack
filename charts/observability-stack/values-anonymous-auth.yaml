@@ -62,6 +62,7 @@ opensearch:
               - "cluster:admin/opensearch/ql/datasources/read"
               - "cluster:admin/opensearch/ql/async_query/read"
               - "cluster:admin/opensearch/direct_query/read/query"
+              - "cluster:admin/opensearch/direct_query/read/resources"
               - "cluster:admin/opendistro/ism/policy/search"
               - "cluster:admin/opendistro/ism/policy/get"
               - "cluster:admin/opendistro/ism/managedindex/explain"

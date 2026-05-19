@@ -2,7 +2,7 @@ apiVersion: v2
 name: observability-stack
 description: OpenTelemetry-native observability platform for microservices, web apps, and AI agents
 type: application
-version: 0.1.0
+version: 0.2.0
 appVersion: "3.7.0"
 
 home: https://github.com/opensearch-project/observability-stack
@@ -50,11 +50,6 @@ dependencies:
     version: "0.147.0"
     repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
     condition: opentelemetry-collector.enabled
-
-  - name: prometheus
-    version: "28.13.0"
-    repository: "https://prometheus-community.github.io/helm-charts"
-    condition: prometheus.enabled
 
   - name: opentelemetry-demo
     version: "0.40.5"

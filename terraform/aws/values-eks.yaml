@@ -49,20 +49,26 @@ opensearch-dashboards:
 examples:
   enabled: false
 
-# Prometheus — persistent storage + resource limits
-prometheus:
-  server:
-    persistentVolume:
-      enabled: true
-      size: 50Gi
-      storageClass: gp2
-    resources:
-      requests:
-        memory: "2Gi"
-        cpu: "500m"
-      limits:
-        memory: "4Gi"
-        cpu: "1000m"
+# Cortex — persistent storage + larger resource envelope for EKS
+cortex:
+  persistence:
+    storageClass: gp2
+    size: 50Gi
+  resources:
+    requests:
+      memory: "2Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "1000m"
+
+# Alertmanager — gp2 storage for the silence/state volume
+alertmanager:
+  persistence:
+    storageClass: gp2
+  resources:
+    limits:
+      memory: "128Mi"
 
 # OTel Demo — realistic telemetry from ~20 microservices
 opentelemetry-demo:

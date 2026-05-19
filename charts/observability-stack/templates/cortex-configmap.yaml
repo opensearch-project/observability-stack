@@ -1,0 +1,23 @@
+{{- /*
+Ruler's alertmanager_url in files/cortex.yaml uses the compose service name
+`alertmanager:9093`. On K8s the service is `<release>-alertmanager`, so we
+swap the hostname at render time via sprig `replace`. `tpl` is avoided to
+keep cortex.yaml free of Helm-template surprises.
+*/ -}}
+{{- if .Values.cortex.enabled }}
+{{- $config := .Files.Get "files/cortex.yaml" -}}
+{{- /* Alertmanager Service name is `{{ .Release.Name }}-alertmanager`; see
+       templates/alertmanager-service.yaml. Keep in sync if that changes. */ -}}
+{{- $amHost := printf "%s-alertmanager:9093" .Release.Name -}}
+{{- $config = $config | replace "http://alertmanager:9093" (printf "http://%s" $amHost) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-cortex-config
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cortex
+data:
+  cortex.yaml: |
+{{ $config | indent 4 }}
+{{- end }}

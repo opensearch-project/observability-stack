@@ -1,0 +1,100 @@
+suite: cortex
+templates:
+  - templates/cortex-configmap.yaml
+  - templates/cortex-deployment.yaml
+  - templates/cortex-service.yaml
+  - templates/cortex-pvc.yaml
+tests:
+  - it: should render deployment, service, configmap, and pvc by default
+    release:
+      name: obs-stack
+    asserts:
+      - hasDocuments:
+          count: 1
+        template: templates/cortex-configmap.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/cortex-deployment.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/cortex-service.yaml
+      - hasDocuments:
+          count: 1
+        template: templates/cortex-pvc.yaml
+
+  - it: should not render when disabled
+    set:
+      cortex.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: templates/cortex-deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/cortex-service.yaml
+      - hasDocuments:
+          count: 0
+        template: templates/cortex-pvc.yaml
+
+  - it: service should be named <release>-prometheus-server for compat
+    release:
+      name: obs-stack
+    template: templates/cortex-service.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: obs-stack-prometheus-server
+
+  - it: service should expose port 80 forwarding to 9090
+    release:
+      name: obs-stack
+    template: templates/cortex-service.yaml
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 9090
+
+  - it: deployment should use configured image tag
+    release:
+      name: obs-stack
+    template: templates/cortex-deployment.yaml
+    set:
+      cortex.image.tag: v1.18.1
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: "cortexproject/cortex:v1.18.1"
+
+  - it: deployment should include cleanup-legacy-prometheus initContainer
+    release:
+      name: obs-stack
+    template: templates/cortex-deployment.yaml
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: cleanup-legacy-prometheus
+
+  - it: deployment should pass retention flag
+    release:
+      name: obs-stack
+    template: templates/cortex-deployment.yaml
+    set:
+      cortex.retention: "30d"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: -compactor.blocks-retention-period=30d
+
+  - it: deployment should expose http port 9090
+    release:
+      name: obs-stack
+    template: templates/cortex-deployment.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: http
+            containerPort: 9090

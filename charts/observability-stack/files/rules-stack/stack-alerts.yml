@@ -1,0 +1,85 @@
+# Observability Stack health alerting rules
+# Loaded into Cortex's `stack` ruler namespace by alerting-rules-monitors-init (base compose).
+# These rules run whether or not the otel-demo overlay is enabled.
+#
+# Every rule here targets metrics emitted or scraped by the stack itself
+# (Cortex and the OTel collector) — not by applications — so they stay
+# meaningful even with no workload pushing telemetry.
+#
+# Rule group:
+#   - stack_health: Cortex scrape targets + OTel collector pipeline health
+
+groups:
+  - name: stack_health
+    interval: 30s
+    rules:
+      # Fires when the OTel collector stops reporting to Cortex's self-scrape.
+      # Scoped to job="otel-collector" so the envoy scrape (which fails with
+      # DNS NXDOMAIN whenever the otel-demo overlay is off) can't flap this.
+      - alert: PrometheusTargetDown
+        expr: up{job="otel-collector"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: observability-stack
+        annotations:
+          summary: "OTel collector scrape target is down"
+          description: >-
+            Cortex has been unable to scrape the OTel collector's self-metrics
+            endpoint (localhost:8888) for 2 minutes. No telemetry is being
+            ingested until this is resolved.
+
+      # Fires when the collector is failing to export any signal type to
+      # a downstream (Data Prepper for traces/logs, Cortex for metrics).
+      # This is the single most direct indicator of active data loss.
+      - alert: OtelCollectorExportFailures
+        expr: >-
+          rate(otelcol_exporter_send_failed_spans_total[5m]) > 0
+          or rate(otelcol_exporter_send_failed_metric_points_total[5m]) > 0
+          or rate(otelcol_exporter_send_failed_log_records_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: observability-stack
+        annotations:
+          summary: "OTel collector failing to export to {{ $labels.exporter }}"
+          description: >-
+            The collector cannot deliver telemetry to a downstream backend.
+            Check that Data Prepper and Cortex (`prometheus`) are healthy and
+            accepting writes.
+
+      # Fires when the collector process RSS approaches its 500MB memory
+      # limit configured in docker-compose.yml. Leading indicator of OOM
+      # kill + a gap in ingested telemetry.
+      - alert: OtelCollectorHighMemory
+        expr: otelcol_process_memory_rss{job="otel-collector"} / 1024 / 1024 > 400
+        for: 5m
+        labels:
+          severity: warning
+          component: observability-stack
+        annotations:
+          summary: "OTel collector RSS at {{ $value | printf \"%.0f\" }}MB (limit: 500MB)"
+          description: >-
+            The collector is within 100MB of its memory limit. Raise
+            OTEL_COLLECTOR_MEMORY_LIMIT in .env or reduce throughput before
+            OOM kills the container.
+
+      # Fires when the outbound exporter queue is >80% full. Usually means
+      # the downstream (Data Prepper or Cortex) is accepting writes too
+      # slowly — a leading indicator before OtelCollectorExportFailures.
+      - alert: OtelCollectorQueueNearCapacity
+        expr: >-
+          (otelcol_exporter_queue_size / otelcol_exporter_queue_capacity) > 0.8
+          and otelcol_exporter_queue_capacity > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: observability-stack
+        annotations:
+          summary: >-
+            OTel collector {{ $labels.exporter }} queue at
+            {{ $value | humanizePercentage }}
+          description: >-
+            The outbound queue is filling up. Check the downstream backend
+            for slow writes; sustained backpressure will eventually cause
+            OtelCollectorExportFailures.

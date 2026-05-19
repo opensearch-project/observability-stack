@@ -6,6 +6,13 @@ set -euo pipefail
 
 CHART="charts/observability-stack"
 
+echo "==> helm dependency build"
+# Subchart tarballs must be present for unittest suites that target subchart
+# templates (e.g. tests/otel_demo_frontend_proxy_test.yaml against the
+# opentelemetry-demo subchart's component.yaml).
+helm dependency build "$CHART"
+
+echo ""
 echo "==> helm lint"
 helm lint "$CHART"
 

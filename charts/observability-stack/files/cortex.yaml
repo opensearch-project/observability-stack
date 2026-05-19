@@ -1,0 +1,88 @@
+# Cortex - Single-process mode for local development
+# Provides Prometheus-compatible query API + Ruler API for rule CRUD
+
+target: all
+
+# Disable multi-tenancy for local dev (no X-Scope-OrgID header required)
+auth_enabled: false
+
+server:
+  # Listen on 9090 to match the standard Prometheus port convention
+  # This ensures PROMETHEUS_PORT in .env works for both host and internal Docker networking
+  http_listen_port: 9090
+  grpc_listen_port: 9095
+
+distributor:
+  # shard_by_all_labels is required when using max_global_series_per_user /
+  # per_metric limits (see limits block below). Safe to enable in single-
+  # binary mode.
+  shard_by_all_labels: true
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    address: 127.0.0.1
+    final_sleep: 0s
+
+storage:
+  engine: blocks
+
+blocks_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/blocks
+  tsdb:
+    dir: /data/tsdb
+  bucket_store:
+    sync_dir: /data/tsdb-sync
+
+ruler:
+  enable_api: true
+  # Route firing alerts to Alertmanager for routing, grouping, and notification
+  alertmanager_url: http://alertmanager:9093
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+
+# Use S3-compatible storage via filesystem backend for ruler CRUD support
+# The 'local' backend is read-only; 'filesystem' supports full CRUD
+ruler_storage:
+  backend: filesystem
+  filesystem:
+    dir: /data/ruler-storage
+
+compactor:
+  data_dir: /data/compactor
+  sharding_ring:
+    kvstore:
+      store: inmemory
+
+store_gateway:
+  sharding_ring:
+    replication_factor: 1
+    kvstore:
+      store: inmemory
+
+# Per-tenant ingestion limits. Defaults cap a single metric at 50k series,
+# which span-derived RED metrics can blow through quickly when a noisy
+# label is in play. Data-prepper already strips the `randomKey` UUID
+# before remote-write, but keep the ceiling generous so experimental
+# instrumentation doesn't silently start dropping samples.
+limits:
+  max_global_series_per_metric: 500000
+  max_global_series_per_user: 5000000
+  ingestion_rate: 100000
+  ingestion_burst_size: 200000
+  # Cortex's default per-series label cap is 30. Full OTel resource sets for
+  # JVM/.NET/Node.js exceed that once the collector promotes resource attrs
+  # to labels (resource_to_telemetry_conversion: true), and the ruler's
+  # ALERTS series inherits the same labels, so keep the ceiling generous.
+  max_label_names_per_series: 50

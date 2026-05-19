@@ -1,0 +1,141 @@
+# Prometheus Alertmanager Configuration
+# Alert routing, grouping, and notification management
+#
+# Rendered into a Kubernetes Secret by the chart's alertmanager-secret.yaml template,
+# which substitutes brace-delimited placeholders for the OpenSearch user, password, and
+# host:port at render time. Brace-delimited markers are used (rather than bare names)
+# so future edits to this file that mention those names in prose are not replaced.
+#
+# Alerts from Cortex ruler are routed here for grouping, deduplication, and delivery.
+# All receivers index alerts into OpenSearch for persistent history and search.
+#
+# The OpenSearch index "alertmanager-alerts" is created automatically on first write.
+# Browse alerts in OpenSearch Dashboards or query via:
+#   curl -sk -u admin:$OPENSEARCH_PASSWORD https://localhost:9200/alertmanager-alerts/_search?pretty
+#
+# To add Slack, PagerDuty, email, or other integrations see:
+#   https://prometheus.io/docs/alerting/latest/configuration/#receiver
+
+# Global configuration for all routes
+global:
+  # Time to wait before declaring an alert resolved if not updated
+  resolve_timeout: 5m
+
+# Alert routing tree — determines which receiver handles each alert
+# Routes are evaluated top-down; the first match wins.
+route:
+  # Group alerts by name and service to reduce notification noise
+  group_by: ['alertname', 'service_name']
+  # Wait before sending initial notification for a new group
+  group_wait: 30s
+  # Wait before sending updates to an existing group
+  group_interval: 5m
+  # Wait before re-sending a notification for an already-firing alert
+  repeat_interval: 4h
+  # Default receiver for all alerts
+  receiver: 'opensearch-webhook'
+
+  routes:
+    # ── OTel Demo routes (most specific first) ──────────────────────────
+    # Critical demo alerts: checkout pipeline failures, payment errors, frontend 5xx
+    - match:
+        component: otel-demo
+        severity: critical
+      receiver: 'otel-demo-critical'
+      # Fast notification for user-facing breakage
+      group_by: ['alertname', 'service']
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+
+    # Warning demo alerts: latency degradation, cart errors, high CPU
+    - match:
+        component: otel-demo
+        severity: warning
+      receiver: 'otel-demo-warning'
+      group_by: ['alertname', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 2h
+
+# Notification receivers
+# Each receiver indexes into the same OpenSearch index; the alert payload
+# carries all labels so you can filter by component/service/severity there.
+# Credentials are injected from chart values (opensearchUsername / opensearchPassword)
+# at render time via the alertmanager-secret.yaml template.
+receivers:
+  # Default — catch-all for any unmatched alerts
+  - name: 'opensearch-webhook'
+    webhook_configs:
+      - &opensearch-webhook
+        url: 'https://{{OPENSEARCH_HOST}}/alertmanager-alerts/_doc'
+        http_config:
+          basic_auth:
+            username: '{{OPENSEARCH_USER}}'
+            password: '{{OPENSEARCH_PASSWORD}}'
+          tls_config:
+            insecure_skip_verify: true
+        send_resolved: true
+
+  # OTel Demo critical — checkout/payment/frontend failures
+  - name: 'otel-demo-critical'
+    webhook_configs:
+      - *opensearch-webhook
+
+  # OTel Demo warning — latency, cart, ad-service issues
+  - name: 'otel-demo-warning'
+    webhook_configs:
+      - *opensearch-webhook
+
+  # ── Dummy receiver definitions (placeholders — not routed to by default) ──
+  # These exist so the `amtool check-config` output and any UI showing
+  # configured receivers demonstrate the shape of a real integration without
+  # actually calling out to a third party. Drop real credentials in here and
+  # add a `match:` route above when you want alerts to reach them.
+  - name: 'dummy-slack'
+    slack_configs:
+      # Replace with a real Slack incoming webhook URL:
+      # https://hooks.slack.com/services/<workspace>/<channel>/<token>
+      - api_url: 'https://example.invalid/slack-webhook-placeholder'
+        channel: '#alerts-placeholder'
+        send_resolved: true
+        title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          *Severity:* {{ .Labels.severity }}
+          *Service:* {{ .Labels.service_name }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+
+  - name: 'dummy-email'
+    email_configs:
+      - to: 'alerts@example.com'
+        from: 'alertmanager@observability-stack.local'
+        smarthost: 'smtp.example.com:587'
+        auth_username: 'alertmanager@example.com'
+        auth_password: 'CHANGE_ME'
+        require_tls: true
+        send_resolved: true
+
+  - name: 'dummy-pagerduty'
+    pagerduty_configs:
+      - routing_key: '00000000000000000000000000000000'
+        send_resolved: true
+        severity: '{{ .CommonLabels.severity }}'
+        description: '{{ .CommonAnnotations.summary }}'
+
+  # No-op receiver — drops the alert on the floor. Useful as a deliberate
+  # silence destination for noisy alerts you don't want to mute entirely.
+  - name: 'null'
+
+# Inhibition rules — suppress lower-severity alerts when higher ones fire
+inhibit_rules:
+  # Suppress otel-demo warnings when a critical alert fires for the same service
+  - source_match:
+      component: otel-demo
+      severity: critical
+    target_match:
+      component: otel-demo
+      severity: warning
+    equal: ['service']
