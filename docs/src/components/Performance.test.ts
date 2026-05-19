@@ -233,7 +233,7 @@ describe('Performance - Property 6: Below-fold images are lazy-loaded', () => {
               src: fc.string({ minLength: 5, maxLength: 100 })
                 .map(s => `/images/${s.replace(/[^a-z0-9.-]/gi, '_')}.jpg`),
               alt: fc.string({ minLength: 3, maxLength: 100 })
-                .map(s => s.replace(/[<>"'&]/g, '')),
+                .map(s => s.replace(/[<>"'&]/g, '') || 'image description'),
               isBelowFold: fc.boolean(),
               width: fc.integer({ min: 100, max: 1200 }),
               height: fc.integer({ min: 100, max: 800 })
