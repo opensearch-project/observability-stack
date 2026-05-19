@@ -1,4 +1,9 @@
 {{- if .Values.alertmanager.enabled }}
+# Service name uses bare `.Release.Name` (not `observability-stack.fullname`)
+# so it stays in lockstep with the cortex ConfigMap, which substitutes the
+# ruler's `alertmanager_url` to `<release>-alertmanager:9093` at render time
+# (see templates/cortex-configmap.yaml). If this name pattern changes, the
+# cortex configmap printf must change with it.
 apiVersion: v1
 kind: Service
 metadata:

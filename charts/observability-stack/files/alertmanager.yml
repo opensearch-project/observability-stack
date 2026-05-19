@@ -2,9 +2,9 @@
 # Alert routing, grouping, and notification management
 #
 # Rendered into a Kubernetes Secret by the chart's alertmanager-secret.yaml template,
-# which substitutes OPENSEARCH_USER / OPENSEARCH_PASSWORD / opensearch:9200 at render time
-# — so any literal password-looking strings below (including in comments) are replaced in
-# the rendered Secret and are not actual leaked credentials in the source.
+# which substitutes brace-delimited placeholders for the OpenSearch user, password, and
+# host:port at render time. Brace-delimited markers are used (rather than bare names)
+# so future edits to this file that mention those names in prose are not replaced.
 #
 # Alerts from Cortex ruler are routed here for grouping, deduplication, and delivery.
 # All receivers index alerts into OpenSearch for persistent history and search.
@@ -61,17 +61,18 @@ route:
 # Notification receivers
 # Each receiver indexes into the same OpenSearch index; the alert payload
 # carries all labels so you can filter by component/service/severity there.
-# Credentials must match OPENSEARCH_USER / OPENSEARCH_PASSWORD in .env
+# Credentials are injected from chart values (opensearchUsername / opensearchPassword)
+# at render time via the alertmanager-secret.yaml template.
 receivers:
   # Default — catch-all for any unmatched alerts
   - name: 'opensearch-webhook'
     webhook_configs:
       - &opensearch-webhook
-        url: 'https://opensearch:9200/alertmanager-alerts/_doc'
+        url: 'https://{{OPENSEARCH_HOST}}/alertmanager-alerts/_doc'
         http_config:
           basic_auth:
-            username: OPENSEARCH_USER
-            password: OPENSEARCH_PASSWORD
+            username: '{{OPENSEARCH_USER}}'
+            password: '{{OPENSEARCH_PASSWORD}}'
           tls_config:
             insecure_skip_verify: true
         send_resolved: true

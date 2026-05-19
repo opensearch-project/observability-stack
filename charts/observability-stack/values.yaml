@@ -278,6 +278,9 @@ alertmanager:
     enabled: true
     size: 5Gi
   resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
     limits:
       memory: "128Mi"
 
@@ -288,6 +291,10 @@ alertmanager:
 # Data Prepper pipeline config is rendered as a Secret template with credentials injected.
 opensearchUsername: "admin"
 opensearchPassword: "My_password_123!@#"
+# Service name for the OpenSearch cluster (used by templates that reference it
+# by hostname). Defaults to the OpenSearch subchart's default fullname; override
+# this if you set `opensearch.fullnameOverride` or the subchart's service naming.
+opensearchServiceName: "opensearch-cluster-master"
 
 # -- ISM Retention
 # Number of days to retain log and trace indices before automatic deletion.

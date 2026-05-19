@@ -36,6 +36,13 @@ data:
       # Scrape envoy's /stats/prometheus for ingress-level RED visibility
       # when the otel-demo overlay is running. Harmless no-op otherwise —
       # DNS resolution for frontend-proxy just fails and the scrape drops.
+      #
+      # Hostname `frontend-proxy` is bare (not release-prefixed) because the
+      # opentelemetry-demo subchart names every component Service after the
+      # bare component name. If a user enables that subchart with a
+      # `nameOverride` or otherwise rewires its Service naming, this scrape
+      # silently no-ops (DNS NXDOMAIN — same fallback as when the subchart
+      # is disabled).
       prometheus/envoy:
         config:
           scrape_configs:
