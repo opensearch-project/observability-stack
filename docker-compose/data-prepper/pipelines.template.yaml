@@ -142,6 +142,7 @@ service-metrics-cortex-pipeline:
     # Cortex's distributor push endpoint is /api/v1/push (not Prometheus's /api/v1/write).
     - prometheus:
         url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/push"
+        insecure: true
         threshold:
           max_events: 500
           flush_interval: 5s
