@@ -112,6 +112,19 @@ The readonly account is recommended as the default for day-to-day monitoring. Sw
 
 The OTel Collector config and Data Prepper pipeline config are rendered as parent-chart templates using `{{ .Release.Name }}`. This means the chart works with any release name — service hostnames are resolved automatically.
 
+## Production TLS
+
+The chart's defaults are tuned for development convenience and use insecure intra-cluster transport for the telemetry pipeline:
+
+- **OTel Collector → Data Prepper** runs over plaintext gRPC (`tls.insecure: true`, `insecure_skip_verify: true`)
+- **Data Prepper → OpenSearch** trusts the cluster's self-signed cert (`insecure: true`)
+- **OpenSearch Dashboards → OpenSearch** uses `verificationMode: none`
+
+For production, you should:
+- Front the cluster with a service mesh (e.g. Istio, Linkerd) for mTLS between pods, **or**
+- Issue a real CA-signed certificate for OpenSearch (cert-manager + a Secret) and flip `tls.insecure` / `insecure_skip_verify` to `false` in `templates/otel-collector-configmap.yaml`, plus the matching settings in the Data Prepper pipeline Secret and Dashboards config
+- Always use the [Gateway API](#exposing-dashboards-gateway-api) section below to terminate TLS for external Dashboards traffic
+
 ## Exposing Dashboards (Gateway API)
 
 The chart includes optional [Gateway API](https://gateway-api.sigs.k8s.io/) resources for exposing OpenSearch Dashboards with TLS. Disabled by default.
@@ -270,6 +283,10 @@ For advanced cluster topologies (dedicated cluster manager nodes, coordinating n
 - [Tuning your cluster](https://opensearch.org/docs/latest/tuning-your-cluster/) — official guide covering node roles, dedicated nodes, shard allocation, and production recommendations
 - [Setup multi-node cluster on Kubernetes using Helm](https://opensearch.org/blog/setup-multinode-cluster-kubernetes/) — walkthrough for dedicated cluster manager, data, and coordinating nodes with the official Helm chart
 - [Sizing domains](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/sizing-domains.html) — AWS sizing calculator and methodology (applicable to self-managed clusters)
+
+## Docker Compose Sync
+
+This Helm chart mirrors the Docker Compose configuration for feature parity. See **[SYNC.md](SYNC.md)** for the current sync checkpoint, what stays in sync vs. what is intentionally different, and the full SOP for detecting and fixing drift.
 
 ## Key Values
 
