@@ -15,10 +15,13 @@ This Helm chart mirrors the Docker Compose configuration for feature parity acro
 
 These must be updated in the Helm chart whenever they change in Docker Compose:
 
-- **Image versions and repos** — `opensearch`, `opensearch-dashboards`, `data-prepper`, `otel-collector` in `.env` must match `values.yaml`
+- **Image versions and repos** — `opensearch`, `opensearch-dashboards`, `data-prepper`, `otel-collector`, `cortex`, `alertmanager` in `.env` must match `values.yaml`
 - **OTel Collector config** — receivers, processors (especially transform statements), exporters, pipelines, telemetry settings
 - **Data Prepper pipelines** — routing logic, processor names/params, sink config, buffer/worker/delay values
-- **Prometheus** — scrape targets, intervals, labels, OTLP config, command flags
+- **Cortex config** — `docker-compose/cortex/cortex.yaml` ↔ `charts/observability-stack/files/cortex.yaml` (server, storage, ruler, limits, alertmanager_url)
+- **Cortex ruler rule files** — `docker-compose/prometheus/rules-stack/*.yml` ↔ `charts/observability-stack/files/rules-stack/*.yml`; same for `rules-otel-demo/`
+- **Alertmanager config** — `docker-compose/alertmanager/alertmanager.yml` ↔ `charts/observability-stack/files/alertmanager.yml`
+- **Init scripts** — `init-cortex-rules.py`, `init-stack-monitors.py`, `init-otel-demo-monitors.py`, `init-opensearch-dashboards.py` are bit-for-bit identical between compose and chart
 - **OpenSearch Dashboards** — all feature flags and settings in `opensearch_dashboards.template.yml`
 
 ## What Is Intentionally Different (Do NOT Sync)
@@ -28,13 +31,17 @@ These must be updated in the Helm chart whenever they change in Docker Compose:
 | Service names | Hardcoded (`data-prepper:21890`) | Templated (`{{ .Release.Name }}-data-prepper:21890`) | Helm supports multiple releases |
 | Credentials | sed template placeholders | Kubernetes Secrets + Helm templates | Different secret injection models |
 | Resource limits | Dev-sized (500M–2G) | Production-sized (2Gi–4Gi) | Different deployment targets |
-| Prometheus cluster label | `observability-stack-dev` | `observability-stack` | Distinguishes environments |
+| Cortex external_labels cluster | `observability-stack-dev` | `observability-stack` | Distinguishes environments |
 | Health check extension | Absent | Present (`health_check` on 13133) | K8s liveness probes need it |
 | node-exporter / kube-state-metrics | Absent | Present via kubernetes_sd | K8s-only metrics |
 | Replicas | 1 (single container) | 3 | Production HA |
 | Gateway API / Ingress / RBAC | Absent | Optional templates | K8s-only infrastructure |
 | Data Prepper `peer_forwarder` | Absent | `ssl: false` | K8s multi-pod clustering |
-| Prometheus port in exporter | `prometheus:9090` | `prometheus-server:80` | K8s service routing convention |
+| Cortex Service port in callers | `prometheus:9090` | `<release>-prometheus-server:80` | K8s `-prometheus-server` Service ABI compat is preserved on port 80 → 9090 |
+| Cortex Service name | `prometheus` (compose service) | `<release>-prometheus-server` (Service) | Backwards-compat with previous Prometheus-subchart consumers |
+| Alerting init containers | 2 containers (base + otel-demo) | 2 Helm Jobs at hook-weight 15 (`alerting-rules-monitors-init`, `otel-demo-alerting-rules-monitors-init`) | Helm post-install hooks vs compose `service_completed_successfully` |
+| Alertmanager hostname in `cortex.yaml` | Bare `alertmanager:9093` | Sprig `replace`-substituted to `<release>-alertmanager:9093` at render time | `tpl` would re-evaluate Cortex's own template tokens |
+| OpenSearch hostname in `alertmanager.yml` | Bare `opensearch:9200` | Brace placeholder `{{OPENSEARCH_HOST}}` → `<opensearchServiceName>:9200` | Same `tpl`-avoidance reason; `opensearchServiceName` is a chart values key |
 
 ## SOP: Detecting and Fixing Drift
 

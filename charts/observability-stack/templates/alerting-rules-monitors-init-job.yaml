@@ -63,7 +63,7 @@ spec:
             - name: CORTEX_URL
               value: "http://{{ .Release.Name }}-prometheus-server:80"
             - name: OPENSEARCH_URL
-              value: "https://opensearch-cluster-master:9200"
+              value: "https://{{ .Values.opensearchServiceName | default "opensearch-cluster-master" }}:9200"
             - name: OPENSEARCH_USER
               valueFrom:
                 secretKeyRef:

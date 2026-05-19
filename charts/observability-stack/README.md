@@ -1,6 +1,6 @@
 # OpenSearch Observability Stack Helm Chart
 
-Umbrella Helm chart that deploys the full OpenSearch observability stack to Kubernetes. Wraps community subcharts (OpenSearch, Prometheus, OTel Collector, Data Prepper) with opinionated defaults and adds self-monitoring dashboards. Enables key observability features like APM and Agent-Tracing by default. 
+Umbrella Helm chart that deploys the full OpenSearch observability stack to Kubernetes. Wraps community subcharts (OpenSearch, OpenSearch Dashboards, OTel Collector, Data Prepper) plus Cortex + Alertmanager rendered as native templates, with opinionated defaults and self-monitoring dashboards. Enables key observability features like APM, Agent-Tracing, and pre-canned alerting by default.
 
 ## Components
 
@@ -10,14 +10,17 @@ Umbrella Helm chart that deploys the full OpenSearch observability stack to Kube
 | `opensearch-dashboards` | opensearch-project/helm-charts | Web UI |
 | `data-prepper` | opensearch-project/helm-charts | OTLP → OpenSearch pipeline |
 | `opentelemetry-collector` | open-telemetry/helm-charts | Telemetry receiver and router |
-| `prometheus` | prometheus-community/helm-charts | Metrics storage (OTLP + scrape) |
 
-Additional templates (not subcharts):
-- `opensearch-exporter` — Bridges OpenSearch cluster metrics to Prometheus (OpenSearch has no native Prometheus endpoint)
+Native templates (rendered directly by this chart, not subcharts):
+- `cortex-*` — Single-binary Cortex (Prometheus-compatible TSDB + ruler), exposed as Service `<release>-prometheus-server` so existing callers keep working
+- `alertmanager-*` — Alertmanager rendered as Deployment + Service + PVC + Secret. Indexes every alert into OpenSearch for searchable history
+- `cortex-rules-configmap` — Cortex ruler rule groups loaded from `files/rules-stack/` and `files/rules-otel-demo/`
+- `alerting-rules-monitors-init-job` / `otel-demo-alerting-rules-monitors-init-job` — Post-install hooks that load rules into Cortex Ruler and OpenSearch alerting monitors
+- `opensearch-exporter` — Bridges OpenSearch cluster metrics to Cortex (OpenSearch has no native Prometheus endpoint)
 - `init-dashboards-job` — Post-install hook that creates index patterns, dashboards, saved queries
 - `opensearch-credentials-secret` — Shared credentials secret for all components
 - `data-prepper-pipeline-secret` — Pipeline config with credentials injected at template time
-- `otel-collector-configmap` — Collector config with dynamic service names
+- `otel-collector-configmap` — Collector config with dynamic service names, Cortex remote-write exporter, and self/envoy scrape
 
 ## Install
 
@@ -158,9 +161,9 @@ kubectl wait --for=condition=complete job/obs-stack-observability-stack-init-das
 kubectl logs -n observability-stack job/obs-stack-observability-stack-init-dashboards --tail=30
 ```
 
-If only `values.yaml` scrape configs changed (no dashboard changes), step 2 is not needed — but you may need to restart Prometheus to pick up the new configmap:
+If only `values.yaml` config changed (no dashboard changes), step 2 is not needed — but you may need to restart Cortex to pick up the new configmap (the `checksum/config` annotation on the Cortex pod usually does this for you on `helm upgrade`):
 ```bash
-kubectl rollout restart deployment obs-stack-prometheus-server -n observability-stack
+kubectl rollout restart deployment obs-stack-observability-stack-cortex -n observability-stack
 ```
 
 ## Self-Monitoring Dashboards
@@ -197,18 +200,17 @@ panels:
 
 **Syncing with docker-compose:** The docker-compose init script and dashboard YAMLs (`docker-compose/opensearch-dashboards/`) are the source of truth. The helm versions in `files/` should be kept in sync. The only helm-specific addition is the K8s Cluster Health dashboard (not applicable to docker-compose) and the `BASE_URL` env var override in the init script (line 11).
 
-## Prometheus Scrape Targets
+## Metrics Pipeline
 
-Configured via `extraScrapeConfigs` in `values.yaml`, which is passed through `tpl` so `{{ .Release.Name }}` resolves dynamically. Default K8s scrape jobs are disabled (saves ~60k series). Active targets:
+Metrics flow into Cortex via three paths:
 
-| Job | Target | Interval |
-|-----|--------|----------|
-| `prometheus` | localhost:9090 | 60s |
-| `otel-collector` | `<release>`-opentelemetry-collector:8888 | 10s |
-| `opensearch` | `<release>`-observability-stack-opensearch-exporter:9114 | 30s |
-| `data-prepper` | `<release>`-data-prepper:4900 | 30s |
-| `node-exporter` | auto-discovered via kubernetes_sd | 60s |
-| `kube-state-metrics` | auto-discovered via kubernetes_sd | 60s |
+1. **OTLP push** from instrumented apps → OTel Collector → `prometheusremotewrite/cortex` exporter → Cortex `/api/v1/push`
+2. **Self-scrape** in the OTel Collector pulls its own `:8888` Prometheus endpoint and remote-writes to Cortex (`prometheus/self` receiver)
+3. **Envoy scrape** when the otel-demo overlay is enabled — pulls `frontend-proxy:10000/stats/prometheus` for ingress RED visibility (`prometheus/envoy` receiver)
+
+`resource_to_telemetry_conversion: true` on the Cortex exporter promotes OTel resource attributes (`service.name`, `service.version`, ...) into Prometheus labels, so series carry `service_name` etc.
+
+Cortex's own ruler evaluates rule groups loaded from `files/rules-stack/` (always) and `files/rules-otel-demo/` (when otel-demo is enabled), and routes firing alerts to the in-cluster Alertmanager, which webhooks them into the OpenSearch `alertmanager-alerts` index for history + search.
 
 ## Sizing Guide
 
@@ -258,18 +260,28 @@ Shard count is configurable per Data Prepper pipeline sink via `number_of_shards
 
 The collector's `memory_limiter` processor (80% limit, 25% spike) provides backpressure before the OOM kill threshold.
 
-### Prometheus
+### Cortex
 
 | Knob | Default | Description |
 |------|---------|-------------|
-| `prometheus.server.retention` | `15d` | How long metrics are kept |
-| `prometheus.server.persistentVolume.enabled` | `false` | Enable for production |
-| `prometheus.server.persistentVolume.size` | `8Gi` | Disk for metrics TSDB |
+| `cortex.retention` | `15d` | Block-retention period for the compactor (older blocks are deleted) |
+| `cortex.persistence.enabled` | `true` | Persist blocks/TSDB to a PVC |
+| `cortex.persistence.size` | `50Gi` | PVC size for `/data` (blocks + ruler-storage) |
+| `cortex.resources.requests.memory` | `500Mi` | Base memory request — bump for production cardinality (EKS overlay sets 2Gi) |
+| `cortex.resources.limits.memory` | `1Gi` | Memory cap — bump for production (EKS overlay sets 4Gi) |
+
+### Alertmanager
+
+| Knob | Default | Description |
+|------|---------|-------------|
+| `alertmanager.persistence.size` | `5Gi` | PVC for silence/notification state |
+| `alertmanager.resources.requests.memory` | `64Mi` | Base memory request |
+| `alertmanager.resources.limits.memory` | `128Mi` | Memory cap |
 
 ### Quick Reference: Sizing Profiles
 
-| Profile | OS Nodes | OS Memory | OS Disk | OTel Collector Memory | Prometheus Retention |
-|---------|----------|-----------|---------|----------------------|---------------------|
+| Profile | OS Nodes | OS Memory | OS Disk | OTel Collector Memory | Cortex Retention |
+|---------|----------|-----------|---------|----------------------|------------------|
 | **Dev/Demo** (default) | 3 | 2Gi | 8Gi | 2Gi | 15d |
 | **Small team** (~10 GB/day) | 3 | 8Gi | 100Gi | 2Gi | 30d |
 | **Enterprise** (~100 GB/day) | 6+ | 32Gi | 500Gi+ | 4Gi+ | 90d |
@@ -297,16 +309,30 @@ See `values.yaml` for all options. Notable settings:
 opensearchUsername: "admin"
 opensearchPassword: "My_password_123!@#"
 
-# Data Prepper metrics port (must be in ports list for Prometheus to scrape)
+# Data Prepper metrics port (must be in ports list for OTel Collector to scrape)
 data-prepper:
   ports:
     - name: metrics
       port: 4900
 
-# Disable noisy K8s scrape defaults
-prometheus:
-  extraScrapeConfigs: |
-    # Dynamic targets using {{ .Release.Name }} — see values.yaml
+# Cortex (single-binary Prometheus replacement) sizing
+cortex:
+  retention: "15d"
+  persistence:
+    size: 50Gi
+  resources:
+    requests:
+      memory: "500Mi"
+    limits:
+      memory: "1Gi"
+
+# Alertmanager fan-out
+alertmanager:
+  enabled: true
+
+# OpenSearch Service hostname used by alertmanager + init Jobs (override
+# this if you set opensearch.fullnameOverride or otherwise rewire it).
+opensearchServiceName: "opensearch-cluster-master"
 ```
 
 ## OpenTelemetry Demo (Optional)
@@ -326,4 +352,4 @@ helm upgrade obs-stack . -n observability-stack \
 helm upgrade obs-stack . -n observability-stack --no-hooks
 ```
 
-All bundled backends (Jaeger, Grafana, Prometheus, OpenSearch) in the demo chart are disabled — demo services send telemetry to our OTel Collector. No duplicate infrastructure.
+All bundled backends (Jaeger, Grafana, Prometheus, OpenSearch) in the demo chart are disabled — demo services send telemetry to our OTel Collector, which fans metrics to Cortex and traces/logs to Data Prepper → OpenSearch. No duplicate infrastructure.

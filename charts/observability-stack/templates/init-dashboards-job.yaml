@@ -47,7 +47,7 @@ spec:
             - name: ALERTMANAGER_PORT
               value: "9093"
             - name: OPENSEARCH_ENDPOINT
-              value: "https://opensearch-cluster-master:9200"
+              value: "https://{{ .Values.opensearchServiceName | default "opensearch-cluster-master" }}:9200"
             - name: ANONYMOUS_AUTH_ENABLED
               value: {{ ((.Values.anonymousAuth).enabled) | default false | quote }}
             - name: ISM_RETENTION_DAYS

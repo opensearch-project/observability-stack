@@ -1,0 +1,227 @@
+suite: alerting-rules-monitors-init Jobs
+templates:
+  - templates/alerting-rules-monitors-init-job.yaml
+  - templates/otel-demo-alerting-rules-monitors-init-job.yaml
+release:
+  name: obs-stack
+tests:
+  - it: should render base alerting-rules-monitors-init Job + ConfigMap by default
+    template: templates/alerting-rules-monitors-init-job.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: should NOT render base Job when cortex disabled
+    template: templates/alerting-rules-monitors-init-job.yaml
+    set:
+      cortex.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should NOT render base Job when opensearch disabled
+    template: templates/alerting-rules-monitors-init-job.yaml
+    set:
+      opensearch.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: base Job ConfigMap should embed both python scripts
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: ConfigMap
+    asserts:
+      - matchRegex:
+          path: data["init-cortex-rules.py"]
+          pattern: "^#!/usr/bin/env python3"
+      - matchRegex:
+          path: data["init-stack-monitors.py"]
+          pattern: "^#!/usr/bin/env python3"
+
+  - it: base Job should run cortex rules then stack monitors with fail accumulation
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "fail=0"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-cortex-rules.py \\|\\| fail=1"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-stack-monitors.py \\|\\| fail=1"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "exit \\$fail"
+
+  - it: base Job should set CORTEX_URL using release-prefixed prometheus-server Service
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: CORTEX_URL
+            value: "http://obs-stack-prometheus-server:80"
+
+  - it: base Job should derive OPENSEARCH_URL from opensearchServiceName
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    set:
+      opensearchServiceName: my-opensearch-svc
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_URL
+            value: "https://my-opensearch-svc:9200"
+
+  - it: base Job should default OPENSEARCH_URL to opensearch-cluster-master when values key unset
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_URL
+            value: "https://opensearch-cluster-master:9200"
+
+  - it: base Job should source credentials from opensearch-credentials Secret
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_USER
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: username
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: password
+
+  - it: base Job should mount the rules-stack ConfigMap at /rules/stack
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rules-stack
+            mountPath: /rules/stack
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rules-stack
+            configMap:
+              name: obs-stack-observability-stack-cortex-rules-stack
+
+  - it: base Job should run as a post-install/post-upgrade hook at weight 15
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook"]
+          value: post-install,post-upgrade
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "15"
+
+  - it: base Job script ConfigMap should run at hook-weight 11 (mounts before Job at 15)
+    template: templates/alerting-rules-monitors-init-job.yaml
+    documentSelector:
+      path: kind
+      value: ConfigMap
+    asserts:
+      - equal:
+          path: metadata.annotations["helm.sh/hook-weight"]
+          value: "11"
+
+  # ── otel-demo merged Job ────────────────────────────────────────────
+  - it: should NOT render otel-demo Job when otel-demo disabled
+    template: templates/otel-demo-alerting-rules-monitors-init-job.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render otel-demo Job + ConfigMap when otel-demo enabled
+    template: templates/otel-demo-alerting-rules-monitors-init-job.yaml
+    set:
+      opentelemetry-demo.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: otel-demo Job should run cortex otel_demo rules then otel-demo monitors
+    template: templates/otel-demo-alerting-rules-monitors-init-job.yaml
+    set:
+      opentelemetry-demo.enabled: true
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-cortex-rules.py \\|\\| fail=1"
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-otel-demo-monitors.py \\|\\| fail=1"
+
+  - it: otel-demo Job should mount the rules-otel-demo ConfigMap at /rules/otel_demo
+    template: templates/otel-demo-alerting-rules-monitors-init-job.yaml
+    set:
+      opentelemetry-demo.enabled: true
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            name: rules-otel-demo
+            mountPath: /rules/otel_demo
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: rules-otel-demo
+            configMap:
+              name: obs-stack-observability-stack-cortex-rules-otel-demo
+
+  - it: otel-demo Job should also honor opensearchServiceName
+    template: templates/otel-demo-alerting-rules-monitors-init-job.yaml
+    set:
+      opentelemetry-demo.enabled: true
+      opensearchServiceName: my-opensearch-svc
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_URL
+            value: "https://my-opensearch-svc:9200"

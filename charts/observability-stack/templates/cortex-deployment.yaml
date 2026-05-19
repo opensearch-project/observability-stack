@@ -23,6 +23,10 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: cortex
+      annotations:
+        # Roll the pod when cortex.yaml changes so config edits (e.g. ruler
+        # alertmanager_url, retention) take effect without a manual restart.
+        checksum/config: {{ include (print $.Template.BasePath "/cortex-configmap.yaml") . | sha256sum }}
     spec:
       # First-boot cleanup: pre-PR installs wrote vanilla-Prometheus TSDB
       # layout (chunks_head/, wal/, wbl/, lock, queries.active) directly

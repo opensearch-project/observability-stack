@@ -6,12 +6,21 @@ by name — existing monitors with the same `name` are skipped on re-run.
 """
 
 import os
+import sys
 import time
 import requests
 
 OPENSEARCH_URL = os.getenv("OPENSEARCH_URL", "https://opensearch:9200")
 USERNAME = os.getenv("OPENSEARCH_USER", "admin")
-PASSWORD = os.getenv("OPENSEARCH_PASSWORD", "My_password_123!@#")
+PASSWORD = os.getenv("OPENSEARCH_PASSWORD")
+if not PASSWORD:
+    # Fail closed rather than silently falling back to a publicly-known
+    # default. K8s sources OPENSEARCH_PASSWORD from the opensearch-credentials
+    # Secret; compose sources it from .env. Both must be set.
+    print("ERROR: OPENSEARCH_PASSWORD env var is not set. "
+          "In Kubernetes, the secret 'opensearch-credentials' must be present. "
+          "In Docker Compose, ensure .env is loaded.", file=sys.stderr)
+    sys.exit(1)
 
 
 def wait_for_opensearch():
