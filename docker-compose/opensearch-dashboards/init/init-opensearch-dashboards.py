@@ -1821,5 +1821,90 @@ def main():
     print(f"📈 Prometheus: http://localhost:{PROMETHEUS_PORT}")
     print()
 
+def refresh_index_pattern_fields(workspace_id, pattern_id, title):
+    """Refresh the fields list for an index pattern by querying OpenSearch mappings.
+
+    OSD populates fields lazily on first Discover/Explore visit. This function
+    triggers the same refresh via the API so field lists are available immediately.
+    """
+    if not pattern_id:
+        return False
+
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/index_patterns/_fields_for_wildcard?pattern={title}&meta_fields=_source&meta_fields=_id&meta_fields=_type&meta_fields=_index&meta_fields=_score"
+    else:
+        url = f"{BASE_URL}/api/index_patterns/_fields_for_wildcard?pattern={title}&meta_fields=_source&meta_fields=_id&meta_fields=_type&meta_fields=_index&meta_fields=_score"
+
+    try:
+        resp = requests.get(
+            url, auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False, timeout=30,
+        )
+        if resp.status_code != 200:
+            print(f"  ⚠️  Failed to fetch fields for {title}: {resp.status_code}")
+            return False
+
+        fields = resp.json().get("fields", [])
+        if not fields:
+            print(f"  ⏭️  No fields found for {title} (index may be empty)")
+            return False
+
+        import json
+        fields_json = json.dumps(fields)
+
+        if workspace_id and workspace_id != "default":
+            put_url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/index-pattern/{pattern_id}"
+        else:
+            put_url = f"{BASE_URL}/api/saved_objects/index-pattern/{pattern_id}"
+
+        put_resp = requests.put(
+            put_url, auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json={"attributes": {"fields": fields_json}},
+            verify=False, timeout=10,
+        )
+        if put_resp.status_code == 200:
+            print(f"  ✅ Refreshed fields for {title} ({len(fields)} fields)")
+            return True
+        else:
+            print(f"  ⚠️  Failed to update fields for {title}: {put_resp.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"  ⚠️  Error refreshing fields for {title}: {e}")
+        return False
+
+
+def delayed_field_refresh(workspace_id, patterns):
+    """Wait for data to land in indices, then refresh field lists.
+
+    Called after the main init completes. Waits 10 minutes for the otel-demo
+    and agent examples to populate indices with representative documents so
+    the field refresh picks up all mapped fields.
+    """
+    delay_minutes = 10
+    print(f"\n⏳ Waiting {delay_minutes} minutes for indices to populate before refreshing fields...")
+    time.sleep(delay_minutes * 60)
+
+    print("🔄 Refreshing index pattern field lists...")
+    for pattern_id, title in patterns:
+        refresh_index_pattern_fields(workspace_id, pattern_id, title)
+    print("✅ Field refresh complete")
+
+
 if __name__ == "__main__":
     main()
+
+    # Re-read workspace and pattern IDs for the delayed refresh.
+    # main() already printed success, so this is a background follow-up.
+    workspace_id = get_existing_workspace()
+    logs_id = get_existing_index_pattern(workspace_id, "logs-otel-v1*")
+    traces_id = get_existing_index_pattern(workspace_id, "otel-v1-apm-span*")
+    svc_map_id = get_existing_index_pattern(workspace_id, "otel-v2-apm-service-map*")
+
+    patterns = [
+        (logs_id, "logs-otel-v1*"),
+        (traces_id, "otel-v1-apm-span*"),
+        (svc_map_id, "otel-v2-apm-service-map*"),
+    ]
+    delayed_field_refresh(workspace_id, patterns)
