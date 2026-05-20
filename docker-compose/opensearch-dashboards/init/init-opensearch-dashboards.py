@@ -1629,13 +1629,17 @@ def _create_saved_object_directly(workspace_id, obj):
         return False
 
 
-def import_ndjson_dashboard(workspace_id, ndjson_path):
+def import_ndjson_dashboard(workspace_id, ndjson_path, id_mappings=None):
     """Import a dashboard and its dependencies from an ndjson export file.
 
     Objects that reference virtual index patterns (e.g. Prometheus datasource)
     are separated out and created individually via the saved-objects API, which
     does not validate references. The remaining objects are bulk-imported via the
     _import API.
+
+    id_mappings: optional dict of {old_id: new_id} to rewrite references at
+    import time. Used to point exported objects at the live index-pattern IDs
+    instead of the hardcoded ones from the export environment.
     """
     import json
     import io
@@ -1663,10 +1667,21 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
         # Skip the export summary line (has exportedCount but no type)
         if "exportedCount" in obj and "type" not in obj:
             continue
+        # Skip index-pattern objects — they are created earlier by the init
+        # script with the correct workspace/datasource associations. Importing
+        # them again from the ndjson would create duplicates with different IDs.
+        if obj.get("type") == "index-pattern":
+            continue
         # Remove workspace associations so objects land in the target workspace
         obj.pop("workspaces", None)
         # Remove version field that can cause conflicts on import
         obj.pop("version", None)
+
+        # Rewrite references to point at the live index-pattern IDs
+        if id_mappings:
+            for ref in obj.get("references", []):
+                if ref.get("id") in id_mappings:
+                    ref["id"] = id_mappings[ref["id"]]
 
         if _has_virtual_reference(obj):
             direct_create.append(obj)
@@ -1769,8 +1784,15 @@ def main():
     prometheus_datasource_id = create_prometheus_datasource(workspace_id)
     create_opensearch_datasource(workspace_id)
 
-    # Import Astronomy Shop dashboard (ndjson export with all dependencies)
-    import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-shop.ndjson")
+    # Import Astronomy Shop dashboard (ndjson export with all dependencies).
+    # Map the hardcoded index-pattern IDs from the export to the live IDs
+    # created above, so dashboard panels reference the correct datasets.
+    ndjson_id_mappings = {}
+    if logs_pattern_id:
+        ndjson_id_mappings["545c7990-2938-11f1-84ad-e734b5ac5a91"] = logs_pattern_id
+    if traces_pattern_id:
+        ndjson_id_mappings["54f4c1f0-2938-11f1-84ad-e734b5ac5a91"] = traces_pattern_id
+    import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-shop.ndjson", ndjson_id_mappings)
 
     # Create saved queries for common agent observability patterns
     create_default_saved_queries(workspace_id)
