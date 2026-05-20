@@ -13,8 +13,8 @@ opensearch:
   singleNode: false
   replicas: 3
   image:
-    repository: "opensearchstaging/opensearch"
-    tag: "3.7.0"
+    repository: "ashisagr32966/opensearch-sql-main"
+    tag: "3.7.0-sql-main"
   resources:
     requests:
       memory: "4Gi"
@@ -77,8 +77,8 @@ opensearch-dashboards:
   enabled: true
   replicaCount: 3
   image:
-    repository: "opensearchstaging/opensearch-dashboards"
-    tag: "3.7.0"
+    repository: "joshuali925/opensearch-dashboards"
+    tag: "3.7.0-slos-followups-on-main-v2"
   resources:
     requests:
       cpu: "500m"
