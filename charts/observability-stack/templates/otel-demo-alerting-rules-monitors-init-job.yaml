@@ -4,7 +4,7 @@
 #   1. Cortex ruler rules from /rules/otel_demo
 #   2. OpenSearch alerting monitors for OTel Demo traces/logs
 #      (checkout, payment, cart, frontend RED signals)
-# Mirrors the `otel-demo-alerting-rules-monitors-init` container in
+# Mirrors the `otel-demo-alerts-init` container in
 # docker-compose.otel-demo.yml. Named separately from the base Job (rather
 # than overlaying its volume mounts) because Helm doesn't support
 # subchart-style service overlays — and the upstream API is idempotent
@@ -12,7 +12,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init-script
+  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerts-init-script
   labels:
     {{- include "observability-stack.labels" . | nindent 4 }}
     app.kubernetes.io/component: init
@@ -29,7 +29,7 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init
+  name: {{ include "observability-stack.fullname" . }}-otel-demo-alerts-init
   labels:
     {{- include "observability-stack.labels" . | nindent 4 }}
     app.kubernetes.io/component: init
@@ -42,11 +42,11 @@ spec:
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: otel-demo-alerting-rules-monitors-init
+        app.kubernetes.io/name: otel-demo-alerts-init
     spec:
       restartPolicy: OnFailure
       containers:
-        - name: otel-demo-alerting-rules-monitors-init
+        - name: otel-demo-alerts-init
           image: python:3.11-alpine
           command:
             - /bin/sh
@@ -82,7 +82,7 @@ spec:
       volumes:
         - name: script
           configMap:
-            name: {{ include "observability-stack.fullname" . }}-otel-demo-alerting-rules-monitors-init-script
+            name: {{ include "observability-stack.fullname" . }}-otel-demo-alerts-init-script
         - name: rules-otel-demo
           configMap:
             name: {{ include "observability-stack.fullname" . }}-cortex-rules-otel-demo

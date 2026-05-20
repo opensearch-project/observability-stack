@@ -51,7 +51,7 @@ tests:
     asserts:
       - matchRegex:
           path: data.relay
-          pattern: "receivers:\\s*\\[otlp,\\s*prometheus/self,\\s*prometheus/envoy\\]"
+          pattern: "receivers:\\s*\\[otlp,\\s*prometheus/self,\\s*prometheus/envoy,\\s*prometheus/opensearch-exporter,\\s*prometheus/cortex,\\s*prometheus/data-prepper,\\s*prometheus/kube-state-metrics,\\s*prometheus/node-exporter\\]"
       - matchRegex:
           path: data.relay
           pattern: "exporters:\\s*\\[prometheusremotewrite/cortex,\\s*debug\\]"

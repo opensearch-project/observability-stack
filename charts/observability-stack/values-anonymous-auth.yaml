@@ -184,6 +184,9 @@ opensearch-dashboards:
       datasetManagement.enabled: true
       data.savedQueriesNewUI.enabled: true
       opensearchDashboards.branding.useExpandedHeader: false
+      opensearchDashboards.enableIconSideNav: true
+      observability.alertManager.enabled: true
+      observability.slo.enabled: true
       uiSettings.overrides.home:useNewHomePage: true
       uiSettings.overrides.query:enhancements:enabled: true
       uiSettings.overrides.explore:experimental: true

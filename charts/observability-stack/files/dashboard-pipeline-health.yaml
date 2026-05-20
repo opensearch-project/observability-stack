@@ -50,36 +50,26 @@ panels:
     query: "otelcol_processor_batch_metadata_cardinality"
     chartType: line
 
-  # --- Row 5: Prometheus Health ---
-  - id: pipeline-prometheus-ingestion
-    title: "Prometheus Ingestion Rate (chunks/sec)"
-    query: "rate(prometheus_tsdb_head_chunks_created_total[5m])"
+  # --- Row 5: Cortex Health ---
+  - id: pipeline-cortex-ingestion-rate
+    title: "Cortex Ingestion Rate (samples/sec)"
+    query: "avg(cortex_ingester_ingestion_rate_samples_per_second)"
     chartType: line
 
-  - id: pipeline-prometheus-active-series
-    title: "Prometheus Active Time Series"
-    query: "prometheus_tsdb_head_series"
+  - id: pipeline-cortex-active-series
+    title: "Cortex Active Time Series"
+    query: "cortex_ingester_active_series"
     chartType: line
 
-  # --- Row 6: Prometheus Storage ---
-  - id: pipeline-prometheus-wal-size
-    title: "Prometheus WAL Size (bytes)"
-    query: "prometheus_tsdb_wal_storage_size_bytes"
+  # --- Row 6: Cortex Query Performance ---
+  - id: pipeline-cortex-query-latency
+    title: "Cortex Query Latency P99 (sec)"
+    query: "histogram_quantile(0.99, rate(cortex_request_duration_seconds_bucket{route=~\"prometheus_api_v1_query\"}[5m]))"
     chartType: line
 
-  - id: pipeline-prometheus-head-chunks
-    title: "Prometheus Head Chunks Size (bytes)"
-    query: "prometheus_tsdb_head_chunks_storage_size_bytes"
-    chartType: line
-
-  - id: pipeline-prometheus-query-latency
-    title: "Prometheus Query Latency P99 (sec)"
-    query: "histogram_quantile(0.99, rate(prometheus_http_request_duration_seconds_bucket{handler=\"/api/v1/query\"}[5m]))"
-    chartType: line
-
-  - id: pipeline-prometheus-range-query-latency
-    title: "Prometheus Range Query Latency P99 (sec)"
-    query: "histogram_quantile(0.99, rate(prometheus_http_request_duration_seconds_bucket{handler=\"/api/v1/query_range\"}[5m]))"
+  - id: pipeline-cortex-range-query-latency
+    title: "Cortex Range Query Latency P99 (sec)"
+    query: "histogram_quantile(0.99, rate(cortex_request_duration_seconds_bucket{route=~\"prometheus_api_v1_query_range\"}[5m]))"
     chartType: line
 
   # --- Row 7: Data Prepper — Logs Pipeline ---

@@ -52,16 +52,40 @@ resource "helm_release" "external_dns" {
   }
   set {
     name  = "domainFilters[0]"
-    value = data.aws_route53_zone.this[0].name
+    value = var.domain
   }
   set {
     name  = "policy"
-    value = "sync"
+    value = "upsert-only"
   }
   set {
     name  = "txtOwnerId"
     value = var.cluster_name
   }
+
+  depends_on = [module.eks]
+}
+
+# --- kube-state-metrics (K8s Cluster Health dashboard) ---
+
+resource "helm_release" "kube_state_metrics" {
+  name       = "kube-state-metrics"
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "kube-state-metrics"
+  namespace  = "kube-system"
+  version    = "5.28.0"
+
+  depends_on = [module.eks]
+}
+
+# --- node-exporter (K8s Cluster Health dashboard) ---
+
+resource "helm_release" "node_exporter" {
+  name       = "node-exporter"
+  repository = "https://prometheus-community.github.io/helm-charts"
+  chart      = "prometheus-node-exporter"
+  namespace  = "kube-system"
+  version    = "4.43.1"
 
   depends_on = [module.eks]
 }
