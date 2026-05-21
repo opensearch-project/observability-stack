@@ -12,7 +12,8 @@ x-default-logging: &logging
 services:
   # OpenSearch Dashboards - Web UI for visualizing logs and traces
   opensearch-dashboards:
-    image: ${OPENSEARCH_DOCKER_REPO}/opensearch-dashboards:${OPENSEARCH_DASHBOARDS_VERSION}
+    image: ${OPENSEARCH_DASHBOARDS_IMAGE}
+    platform: linux/amd64
     container_name: opensearch-dashboards
     pull_policy: always
     command: >

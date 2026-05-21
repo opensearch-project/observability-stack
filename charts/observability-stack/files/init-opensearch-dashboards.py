@@ -1700,13 +1700,17 @@ def _create_saved_object_directly(workspace_id, obj):
         return False
 
 
-def import_ndjson_dashboard(workspace_id, ndjson_path):
+def import_ndjson_dashboard(workspace_id, ndjson_path, id_mappings=None):
     """Import a dashboard and its dependencies from an ndjson export file.
 
     Objects that reference virtual index patterns (e.g. Prometheus datasource)
     are separated out and created individually via the saved-objects API, which
     does not validate references. The remaining objects are bulk-imported via the
     _import API.
+
+    id_mappings: optional dict of {old_id: new_id} to rewrite references at
+    import time. Used to point exported objects at the live index-pattern IDs
+    instead of the hardcoded ones from the export environment.
     """
     import json
     import io
@@ -1734,10 +1738,21 @@ def import_ndjson_dashboard(workspace_id, ndjson_path):
         # Skip the export summary line (has exportedCount but no type)
         if "exportedCount" in obj and "type" not in obj:
             continue
+        # Skip index-pattern objects — they are created earlier by the init
+        # script with the correct workspace/datasource associations. Importing
+        # them again from the ndjson would create duplicates with different IDs.
+        if obj.get("type") == "index-pattern":
+            continue
         # Remove workspace associations so objects land in the target workspace
         obj.pop("workspaces", None)
         # Remove version field that can cause conflicts on import
         obj.pop("version", None)
+
+        # Rewrite references to point at the live index-pattern IDs
+        if id_mappings:
+            for ref in obj.get("references", []):
+                if ref.get("id") in id_mappings:
+                    ref["id"] = id_mappings[ref["id"]]
 
         if _has_virtual_reference(obj):
             direct_create.append(obj)
@@ -1847,8 +1862,15 @@ def main():
     prometheus_datasource_id = create_prometheus_datasource(workspace_id)
     create_opensearch_datasource(workspace_id)
 
-    # Import Astronomy Shop dashboard (ndjson export with all dependencies)
-    import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-shop.ndjson")
+    # Import Astronomy Shop dashboard (ndjson export with all dependencies).
+    # Map the hardcoded index-pattern IDs from the export to the live IDs
+    # created above, so dashboard panels reference the correct datasets.
+    ndjson_id_mappings = {}
+    if logs_pattern_id:
+        ndjson_id_mappings["545c7990-2938-11f1-84ad-e734b5ac5a91"] = logs_pattern_id
+    if traces_pattern_id:
+        ndjson_id_mappings["54f4c1f0-2938-11f1-84ad-e734b5ac5a91"] = traces_pattern_id
+    import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-shop.ndjson", ndjson_id_mappings)
 
     # Create APM config correlation (ties traces + service map + Prometheus)
     if traces_pattern_id and service_map_pattern_id:
@@ -1872,5 +1894,89 @@ def main():
     print(f"📈 Prometheus: http://localhost:{PROMETHEUS_PORT}")
     print()
 
+def refresh_index_pattern_fields(workspace_id, pattern_id, title):
+    """Refresh the fields list for an index pattern by querying OpenSearch mappings.
+
+    OSD populates fields lazily on first Discover/Explore visit. This function
+    triggers the same refresh via the API so field lists are available immediately.
+    """
+    if not pattern_id:
+        return False
+
+    if workspace_id and workspace_id != "default":
+        url = f"{BASE_URL}/w/{workspace_id}/api/index_patterns/_fields_for_wildcard?pattern={title}&meta_fields=_source&meta_fields=_id&meta_fields=_type&meta_fields=_index&meta_fields=_score"
+    else:
+        url = f"{BASE_URL}/api/index_patterns/_fields_for_wildcard?pattern={title}&meta_fields=_source&meta_fields=_id&meta_fields=_type&meta_fields=_index&meta_fields=_score"
+
+    try:
+        resp = requests.get(
+            url, auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            verify=False, timeout=30,
+        )
+        if resp.status_code != 200:
+            print(f"  ⚠️  Failed to fetch fields for {title}: {resp.status_code}")
+            return False
+
+        fields = resp.json().get("fields", [])
+        if not fields:
+            print(f"  ⏭️  No fields found for {title} (index may be empty)")
+            return False
+
+        import json
+        fields_json = json.dumps(fields)
+
+        if workspace_id and workspace_id != "default":
+            put_url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/index-pattern/{pattern_id}"
+        else:
+            put_url = f"{BASE_URL}/api/saved_objects/index-pattern/{pattern_id}"
+
+        put_resp = requests.put(
+            put_url, auth=(USERNAME, PASSWORD),
+            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+            json={"attributes": {"fields": fields_json}},
+            verify=False, timeout=10,
+        )
+        if put_resp.status_code == 200:
+            print(f"  ✅ Refreshed fields for {title} ({len(fields)} fields)")
+            return True
+        else:
+            print(f"  ⚠️  Failed to update fields for {title}: {put_resp.status_code}")
+            return False
+    except requests.exceptions.RequestException as e:
+        print(f"  ⚠️  Error refreshing fields for {title}: {e}")
+        return False
+
+
+def delayed_field_refresh(workspace_id, patterns):
+    """Wait for data to land in indices, then refresh field lists.
+
+    Called after the main init completes. Waits 10 minutes for the otel-demo
+    and agent examples to populate indices with representative documents so
+    the field refresh picks up all mapped fields.
+    """
+    delay_minutes = 10
+    print(f"\n⏳ Waiting {delay_minutes} minutes for indices to populate before refreshing fields...")
+    time.sleep(delay_minutes * 60)
+
+    print("🔄 Refreshing index pattern field lists...")
+    for pattern_id, title in patterns:
+        refresh_index_pattern_fields(workspace_id, pattern_id, title)
+    print("✅ Field refresh complete")
+
+
 if __name__ == "__main__":
     main()
+
+    # Re-read workspace and pattern IDs for the delayed refresh.
+    workspace_id = get_existing_workspace()
+    logs_id = get_existing_index_pattern(workspace_id, "logs-otel-v1*")
+    traces_id = get_existing_index_pattern(workspace_id, "otel-v1-apm-span*")
+    svc_map_id = get_existing_index_pattern(workspace_id, "otel-v2-apm-service-map*")
+
+    patterns = [
+        (logs_id, "logs-otel-v1*"),
+        (traces_id, "otel-v1-apm-span*"),
+        (svc_map_id, "otel-v2-apm-service-map*"),
+    ]
+    delayed_field_refresh(workspace_id, patterns)

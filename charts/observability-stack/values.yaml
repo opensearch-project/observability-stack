@@ -12,9 +12,10 @@ opensearch:
   enabled: true
   singleNode: false
   replicas: 3
+  # TODO: Change to opensearchproject/opensearch after 3.7.0 official release
   image:
-    repository: "opensearchstaging/opensearch"
-    tag: "3.7.0"
+    repository: "ashisagr32966/opensearch-sql-main"
+    tag: "3.7.0-sql-main"
   resources:
     requests:
       memory: "4Gi"
@@ -76,9 +77,10 @@ opensearch:
 opensearch-dashboards:
   enabled: true
   replicaCount: 3
+  # TODO: Change to opensearchproject/opensearch-dashboards after 3.7.0 official release
   image:
-    repository: "opensearchstaging/opensearch-dashboards"
-    tag: "3.7.0"
+    repository: "joshuali925/opensearch-dashboards"
+    tag: "3.7.0-slos-pr-against-main-v2"
   resources:
     requests:
       cpu: "500m"

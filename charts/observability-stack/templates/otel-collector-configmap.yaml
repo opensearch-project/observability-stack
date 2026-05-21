@@ -54,6 +54,71 @@ data:
               relabel_configs:
                 - target_label: service.name
                   replacement: frontend-proxy
+      # OpenSearch exporter metrics for the OS Cluster Health dashboard.
+      prometheus/opensearch-exporter:
+        config:
+          scrape_configs:
+            - job_name: opensearch-exporter
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["{{ include "observability-stack.fullname" . }}-opensearch-exporter:9114"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: opensearch-exporter
+      # Cortex internal metrics for the Pipeline Health dashboard.
+      prometheus/cortex:
+        config:
+          scrape_configs:
+            - job_name: cortex
+              scrape_interval: 15s
+              metrics_path: /metrics
+              static_configs:
+                - targets: ["{{ .Release.Name }}-prometheus-server:80"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: cortex
+      # Data Prepper pipeline metrics for the Pipeline Health dashboard.
+      prometheus/data-prepper:
+        config:
+          scrape_configs:
+            - job_name: data-prepper
+              scrape_interval: 15s
+              metrics_path: /metrics/sys
+              static_configs:
+                - targets: ["{{ .Release.Name }}-data-prepper:4900"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: data-prepper
+            - job_name: data-prepper-pipelines
+              scrape_interval: 15s
+              metrics_path: /metrics/prometheus
+              static_configs:
+                - targets: ["{{ .Release.Name }}-data-prepper:4900"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: data-prepper
+      # Kubernetes metrics — harmless no-op if kube-state-metrics / node-exporter
+      # are not installed (DNS NXDOMAIN → scrape drops silently).
+      prometheus/kube-state-metrics:
+        config:
+          scrape_configs:
+            - job_name: kube-state-metrics
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["kube-state-metrics.kube-system.svc.cluster.local:8080"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: kube-state-metrics
+      prometheus/node-exporter:
+        config:
+          scrape_configs:
+            - job_name: node-exporter
+              scrape_interval: 15s
+              static_configs:
+                - targets: ["node-exporter-prometheus-node-exporter.kube-system.svc.cluster.local:9100"]
+              relabel_configs:
+                - target_label: service.name
+                  replacement: node-exporter
     processors:
       memory_limiter:
         check_interval: 5s
@@ -143,7 +208,7 @@ data:
           processors: [resourcedetection, memory_limiter, transform, batch]
           exporters: [otlp/opensearch, debug]
         metrics:
-          receivers: [otlp, prometheus/self, prometheus/envoy]
+          receivers: [otlp, prometheus/self, prometheus/envoy, prometheus/opensearch-exporter, prometheus/cortex, prometheus/data-prepper, prometheus/kube-state-metrics, prometheus/node-exporter]
           processors: [resourcedetection, memory_limiter, batch]
           exporters: [prometheusremotewrite/cortex, debug]
         logs:

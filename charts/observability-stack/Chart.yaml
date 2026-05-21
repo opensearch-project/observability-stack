@@ -52,6 +52,6 @@ dependencies:
     condition: opentelemetry-collector.enabled
 
   - name: opentelemetry-demo
-    version: "0.40.5"
+    version: "0.40.8"
     repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
     condition: opentelemetry-demo.enabled

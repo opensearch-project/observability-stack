@@ -6,10 +6,10 @@ This Helm chart mirrors the Docker Compose configuration for feature parity acro
 
 | Field | Value |
 |-------|-------|
-| **Last synced commit** | `a584256` |
-| **Commit message** | `add  insecure: true flag to connect to cortex/prometheus (#249)` |
+| **Last synced commit** | `6b8b2c8` |
+| **Commit message** | `fix: deduplicate index patterns in dashboards init and pin otel-demo to 2.2.0 (#254)` |
 | **Date** | 2026-05-19 |
-| **Synced by** | @ashisagr |
+| **Synced by** | @ps48 |
 
 ## What Stays in Sync
 
