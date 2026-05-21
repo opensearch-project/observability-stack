@@ -1,6 +1,8 @@
 ---
 title: "Build a Dashboard"
 description: "Create dashboards, add visualization panels, and arrange layouts for observability monitoring"
+sidebar:
+  order: 10
 ---
 
 This guide walks through creating a dashboard from scratch - adding panels, choosing visualization types, configuring queries, and arranging the layout.
@@ -79,6 +81,20 @@ For metrics (PromQL - adjust metric names to match your environment):
 sum by (service_name) (rate(http_server_request_duration_seconds_count[5m]))
 ```
 
+To parameterize the panel by a dashboard variable, reference it with `$name` or `${name}`:
+
+```sql
+source = logs-otel-v1*
+| where `resource.attributes.service.name` = $service
+| stats count() by span(time, 1m)
+```
+
+```promql
+sum by (service_name) (rate(http_server_request_duration_seconds_count{service_name=~"$service"}[5m]))
+```
+
+See [Dashboard variables](/docs/dashboards/variables/) for how to define and chain variables.
+
 ### Axes and formatting
 
 - Set axis labels and units (requests/sec, milliseconds, bytes, percentage)
@@ -101,6 +117,52 @@ Add horizontal threshold lines to panels to mark important boundaries:
 - Capacity limits (e.g., red line at 80% CPU)
 
 Thresholds make it immediately obvious when a metric crosses a boundary - no mental math required.
+
+## Chart-specific options
+
+Each chart type exposes its own controls in the **Settings** panel on the right. To reshape the query result before it's charted (filter rows, derive a field, group, sort, limit), see [Visualization transformations](/docs/dashboards/transformations/).
+
+### Bucket
+
+Bar, line, area, histogram, and heatmap visualizations group raw data points into bins via a **Bucket** section:
+
+| Field | What it does |
+|---|---|
+| **Type** | Aggregation function applied to values in each bucket: `Sum`, `Mean`, `Max`, `Min`, `Count`, or `None` (raw values). |
+| **Interval** (time bucketing) | Time width of each bucket (`auto`, `1s`, `1m`, `1h`, `1d`, etc.). Set this when the X-axis is a timestamp. |
+| **Bucket Size** (numeric bucketing) | The width of each bucket on a numeric axis. Leave empty for `auto`. |
+| **Bucket Count** (numeric bucketing) | The approximate number of buckets to produce instead of fixing the size. Default is 30. |
+
+For categorical bar charts (one bar per category), only **Type** applies — there's nothing to bucket along the X-axis.
+
+### Value calculation (single-value visualizations)
+
+Metric, gauge, and bar gauge visualizations show one number per series, so they need a rule for which number to show. The **Value** section provides a calculation method:
+
+| Method | Result |
+|---|---|
+| **Last** | The most recent value |
+| **Last \*** | The most recent numerical value (skips nulls) |
+| **First** | The earliest value |
+| **First \*** | The earliest numerical value |
+| **Min** | Minimum value |
+| **Max** | Maximum value |
+| **Mean** | Average value |
+| **Median** | Middle value |
+| **Variance** | Statistical variance |
+| **Count** | Number of values |
+| **Distinct count** | Number of unique values |
+| **Total** | Sum of all values |
+
+Pick the calculation that matches the question the panel answers — `Last` for current state, `Mean` for typical behavior, `Max` for worst-case.
+
+### Value mapping
+
+Value mapping rewrites raw values into human-readable text or color-coded states. For example, map the numeric status codes `0`, `1`, `2` to **OK**, **Warning**, **Critical** with green, yellow, and red backgrounds. Configure mappings in the **Value mapping** section of metric, gauge, and stat visualizations.
+
+### Field unit and display
+
+Set the unit (requests/sec, milliseconds, bytes, percentage) and decimal precision in the **Standard options** section. Units are display-only — they don't change the underlying value.
 
 ## Layout and arrangement
 
@@ -170,6 +232,8 @@ This approach ensures every panel has a clear purpose - it answers a question yo
 
 ## Next steps
 
+- [Dashboard variables](/docs/dashboards/variables/) - parameterize panels with dropdowns
+- [Visualization transformations](/docs/dashboards/transformations/) - reshape query results before they're charted
 - [Sharing Dashboards](/docs/dashboards/sharing/) - share, export, and best practices
 - [Discover Logs](/docs/investigate/discover-logs/) - build log queries to power dashboard panels
 - [Discover Metrics](/docs/investigate/discover-metrics/) - build PromQL queries for metrics panels

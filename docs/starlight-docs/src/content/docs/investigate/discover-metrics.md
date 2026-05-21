@@ -5,11 +5,73 @@ sidebar:
   order: 50
 ---
 
-The **Metrics** page in OpenSearch Dashboards provides a dedicated interface for discovering, querying, and visualizing time-series metric data. This page, shown in the following image, is optimized for working with Prometheus metrics using PromQL.
+The **Metrics** page in OpenSearch Dashboards provides a dedicated interface for discovering, querying, and visualizing time-series metric data. It is optimized for working with Prometheus metrics using PromQL.
 
-![Metrics page interface](/docs/images/dashboards/prometheus.png)
+The page has two modes, switched with the radio toggle at the top:
 
-The **Metrics** page is available in Observability workspaces. To access the **Metrics** page, navigate to an **Observability** workspace. Then, in the left navigation, expand **Discover** and select **Metrics**.
+- **Explore** — a no-code metric browser for finding metrics and filtering by labels.
+- **Query** — a PromQL editor for authoring and visualizing expressions.
+
+Both modes share the same time range picker and data source selector; switch at any time.
+
+The **Metrics** page is available in Observability workspaces. To access it, navigate to an **Observability** workspace, then in the left navigation expand **Discover** and select **Metrics**.
+
+## Explore mode
+
+Browse and discover metrics without writing PromQL. Use it to find a metric when you don't yet know what to query.
+
+![Metrics Explore mode showing metric browser with sparklines](https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/metrics-explore.webp)
+
+The interface includes:
+
+- A **metric browser** that lists all metrics from the data source as cards, each with a small sparkline preview.
+- A **search box** with debounced server-side filtering by metric name.
+- **Label filters** that narrow the metric list to only those carrying matching labels. Each filter row uses a Prometheus operator: `=`, `!=`, `=~` (regex match), or `!~` (regex not match).
+- **Grouping** options that organize metric cards by **Prefix** (the namespace prefix of the metric name) or **A-Z** (alphabetical, in a single group).
+- **Layout** options for **Grid** or **Rows**.
+- **Metric type** badges — Counter, Gauge, Histogram, Summary, or Unknown — taken from Prometheus metric metadata, with a fallback that infers Counter and Histogram from name suffixes (`_total`, `_count`, `_sum`, `_created`, `_bucket`) when metadata is missing.
+
+Click a metric card to open the **metric detail** view, which previews the time series broken down by label and lets you drill into a specific label combination. Or select one or more metric cards and select **Query Metrics** to send them into Query mode as a multi-query execution.
+
+## Query mode
+
+Author one or more PromQL expressions and render them in a chart. Use it when you know what you want to compute.
+
+![Metrics Query mode with PromQL editor and visualization](https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/prometheus.webp)
+
+Each query lives in its own row. A single execution can run several queries together — they're concatenated with semicolons (`;`) and rendered side by side on the visualization.
+
+### Builder vs. Code
+
+Each query row has two editor styles, toggled per row:
+
+- **Builder** — a structured UI for selecting a metric, adding label filters with operators (`=`, `!=`, `=~`, `!~`), and chaining operations (aggregations, range functions, math). Useful when you're learning PromQL or want fewer typos.
+- **Code** — a raw PromQL editor with autocomplete and syntax highlighting. Suggestions are fetched from the Prometheus data source and trigger on space, `(`, `{`, `[`, `,`, `=`, `~`, `'`, and `"`.
+
+You can switch between Builder and Code at any time. Switching from Builder to Code reveals the underlying PromQL; the reverse parses your PromQL back into Builder controls when possible.
+
+### Writing queries
+
+Write queries using PromQL syntax. For example:
+
+```promql
+up{job="prometheus"}
+```
+
+### Multiple queries in one execution
+
+To run several queries together, add a row for each one (or, in Code mode, separate them with semicolons on different lines):
+
+```promql
+up{job="prometheus"};
+node_cpu_seconds_total{mode="idle"};
+```
+
+Each query runs independently. The results are returned together and the visualization renders all series side by side.
+
+### Step and resolution
+
+In Explore mode, sparkline and detail queries are generated client-side. The step (data resolution, in seconds) is derived from the active time range — targeting roughly 1440 datapoints with a 15-second floor — and the `rate()` window is sized to be at least four times the assumed 60-second scrape interval and at least one scrape interval larger than the step, so zoomed-out views don't show gaps.
 
 ## Configuring a Prometheus data source
 
@@ -34,31 +96,6 @@ To configure a Prometheus data source in OpenSearch Dashboards, follow these ste
 
 Alternatively, you can configure a Prometheus data source programmatically. For more information, see the [Data sources documentation](https://docs.opensearch.org/latest/dashboards/management/data-sources/).
 
-## Query panel
-
-You can write and execute metric queries in the query panel at the top of the **Metrics** page. The query editor provides autocomplete suggestions and syntax highlighting for PromQL.
-
-### Writing queries
-
-Write queries using PromQL syntax. For example:
-
-```promql
-up{job="prometheus"}
-```
-
-### Running queries
-
-To run a query, enter your query in the query editor and then select the **Refresh** button.
-
-You can run multiple PromQL queries together by separating them with a semicolon (`;`):
-
-```promql
-up{job="prometheus"};
-node_cpu_seconds_total{mode="idle"};
-```
-
-Each query runs independently, and the results are combined in the output.
-
 ## Time filter
 
 Use the time filter to specify the time range for your metric data:
@@ -70,20 +107,25 @@ Use the time filter to specify the time range for your metric data:
 
 ## Viewing results
 
-After running a query, the results are displayed in a tabbed interface containing the following views:
-
-- The **Metrics** tab displays the latest data point for each series in a table format.
-
-- The **Raw** tab shows the latest data point for each series as raw JSON returned by the data source.
+After running a query in **Query** mode, the results are displayed in a tabbed interface below the editor containing the following views:
 
 - The **Visualization** tab provides interactive charts for your metric data.
+- The **Table** tab displays each series as a row of latest values, with a banner if the response was truncated for performance.
+
+### Series limit
+
+To keep the browser responsive, the visualization renders up to **20 series** by default. If a query returns more, a banner appears with a **Show {count}** button to render all of them. Tighten label filters or aggregate (for example, `sum by (...)`) to bring the count down rather than rendering hundreds of series.
 
 ### Configuring visualizations
 
 When the **Visualization** tab is selected, a settings panel appears on the right side of the screen. Use this panel to:
 
-1. **Select a chart type**: Choose from line, bar, pie, gauge, or table visualizations.
+1. **Select a chart type**: Choose from line, bar, area, scatter, pie, heatmap, table, metric, gauge, bar gauge, state timeline, or histogram.
 2. **Map axes**: Assign fields to the X and Y axes.
-3. **Customize styles**: Adjust colors, legends, gridlines, and other visual options.
+3. **Customize styles**: Adjust colors, legends, gridlines, thresholds, and units.
 
-When you modify the settings, the visualization is updated automatically.
+When you modify the settings, the visualization is updated automatically. See [Build a Dashboard](/docs/dashboards/build/) for details on each chart type and its options, and [Visualization transformations](/docs/dashboards/transformations/) for reshaping query results before they're charted.
+
+## Saving and reusing
+
+Metrics explorations are saved as **Explore** saved objects. Save a query from the page actions to revisit it later, or add a metrics view as a panel on a new or existing dashboard to track it alongside logs and traces. From the global **Visualize** application, choosing **Create visualization → Visualize with Metrics** also opens a fresh metrics canvas in Query mode.
