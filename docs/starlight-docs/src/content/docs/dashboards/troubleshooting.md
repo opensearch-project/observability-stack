@@ -1,6 +1,8 @@
 ---
 title: "Troubleshooting Dashboards"
 description: "Diagnose and fix common issues with dashboard panels, visualizations, and performance"
+sidebar:
+  order: 40
 ---
 
 When a dashboard panel shows unexpected data, errors, or loads slowly, these techniques help you pinpoint the problem.

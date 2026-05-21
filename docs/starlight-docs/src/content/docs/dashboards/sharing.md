@@ -1,6 +1,8 @@
 ---
 title: "Sharing Dashboards"
 description: "Share dashboards, export reports, and manage dashboard best practices"
+sidebar:
+  order: 30
 ---
 
 Once you've built a dashboard, share it with the people who need it - team members, on-call engineers, or stakeholders.

@@ -69,12 +69,19 @@ You can stack multiple filters. They combine with AND logic - all conditions mus
 
 Pin filters when you're investigating a specific service or environment and want the context to follow you as you switch between dashboards.
 
-### Filters and template variables (coming soon)
+### Filters vs. variables
 
-Currently, dashboards support global filters for narrowing data across all panels. Template variable support - dropdowns that let you switch between services, environments, or time intervals - is planned for a future release. Once available, variables will complement filters by providing reusable, designed-in drill-down controls.
+Filters and [dashboard variables](/docs/dashboards/variables/) both narrow data across panels, but solve different problems:
+
+- **Filters** are field-value predicates applied to all panels — quick to add ad-hoc, easy to remove. Best when you're investigating and don't yet know what you'll keep.
+- **Variables** are designed-in dropdowns at the top of the dashboard. Each panel query references the variable by name, so the same dashboard can drive different views (per-service, per-environment, per-region) without editing a single panel. Best when the dashboard is shared and you want viewers to swap context without learning the underlying query.
+
+Use both together — variables for the parameters you expect viewers to change often, filters for one-off slicing.
 
 ## Getting started
 
 - [Build a Dashboard](/docs/dashboards/build/) - create dashboards, add panels, choose visualization types, and arrange layouts
+- [Dashboard variables](/docs/dashboards/variables/) - parameterize panels with dropdowns that drive every query
+- [Visualization transformations](/docs/dashboards/transformations/) - reshape query results before they're charted
 - [Sharing Dashboards](/docs/dashboards/sharing/) - share, export, and best practices
 - [Troubleshooting](/docs/dashboards/troubleshooting/) - diagnose panel issues, inspect queries, and fix common problems
