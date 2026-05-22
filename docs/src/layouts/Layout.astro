@@ -13,7 +13,7 @@ const {
 
 const canonicalURL = Astro.site ? new URL(Astro.url.pathname, Astro.site) : Astro.url.pathname;
 
-import { ViewTransitions } from 'astro:transitions';
+import { ClientRouter } from 'astro:transitions';
 ---
 
 <!doctype html>
@@ -24,7 +24,7 @@ import { ViewTransitions } from 'astro:transitions';
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="canonical" href={canonicalURL} />
     
-    <ViewTransitions />
+    <ClientRouter />
     
     <!-- Primary Meta Tags -->
     <title>{title}</title>
