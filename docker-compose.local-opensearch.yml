@@ -16,7 +16,7 @@ volumes:
 services:
   # OpenSearch - Stores and indexes logs and traces for search and analysis
   opensearch:
-    image: ${OPENSEARCH_IMAGE}
+    image: ${OPENSEARCH_DOCKER_REPO}/opensearch:${OPENSEARCH_VERSION}
     container_name: opensearch
     pull_policy: always
     environment:

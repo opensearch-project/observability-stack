@@ -14,8 +14,8 @@ opensearch:
   replicas: 3
   # TODO: Change to opensearchproject/opensearch after 3.7.0 official release
   image:
-    repository: "ashisagr32966/opensearch-sql-main"
-    tag: "3.7.0-sql-main"
+    repository: "opensearchstaging/opensearch"
+    tag: "3.7.0"
   resources:
     requests:
       memory: "4Gi"
@@ -79,8 +79,8 @@ opensearch-dashboards:
   replicaCount: 3
   # TODO: Change to opensearchproject/opensearch-dashboards after 3.7.0 official release
   image:
-    repository: "joshuali925/opensearch-dashboards"
-    tag: "3.7.0-slos-pr-against-main-v2"
+    repository: "opensearchstaging/opensearch-dashboards"
+    tag: "3.7.0"
   resources:
     requests:
       cpu: "500m"

@@ -849,8 +849,8 @@ run_simulated_installer() {
 
     # Demo image list
     local images=(
-        "opensearchproject/opensearch:3.5.0"
-        "opensearchproject/opensearch-dashboards:3.5.0"
+        "opensearchstaging/opensearch:3.7.0"
+        "opensearchstaging/opensearch-dashboards:3.7.0"
         "otel/opentelemetry-collector-contrib:0.143.0"
         "opensearchproject/data-prepper:2.13.0"
         "prom/prometheus:v3.8.1"
