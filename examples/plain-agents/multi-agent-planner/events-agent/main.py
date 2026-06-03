@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Events Agent - Fetches local events for a destination.
-Supports fault injection for testing observability.
+Events Agent - Fetches attractions and points of interest for a destination.
+Uses Wikipedia via MCP server for real data. Supports fault injection for testing observability.
 
 Instrumented with opensearch-genai-observability-sdk-py:
 - register() replaces ~20 lines of manual TracerProvider/exporter setup
@@ -45,7 +45,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "fetch_events_api",
-            "description": "Fetch local events from the events database for a destination",
+            "description": "Fetch attractions and points of interest from Wikipedia for a destination",
             "parameters": {"type": "object", "properties": {"destination": {"type": "string"}, "date": {"type": "string"}}, "required": ["destination"]}
         }
     }
@@ -284,7 +284,7 @@ async def get_events(request: EventsRequest):
             resp = httpx.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers, timeout=30)
             mcp_result = resp.json().get("result", {})
             events_list = mcp_result.get("events", [])
-            events = [Event(name=e["name"], type=e["type"], venue=e.get("venue", "TBD"), date=e.get("date", date)) for e in events_list]
+            events = [Event(name=e["name"], type=e.get("type", "attraction"), venue=e.get("venue", destination.title()), date=e.get("date", date)) for e in events_list]
 
         span.set_attribute("events.count", len(events))
 

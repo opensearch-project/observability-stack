@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Travel Planner - Orchestrates weather and events agents.
+Travel Planner - Orchestrates weather, events, flights, and currency agents.
 Supports fault injection at orchestrator level and pass-through to sub-agents.
 
 Instrumented with opensearch-genai-observability-sdk-py:
@@ -14,6 +14,7 @@ import os
 import random
 import time
 from typing import Optional
+from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI
@@ -25,6 +26,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
 from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
@@ -35,14 +37,14 @@ AGENT_NAME = "Travel Planner"
 
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8003")
 
-# Tool definitions for this agent
 TOOL_DEFINITIONS = [
     {
         "type": "function",
         "function": {
             "name": "get_weather",
-            "description": "Get weather information for a destination by calling the weather agent",
+            "description": "Get current weather for a destination (real Open-Meteo data)",
             "parameters": {"type": "object", "properties": {"destination": {"type": "string"}}, "required": ["destination"]}
         }
     },
@@ -50,13 +52,44 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "get_events",
-            "description": "Get local events for a destination by calling the events agent",
+            "description": "Get attractions and points of interest from Wikipedia",
             "parameters": {"type": "object", "properties": {"destination": {"type": "string"}}, "required": ["destination"]}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_flights",
+            "description": "Search for flights between origin and destination",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "origin": {"type": "string"},
+                    "destination": {"type": "string"},
+                    "date": {"type": "string", "description": "YYYY-MM-DD"}
+                },
+                "required": ["origin", "destination"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "convert_currency",
+            "description": "Convert amount between currencies using live ECB rates",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "amount": {"type": "number"},
+                    "from_currency": {"type": "string"},
+                    "to_currency": {"type": "string"}
+                },
+                "required": ["amount", "from_currency", "to_currency"]
+            }
         }
     }
 ]
 
-# Model rotation for realistic traces
 MODELS = [
     "claude-opus-4.5", "claude-sonnet-4.5", "claude-haiku-4.5", "claude-sonnet-4", "claude-haiku",
     "gpt-5", "gpt-4.1", "gpt-4.1-mini", "gpt-4o", "gpt-4o-mini", "o4-mini",
@@ -72,6 +105,15 @@ SYSTEMS = {
     "nova-2-pro": "amazon", "nova-2-lite": "amazon", "nova-premier": "amazon",
     "nova-pro": "amazon", "nova-lite": "amazon",
 }
+
+DESTINATION_CURRENCIES = {
+    "paris": "EUR", "london": "GBP", "tokyo": "JPY", "berlin": "EUR",
+    "sydney": "AUD", "mumbai": "INR", "toronto": "CAD", "seattle": "USD",
+    "new york": "USD", "portland": "USD", "vancouver": "CAD", "rome": "EUR",
+    "barcelona": "EUR", "amsterdam": "EUR", "bangkok": "THB",
+}
+
+MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
 class SubAgentFault(BaseModel):
@@ -89,6 +131,7 @@ class FaultConfig(BaseModel):
 
 class PlanRequest(BaseModel):
     destination: str
+    origin: Optional[str] = None
     fault: Optional[FaultConfig] = None
 
 
@@ -96,24 +139,22 @@ class PlanResponse(BaseModel):
     destination: str
     weather: Optional[dict] = None
     events: list = []
+    flights: Optional[dict] = None
+    currency: Optional[dict] = None
     recommendation: str
     partial: bool = False
     errors: list = []
 
 
 # --- Telemetry setup ---
-# SDK handles tracing; metrics still need manual setup
 otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
 
-# One line replaces ~20 lines of TracerProvider + exporter setup
 register(
     endpoint=f"grpc://{otlp_endpoint.replace('http://', '').replace('https://', '')}",
     service_name="travel-planner",
     service_version="1.0.0",
 )
 
-# Metrics (SDK handles tracing only)
-# TODO: unify Resource with register() when SDK supports metrics
 resource = Resource.create({"service.name": "travel-planner"})
 metric_reader = PeriodicExportingMetricReader(
     OTLPMetricExporter(endpoint=otlp_endpoint, insecure=True),
@@ -122,9 +163,7 @@ metric_reader = PeriodicExportingMetricReader(
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
-# HTTPx auto-instrumentation for outbound calls
 HTTPXClientInstrumentor().instrument()
-
 
 inner_app = FastAPI(title="Travel Planner", version="1.0.0")
 
@@ -134,19 +173,43 @@ async def health():
     return {"status": "healthy", "agent_id": AGENT_ID, "agent_name": AGENT_NAME}
 
 
+async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
+    """Call MCP server directly for a tool execution."""
+    session_id = uuid4().hex
+    request_id = uuid4().hex[:8]
+
+    with observe(f"tools/call {tool_name}", op=Op.EXECUTE_TOOL, kind=SpanKind.CLIENT) as span:
+        span.set_attribute("mcp.method.name", "tools/call")
+        span.set_attribute("mcp.session.id", session_id)
+        span.set_attribute("mcp.protocol.version", MCP_PROTOCOL_VERSION)
+        span.set_attribute("jsonrpc.request.id", request_id)
+        span.set_attribute("gen_ai.tool.name", tool_name)
+
+        headers = {"mcp-session-id": session_id}
+        inject(headers)
+        payload = {
+            "jsonrpc": "2.0", "method": "tools/call", "id": request_id,
+            "params": {"name": tool_name, "arguments": arguments}
+        }
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers)
+            result = resp.json()
+            if "error" in result:
+                raise Exception(result["error"].get("message", "MCP tool call failed"))
+            return result.get("result", {})
+
+
 @inner_app.post("/plan")
 async def plan_trip(request: PlanRequest):
     model = random.choice(MODELS)
     provider = SYSTEMS[model]
 
-    # Promote gen_ai attributes to the root HTTP span so the UI can read them
     enrich(
         model=model,
         provider=provider,
         agent_id=AGENT_ID,
         input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {request.destination}"}]}],
     )
-    # Set agent name and operation on the root span directly
     root_span = trace.get_current_span()
     root_span.set_attribute("gen_ai.agent.name", AGENT_NAME)
     root_span.set_attribute("gen_ai.operation.name", "invoke_agent")
@@ -164,6 +227,8 @@ async def plan_trip(request: PlanRequest):
         errors = []
         weather_data = None
         events_data = []
+        flights_data = None
+        currency_data = None
 
         # Synthetic "thinking" LLM call
         with observe("planning", op=Op.CHAT):
@@ -193,9 +258,8 @@ async def plan_trip(request: PlanRequest):
         else:
             timeout = 30.0
 
-        # Fan out to sub-agents
+        # Fan out to sub-agents (weather + events in parallel)
         async with httpx.AsyncClient(timeout=timeout) as client:
-            # Invoke weather agent
             with observe("weather-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
                 agent_span.set_attribute("gen_ai.agent.name", "weather-agent")
                 try:
@@ -211,7 +275,6 @@ async def plan_trip(request: PlanRequest):
                     errors.append({"agent": "weather", "error": str(e)})
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
 
-            # Invoke events agent
             with observe("events-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
                 agent_span.set_attribute("gen_ai.agent.name", "events-agent")
                 try:
@@ -232,6 +295,28 @@ async def plan_trip(request: PlanRequest):
                     errors.append({"agent": "events", "error": str(e)})
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
 
+        # Sequential MCP calls for flights and currency (produces deeper trace waterfall)
+        origin = request.origin or "Portland"
+        try:
+            flights_data = await call_mcp_tool("fetch_flights_api", {
+                "origin": origin,
+                "destination": request.destination,
+            })
+        except Exception as e:
+            errors.append({"agent": "flights", "error": str(e)})
+
+        dest_lower = request.destination.lower()
+        target_currency = DESTINATION_CURRENCIES.get(dest_lower, "EUR")
+        if target_currency != "USD":
+            try:
+                currency_data = await call_mcp_tool("convert_currency", {
+                    "amount": 100,
+                    "from_currency": "USD",
+                    "to_currency": target_currency,
+                })
+            except Exception as e:
+                errors.append({"agent": "currency", "error": str(e)})
+
         # Final response "chat" span
         with observe("summarize", op=Op.CHAT):
             enrich(
@@ -243,7 +328,6 @@ async def plan_trip(request: PlanRequest):
             )
             time.sleep(random.uniform(0.05, 0.15))
 
-        # Build recommendation with graceful degradation
         partial = len(errors) > 0
         if partial:
             span.set_attribute("response.partial", True)
@@ -253,11 +337,8 @@ async def plan_trip(request: PlanRequest):
                 span.set_attribute(f"response.error_{i}_message", str(err["error"])[:200])
             span.set_status(Status(StatusCode.ERROR, f"Partial failure: {len(errors)} sub-agent(s) failed"))
 
-        recommendation = build_recommendation(request.destination, weather_data, events_data, partial)
+        recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
 
-    # Set output on the parent HTTP request span. This enrich() is intentionally
-    # outside the observe() block — exiting observe() restores the parent span
-    # context, so enrich() here targets the HTTP request span, not the agent span.
     enrich(
         output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],
     )
@@ -266,25 +347,38 @@ async def plan_trip(request: PlanRequest):
         destination=request.destination,
         weather=weather_data,
         events=events_data,
+        flights=flights_data,
+        currency=currency_data,
         recommendation=recommendation,
         partial=partial,
         errors=errors,
     )
 
 
-def build_recommendation(destination: str, weather: Optional[dict], events: list, partial: bool) -> str:
+def build_recommendation(destination: str, weather: Optional[dict], events: list,
+                         flights: Optional[dict], currency: Optional[dict], partial: bool) -> str:
     parts = [f"Great choice! {destination} looks wonderful."]
 
     if weather and "response" in weather:
         parts.append(weather["response"])
+    elif weather and "temperature" in str(weather):
+        parts.append(f"Current weather: expect conditions around there.")
     elif partial:
         parts.append("Weather info temporarily unavailable.")
 
     if events:
-        event_names = [e["name"] for e in events[:2]]
-        parts.append(f"Check out {', '.join(event_names)}.")
+        event_names = [e["name"] if isinstance(e, dict) else str(e) for e in events[:3]]
+        parts.append(f"Don't miss: {', '.join(event_names)}.")
     elif partial:
-        parts.append("Events info temporarily unavailable.")
+        parts.append("Attractions info temporarily unavailable.")
+
+    if flights and "flights" in flights:
+        cheapest = flights["flights"][0] if flights["flights"] else None
+        if cheapest:
+            parts.append(f"Flights from ${cheapest['price_usd']} ({cheapest['airline']}).")
+
+    if currency:
+        parts.append(f"$100 USD ≈ {currency['converted']} {currency['to_currency']}.")
 
     return " ".join(parts)
 

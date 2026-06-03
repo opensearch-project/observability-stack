@@ -42,6 +42,25 @@ services:
           memory: ${WEATHER_AGENT_MEMORY_LIMIT}
     logging: *logging
 
+  # Travel Agent Control Panel - UI for toggling fault injection scenarios
+  example-fault-panel:
+    build:
+      context: ./docker-compose/fault-panel
+      dockerfile: Dockerfile
+    container_name: fault-panel
+    ports:
+      - "${FAULT_PANEL_PORT:-8085}:8080"
+    volumes:
+      - fault-panel-data:/data
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    logging: *logging
+
   # Canary Service - Periodically invokes travel-planner for testing
   example-canary:
     build:
@@ -52,11 +71,13 @@ services:
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
       - WEATHER_AGENT_URL=http://weather-agent:8000
       - EVENTS_AGENT_URL=http://events-agent:8002
+      - FAULT_PANEL_URL=http://fault-panel:8080
       - CANARY_INTERVAL=${CANARY_INTERVAL}
     depends_on:
       - example-travel-planner
       - example-weather-agent
       - example-events-agent
+      - example-fault-panel
     networks:
       - observability-stack-network
     restart: unless-stopped
@@ -161,3 +182,6 @@ services:
         limits:
           memory: ${CANARY_MEMORY_LIMIT}
     logging: *logging
+
+volumes:
+  fault-panel-data:
