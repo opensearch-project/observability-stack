@@ -527,12 +527,16 @@ class WeatherAgent:
                     {"role": "assistant", "parts": [{"type": "text", "content": final_response}], "finish_reason": "stop"}
                 ])
 
+                response_id = llm_response["id"] if "llm_response" in dir() and llm_response else f"bedrock-{uuid4().hex[:8]}"
+                response_model = llm_response["model"] if "llm_response" in dir() and llm_response else BEDROCK_MODEL_ID
+                provider_name = "aws_bedrock" if (_config_cache["use_real_llm"] and _bedrock_client) else "openai"
+
                 self.logger.info(
                     "Agent invocation completed",
                     extra={
                         "gen_ai.operation.name": "invoke_agent",
                         "gen_ai.agent.id": self.agent_id,
-                        "gen_ai.response.id": llm_response["id"],
+                        "gen_ai.response.id": response_id,
                         "gen_ai.conversation.id": conversation_id,
                         "response": final_response
                     }
@@ -543,10 +547,10 @@ class WeatherAgent:
                     duration,
                     attributes={
                         "gen_ai.operation.name": "invoke_agent",
-                        "gen_ai.provider.name": "openai",
-                        "gen_ai.request.model": self.model,
-                        "gen_ai.response.model": llm_response["model"],
-                        "server.address": "api.openai.com"
+                        "gen_ai.provider.name": provider_name,
+                        "gen_ai.request.model": BEDROCK_MODEL_ID if provider_name == "aws_bedrock" else self.model,
+                        "gen_ai.response.model": response_model,
+                        "server.address": "bedrock-runtime.us-west-2.amazonaws.com" if provider_name == "aws_bedrock" else "api.openai.com"
                     }
                 )
 
