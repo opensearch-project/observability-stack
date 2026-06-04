@@ -100,11 +100,12 @@ The agents support real LLM calls via Amazon Bedrock Converse API, toggled live 
 
 ### Model Configuration
 
-Default model: `us.anthropic.claude-opus-4-8` (Claude Opus 4.8 via Bedrock cross-region inference)
+Default model: `global.anthropic.claude-haiku-4-5-20251001-v1:0` (Claude Haiku 4.5 — fast and cost-effective)
 
 Override via environment variable:
 ```bash
-BEDROCK_MODEL_ID=us.anthropic.claude-sonnet-4-20250514  # cheaper alternative
+BEDROCK_MODEL_ID=global.anthropic.claude-sonnet-4-6         # more capable
+BEDROCK_MODEL_ID=global.anthropic.claude-opus-4-8           # most capable, highest cost
 ```
 
 ### Fallback Behavior

@@ -34,7 +34,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
     depends_on:
       - otel-collector
       - example-mcp-server
@@ -111,7 +111,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
     depends_on:
       - otel-collector
       - example-weather-agent
@@ -163,7 +163,7 @@ services:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
-      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
     depends_on:
       - otel-collector
       - example-mcp-server

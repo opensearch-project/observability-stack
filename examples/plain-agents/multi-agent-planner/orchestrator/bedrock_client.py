@@ -13,7 +13,7 @@ from botocore.exceptions import ClientError, NoCredentialsError, EndpointConnect
 
 logger = logging.getLogger(__name__)
 
-BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "us.anthropic.claude-opus-4-8")
+BEDROCK_MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
 BEDROCK_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-west-2"))
 
 
