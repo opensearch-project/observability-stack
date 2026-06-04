@@ -19,11 +19,13 @@ import json
 import logging
 import os
 import random
+import threading
 import time
 from typing import Dict, Any, List, Optional
 from uuid import uuid4
 
 import httpx
+import requests as req_lib
 from opentelemetry import trace, metrics
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.propagate import inject
@@ -37,6 +39,29 @@ from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 
 from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from bedrock_client import (
+    get_bedrock_client, converse, extract_text, extract_tool_use, get_usage,
+    openai_tools_to_bedrock, BedrockUnavailableError, BEDROCK_MODEL_ID,
+)
+
+FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
+_config_cache = {"use_real_llm": False}
+
+
+def _poll_config():
+    while True:
+        try:
+            resp = req_lib.get(f"{FAULT_PANEL_URL}/config", timeout=2)
+            if resp.status_code == 200:
+                _config_cache["use_real_llm"] = resp.json().get("use_real_llm", False)
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+threading.Thread(target=_poll_config, daemon=True).start()
+
+_bedrock_client = get_bedrock_client()
 
 
 # Fault injection exceptions
@@ -390,96 +415,128 @@ class WeatherAgent:
                     {"role": "user", "content": user_message}
                 ]
 
-                llm_response = call_llm(self.model, messages, self.tools)
+                # --- Bedrock path (real LLM) ---
+                if _config_cache["use_real_llm"] and _bedrock_client:
+                    try:
+                        bedrock_messages = [{"role": "user", "content": [{"text": user_message}]}]
+                        tool_config = openai_tools_to_bedrock(self.tools)
+                        bedrock_response = converse(
+                            _bedrock_client, bedrock_messages,
+                            system=system_instructions[0]["content"],
+                            tool_config=tool_config,
+                        )
+                        usage = get_usage(bedrock_response)
+                        enrich(
+                            model=BEDROCK_MODEL_ID,
+                            provider="aws_bedrock",
+                            input_tokens=usage["input_tokens"],
+                            output_tokens=usage["output_tokens"],
+                            finish_reason=bedrock_response.get("stopReason", "end_turn"),
+                        )
+                        span.set_attribute("gen_ai.response.model", BEDROCK_MODEL_ID)
 
-                # Check for token_limit_exceeded fault
-                if self._should_inject_fault(fault) and fault.type == "token_limit_exceeded":
+                        tool_use = extract_tool_use(bedrock_response)
+                        if tool_use:
+                            tool_name = tool_use["name"]
+                            tool_args = tool_use["input"]
+                            tool_use_id = tool_use["toolUseId"]
+
+                            if self._should_inject_fault(fault) and fault.type == "wrong_tool":
+                                wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
+                                tool_name = wrong_tools.get(tool_name, tool_name)
+
+                            tool_result = self.execute_tool(tool_name, tool_args, tool_use_id, fault)
+
+                            # Second Bedrock call with tool result for final answer
+                            bedrock_messages.append(bedrock_response["output"]["message"])
+                            bedrock_messages.append({"role": "user", "content": [{"toolResult": {"toolUseId": tool_use_id, "content": [{"json": tool_result}]}}]})
+                            final_response_obj = converse(_bedrock_client, bedrock_messages, system=system_instructions[0]["content"])
+                            final_response = extract_text(final_response_obj)
+                            usage2 = get_usage(final_response_obj)
+                            self.token_counter.add(usage["input_tokens"] + usage2["input_tokens"], attributes={"gen_ai.token.type": "input", "gen_ai.provider.name": "aws_bedrock", "gen_ai.request.model": BEDROCK_MODEL_ID})
+                            self.token_counter.add(usage["output_tokens"] + usage2["output_tokens"], attributes={"gen_ai.token.type": "output", "gen_ai.provider.name": "aws_bedrock", "gen_ai.request.model": BEDROCK_MODEL_ID})
+                        else:
+                            final_response = extract_text(bedrock_response)
+
+                    except BedrockUnavailableError as e:
+                        span.set_attribute("gen_ai.bedrock.fallback", True)
+                        span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                        # Fall through to mock path below
+                        llm_response = call_llm(self.model, messages, self.tools)
+                        tool_call = llm_response["choices"][0]["message"].get("tool_calls", [None])[0]
+                        if tool_call:
+                            tool_name = tool_call["function"]["name"]
+                            tool_args = json.loads(tool_call["function"]["arguments"])
+                            tool_result = self.execute_tool(tool_name, tool_args, tool_call["id"], fault)
+                            final_response = f"The weather in {tool_result.get('location', 'unknown')} is {tool_result.get('condition', 'unknown')} with a temperature of {tool_result.get('temperature', 'N/A')}."
+                        else:
+                            final_response = "I couldn't determine what you're asking about."
+                        enrich(finish_reason="stop", input_tokens=llm_response["usage"]["prompt_tokens"], output_tokens=llm_response["usage"]["completion_tokens"])
+                else:
+                    # --- Mock path ---
+                    llm_response = call_llm(self.model, messages, self.tools)
+
+                    if self._should_inject_fault(fault) and fault.type == "token_limit_exceeded":
+                        enrich(response_id=llm_response["id"], finish_reason="length", input_tokens=llm_response["usage"]["prompt_tokens"], output_tokens=1024)
+                        span.set_attribute("gen_ai.response.model", llm_response["model"])
+                        truncated_response = "The weather in the requested location is currently showing temperatures around—"
+                        enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": truncated_response}], "finish_reason": "length"}])
+                        span.set_status(Status(StatusCode.OK))
+                        return truncated_response
+
                     enrich(
                         response_id=llm_response["id"],
-                        finish_reason="length",
+                        finish_reason=llm_response["choices"][0]["finish_reason"],
                         input_tokens=llm_response["usage"]["prompt_tokens"],
-                        output_tokens=1024,
+                        output_tokens=llm_response["usage"]["completion_tokens"],
                     )
                     span.set_attribute("gen_ai.response.model", llm_response["model"])
-                    truncated_response = "The weather in the requested location is currently showing temperatures around—"
-                    enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": truncated_response}], "finish_reason": "length"}])
-                    span.set_status(Status(StatusCode.OK))
-                    return truncated_response
 
-                # Set response attributes via enrich()
-                enrich(
-                    response_id=llm_response["id"],
-                    finish_reason=llm_response["choices"][0]["finish_reason"],
-                    input_tokens=llm_response["usage"]["prompt_tokens"],
-                    output_tokens=llm_response["usage"]["completion_tokens"],
-                )
-                span.set_attribute("gen_ai.response.model", llm_response["model"])
+                    self.token_counter.add(llm_response["usage"]["prompt_tokens"], attributes={"gen_ai.operation.name": "invoke_agent", "gen_ai.provider.name": "openai", "gen_ai.request.model": self.model, "gen_ai.response.model": llm_response["model"], "gen_ai.token.type": "input", "server.address": "api.openai.com"})
+                    self.token_counter.add(llm_response["usage"]["completion_tokens"], attributes={"gen_ai.operation.name": "invoke_agent", "gen_ai.provider.name": "openai", "gen_ai.request.model": self.model, "gen_ai.response.model": llm_response["model"], "gen_ai.token.type": "output", "server.address": "api.openai.com"})
 
-                # Record token usage metrics
-                self.token_counter.add(
-                    llm_response["usage"]["prompt_tokens"],
-                    attributes={
-                        "gen_ai.operation.name": "invoke_agent",
-                        "gen_ai.provider.name": "openai",
-                        "gen_ai.request.model": self.model,
-                        "gen_ai.response.model": llm_response["model"],
-                        "gen_ai.token.type": "input",
-                        "server.address": "api.openai.com"
-                    }
-                )
-                self.token_counter.add(
-                    llm_response["usage"]["completion_tokens"],
-                    attributes={
-                        "gen_ai.operation.name": "invoke_agent",
-                        "gen_ai.provider.name": "openai",
-                        "gen_ai.request.model": self.model,
-                        "gen_ai.response.model": llm_response["model"],
-                        "gen_ai.token.type": "output",
-                        "server.address": "api.openai.com"
-                    }
-                )
+                    tool_call = llm_response["choices"][0]["message"].get("tool_calls", [None])[0]
+                    tool_call_id = tool_call["id"] if tool_call else None
 
-                # Execute tool if requested
-                tool_call = llm_response["choices"][0]["message"].get("tool_calls", [None])[0]
-                tool_call_id = tool_call["id"] if tool_call else None
+                    if tool_call:
+                        tool_name = tool_call["function"]["name"]
+                        tool_args = json.loads(tool_call["function"]["arguments"])
 
-                if tool_call:
-                    tool_name = tool_call["function"]["name"]
-                    tool_args = json.loads(tool_call["function"]["arguments"])
+                        if self._should_inject_fault(fault) and fault.type == "wrong_tool":
+                            wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
+                            tool_name = wrong_tools.get(tool_name, tool_name)
+                            if tool_name == "get_historical_weather":
+                                tool_args["date"] = "2026-01-25"
 
-                    # wrong_tool fault: swap the tool being called
-                    if self._should_inject_fault(fault) and fault.type == "wrong_tool":
-                        wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
-                        tool_name = wrong_tools.get(tool_name, tool_name)
-                        if tool_name == "get_historical_weather":
-                            tool_args["date"] = "2026-01-25"
+                        tool_result = self.execute_tool(tool_name, tool_args, tool_call_id, fault)
 
-                    tool_result = self.execute_tool(tool_name, tool_args, tool_call_id, fault)
-
-                    # Generate final response based on tool result
-                    if "temperature" in tool_result:
-                        final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
-                    elif "forecast" in tool_result:
-                        days = tool_result["forecast"]
-                        final_response = f"Forecast for {tool_result['location']}: Day 1: {days[0]['condition']}, high {days[0]['high']}."
-                    elif "date" in tool_result:
-                        final_response = f"On {tool_result['date']} in {tool_result['location']}: {tool_result['condition']}, high {tool_result['high']}."
+                        if "temperature" in tool_result:
+                            final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
+                        elif "forecast" in tool_result:
+                            days = tool_result["forecast"]
+                            final_response = f"Forecast for {tool_result['location']}: Day 1: {days[0]['condition']}, high {days[0]['high']}."
+                        elif "date" in tool_result:
+                            final_response = f"On {tool_result['date']} in {tool_result['location']}: {tool_result['condition']}, high {tool_result['high']}."
+                        else:
+                            final_response = f"Weather data for {tool_result.get('location', 'unknown')}: {tool_result}"
                     else:
-                        final_response = f"Weather data for {tool_result.get('location', 'unknown')}: {tool_result}"
-                else:
-                    final_response = "I couldn't determine what you're asking about."
+                        final_response = "I couldn't determine what you're asking about."
 
                 # Record output messages via enrich()
                 enrich(output_messages=[
                     {"role": "assistant", "parts": [{"type": "text", "content": final_response}], "finish_reason": "stop"}
                 ])
 
+                response_id = llm_response["id"] if "llm_response" in dir() and llm_response else f"bedrock-{uuid4().hex[:8]}"
+                response_model = llm_response["model"] if "llm_response" in dir() and llm_response else BEDROCK_MODEL_ID
+                provider_name = "aws_bedrock" if (_config_cache["use_real_llm"] and _bedrock_client) else "openai"
+
                 self.logger.info(
                     "Agent invocation completed",
                     extra={
                         "gen_ai.operation.name": "invoke_agent",
                         "gen_ai.agent.id": self.agent_id,
-                        "gen_ai.response.id": llm_response["id"],
+                        "gen_ai.response.id": response_id,
                         "gen_ai.conversation.id": conversation_id,
                         "response": final_response
                     }
@@ -490,10 +547,10 @@ class WeatherAgent:
                     duration,
                     attributes={
                         "gen_ai.operation.name": "invoke_agent",
-                        "gen_ai.provider.name": "openai",
-                        "gen_ai.request.model": self.model,
-                        "gen_ai.response.model": llm_response["model"],
-                        "server.address": "api.openai.com"
+                        "gen_ai.provider.name": provider_name,
+                        "gen_ai.request.model": BEDROCK_MODEL_ID if provider_name == "aws_bedrock" else self.model,
+                        "gen_ai.response.model": response_model,
+                        "server.address": "bedrock-runtime.us-west-2.amazonaws.com" if provider_name == "aws_bedrock" else "api.openai.com"
                     }
                 )
 
@@ -530,6 +587,10 @@ class WeatherAgent:
             span.set_attribute("network.transport", "tcp")
             span.set_attribute("network.protocol.name", "http")
 
+            enrich(
+                input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
+            )
+
             headers = {"mcp-session-id": session_id}
             inject(headers)
             payload = {
@@ -540,7 +601,12 @@ class WeatherAgent:
             data = resp.json()
             if "error" in data:
                 raise ToolExecutionError(data["error"].get("message", "MCP tool error"))
-            return data.get("result", {})
+            tool_result = data.get("result", {})
+
+            enrich(
+                output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(tool_result)}]}],
+            )
+            return tool_result
 
     def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None, fault: Optional[FaultConfig] = None) -> Dict[str, Any]:
         """
@@ -559,6 +625,10 @@ class WeatherAgent:
                 if tool_def:
                     span.set_attribute("gen_ai.tool.description", tool_def["function"]["description"])
                 span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
+
+                enrich(
+                    input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
+                )
 
                 # Check for fault injection
                 if self._should_inject_fault(fault) and fault.type in ("tool_timeout", "tool_error", "high_latency"):
@@ -593,6 +663,9 @@ class WeatherAgent:
                     raise ValueError(f"Unknown tool: {tool_name}")
 
                 span.set_attribute("gen_ai.tool.call.result", json.dumps(result))
+                enrich(
+                    output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(result)}]}],
+                )
                 span.set_status(Status(StatusCode.OK))
                 return result
 
