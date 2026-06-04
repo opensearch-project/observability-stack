@@ -27,12 +27,18 @@ services:
       # FastAPI server endpoint
       - "${WEATHER_AGENT_PORT}:8000"
     environment:
-      # Override OTLP endpoint to use docker network
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       - MCP_SERVER_URL=http://mcp-server:8003
+      - FAULT_PANEL_URL=http://fault-panel:8085
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
     depends_on:
       - otel-collector
       - example-mcp-server
+      - example-fault-panel
     networks:
       - observability-stack-network
     restart: unless-stopped
@@ -49,7 +55,7 @@ services:
       dockerfile: Dockerfile
     container_name: fault-panel
     ports:
-      - "${FAULT_PANEL_PORT:-8085}:8080"
+      - "${FAULT_PANEL_PORT:-8085}:8085"
     volumes:
       - fault-panel-data:/data
     networks:
@@ -71,7 +77,7 @@ services:
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
       - WEATHER_AGENT_URL=http://weather-agent:8000
       - EVENTS_AGENT_URL=http://events-agent:8002
-      - FAULT_PANEL_URL=http://fault-panel:8080
+      - FAULT_PANEL_URL=http://fault-panel:8085
       - CANARY_INTERVAL=${CANARY_INTERVAL}
     depends_on:
       - example-travel-planner
@@ -100,6 +106,12 @@ services:
       - WEATHER_AGENT_URL=http://weather-agent:8000
       - EVENTS_AGENT_URL=http://events-agent:8002
       - MCP_SERVER_URL=http://mcp-server:8003
+      - FAULT_PANEL_URL=http://fault-panel:8085
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
     depends_on:
       - otel-collector
       - example-weather-agent
@@ -146,9 +158,16 @@ services:
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       - MCP_SERVER_URL=http://mcp-server:8003
+      - FAULT_PANEL_URL=http://fault-panel:8085
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-us.anthropic.claude-opus-4-8}
     depends_on:
       - otel-collector
       - example-mcp-server
+      - example-fault-panel
     networks:
       - observability-stack-network
     restart: unless-stopped

@@ -12,11 +12,13 @@ import asyncio
 import json
 import os
 import random
+import threading
 import time
 from typing import Optional
 from uuid import uuid4
 
 import httpx
+import requests
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -30,6 +32,10 @@ from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
 from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from bedrock_client import (
+    get_bedrock_client, converse, extract_text, get_usage,
+    openai_tools_to_bedrock, BedrockUnavailableError, BEDROCK_MODEL_ID,
+)
 
 
 AGENT_ID = "travel-planner-001"
@@ -38,6 +44,27 @@ AGENT_NAME = "Travel Planner"
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8003")
+FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
+
+# Config cache — polled from fault panel
+_config_cache = {"use_real_llm": False}
+
+
+def _poll_config():
+    while True:
+        try:
+            resp = requests.get(f"{FAULT_PANEL_URL}/config", timeout=2)
+            if resp.status_code == 200:
+                _config_cache["use_real_llm"] = resp.json().get("use_real_llm", False)
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+threading.Thread(target=_poll_config, daemon=True).start()
+
+# Bedrock client (None if no creds available)
+_bedrock_client = get_bedrock_client()
 
 TOOL_DEFINITIONS = [
     {
@@ -185,6 +212,10 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
         span.set_attribute("jsonrpc.request.id", request_id)
         span.set_attribute("gen_ai.tool.name", tool_name)
 
+        enrich(
+            input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
+        )
+
         headers = {"mcp-session-id": session_id}
         inject(headers)
         payload = {
@@ -196,7 +227,11 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
             result = resp.json()
             if "error" in result:
                 raise Exception(result["error"].get("message", "MCP tool call failed"))
-            return result.get("result", {})
+            tool_result = result.get("result", {})
+            enrich(
+                output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(tool_result)}]}],
+            )
+            return tool_result
 
 
 @inner_app.post("/plan")
@@ -230,16 +265,33 @@ async def plan_trip(request: PlanRequest):
         flights_data = None
         currency_data = None
 
-        # Synthetic "thinking" LLM call
-        with observe("planning", op=Op.CHAT):
-            enrich(
-                model=model,
-                provider=provider,
-                input_tokens=random.randint(500, 2000),
-                output_tokens=random.randint(100, 500),
-                finish_reason="tool_calls",
-            )
-            time.sleep(random.uniform(0.1, 0.3))
+        # LLM planning call
+        with observe("planning", op=Op.CHAT) as planning_span:
+            if _config_cache["use_real_llm"] and _bedrock_client:
+                try:
+                    planning_messages = [{"role": "user", "content": [{"text": f"Plan a weekend trip to {request.destination}. What information should we gather about weather, attractions, flights, and currency?"}]}]
+                    planning_response = converse(
+                        _bedrock_client, planning_messages,
+                        system="You are a travel planning assistant. Briefly outline what to research for this trip.",
+                    )
+                    usage = get_usage(planning_response)
+                    enrich(
+                        model=BEDROCK_MODEL_ID,
+                        provider="aws_bedrock",
+                        input_tokens=usage["input_tokens"],
+                        output_tokens=usage["output_tokens"],
+                        finish_reason=planning_response.get("stopReason", "end_turn"),
+                        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {request.destination}"}]}],
+                        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": extract_text(planning_response)}]}],
+                    )
+                except BedrockUnavailableError as e:
+                    planning_span.set_attribute("gen_ai.bedrock.fallback", True)
+                    planning_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    enrich(model=model, provider=provider, input_tokens=random.randint(500, 2000), output_tokens=random.randint(100, 500), finish_reason="tool_calls")
+                    time.sleep(random.uniform(0.1, 0.3))
+            else:
+                enrich(model=model, provider=provider, input_tokens=random.randint(500, 2000), output_tokens=random.randint(100, 500), finish_reason="tool_calls")
+                time.sleep(random.uniform(0.1, 0.3))
 
         # Build sub-agent payloads with fault pass-through
         weather_payload = {"message": f"What's the weather in {request.destination}?"}
@@ -317,16 +369,37 @@ async def plan_trip(request: PlanRequest):
             except Exception as e:
                 errors.append({"agent": "currency", "error": str(e)})
 
-        # Final response "chat" span
-        with observe("summarize", op=Op.CHAT):
-            enrich(
-                model=model,
-                provider=provider,
-                input_tokens=random.randint(200, 800),
-                output_tokens=random.randint(50, 200),
-                finish_reason="stop",
-            )
-            time.sleep(random.uniform(0.05, 0.15))
+        # Final response "chat" span — summarize gathered data
+        with observe("summarize", op=Op.CHAT) as summarize_span:
+            gathered = {"destination": request.destination, "weather": weather_data, "events": events_data, "flights": flights_data, "currency": currency_data}
+            if _config_cache["use_real_llm"] and _bedrock_client:
+                try:
+                    summary_messages = [{"role": "user", "content": [{"text": f"Summarize this trip data into a brief recommendation (2-3 sentences):\n{json.dumps(gathered, default=str)}"}]}]
+                    summary_response = converse(
+                        _bedrock_client, summary_messages,
+                        system="You are a travel assistant. Give a concise, enthusiastic trip recommendation based on the gathered data.",
+                    )
+                    usage = get_usage(summary_response)
+                    recommendation = extract_text(summary_response)
+                    enrich(
+                        model=BEDROCK_MODEL_ID,
+                        provider="aws_bedrock",
+                        input_tokens=usage["input_tokens"],
+                        output_tokens=usage["output_tokens"],
+                        finish_reason=summary_response.get("stopReason", "end_turn"),
+                        input_messages=[{"role": "user", "parts": [{"type": "text", "content": json.dumps(gathered, default=str)}]}],
+                        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],
+                    )
+                except BedrockUnavailableError as e:
+                    summarize_span.set_attribute("gen_ai.bedrock.fallback", True)
+                    summarize_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    recommendation = None
+                    enrich(model=model, provider=provider, input_tokens=random.randint(200, 800), output_tokens=random.randint(50, 200), finish_reason="stop")
+                    time.sleep(random.uniform(0.05, 0.15))
+            else:
+                recommendation = None
+                enrich(model=model, provider=provider, input_tokens=random.randint(200, 800), output_tokens=random.randint(50, 200), finish_reason="stop")
+                time.sleep(random.uniform(0.05, 0.15))
 
         partial = len(errors) > 0
         if partial:
@@ -337,7 +410,8 @@ async def plan_trip(request: PlanRequest):
                 span.set_attribute(f"response.error_{i}_message", str(err["error"])[:200])
             span.set_status(Status(StatusCode.ERROR, f"Partial failure: {len(errors)} sub-agent(s) failed"))
 
-        recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
+        if not recommendation:
+            recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
 
     enrich(
         output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],

@@ -5,5 +5,5 @@ COPY main.py .
 
 RUN pip install --no-cache-dir fastapi uvicorn
 
-EXPOSE 8080
+EXPOSE 8085
 CMD ["python", "main.py"]

@@ -22,7 +22,7 @@ from datetime import datetime
 TRAVEL_PLANNER_URL = os.getenv("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
-FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8080")
+FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
 CANARY_INTERVAL = int(os.getenv("CANARY_INTERVAL", "30"))
 
 DESTINATIONS = ["Paris", "Tokyo", "London", "Berlin", "Sydney", "New York", "Mumbai", "Seattle"]

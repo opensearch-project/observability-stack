@@ -20,6 +20,7 @@ STATE_FILE = Path(os.getenv("STATE_FILE", "/data/state.json"))
 
 DEFAULT_STATE = {
     "enabled": True,
+    "use_real_llm": False,
     "fault_weights": {
         "none": 0.50,
         "weather_error": 0.10,
@@ -40,12 +41,14 @@ DEFAULT_STATE = {
 
 
 def load_state() -> dict:
+    loaded = DEFAULT_STATE.copy()
     if STATE_FILE.exists():
         try:
-            return json.loads(STATE_FILE.read_text())
+            saved = json.loads(STATE_FILE.read_text())
+            loaded.update(saved)
         except (json.JSONDecodeError, OSError):
             pass
-    return DEFAULT_STATE.copy()
+    return loaded
 
 
 def save_state():
@@ -116,6 +119,7 @@ PRESETS = {
 class ConfigUpdate(BaseModel):
     preset: Optional[str] = None
     enabled: Optional[bool] = None
+    use_real_llm: Optional[bool] = None
     fault_weights: Optional[dict] = None
     trace_shape_weights: Optional[dict] = None
     canary_interval: Optional[int] = None
@@ -143,6 +147,8 @@ async def update_config(update: ConfigUpdate):
         state["preset"] = update.preset
     if update.enabled is not None:
         state["enabled"] = update.enabled
+    if update.use_real_llm is not None:
+        state["use_real_llm"] = update.use_real_llm
     if update.fault_weights is not None:
         state["fault_weights"] = update.fault_weights
         state["preset"] = "custom"
@@ -240,6 +246,10 @@ HTML_PAGE = """<!DOCTYPE html>
       <input type="number" id="interval" value="30" min="5" max="300" onchange="updateInterval()">
       <label>sec</label>
     </div>
+    <div class="interval-group">
+      <label>Real LLM</label>
+      <label class="switch"><input type="checkbox" id="use-real-llm" onchange="toggleRealLLM()"><span class="slider"></span></label>
+    </div>
     <label class="switch"><input type="checkbox" id="enabled" checked onchange="toggleEnabled()"><span class="slider"></span></label>
   </div>
 </header>
@@ -299,6 +309,7 @@ async function load() {
 
 function render() {
   document.getElementById('enabled').checked = config.enabled;
+  document.getElementById('use-real-llm').checked = config.use_real_llm || false;
   document.getElementById('interval').value = config.canary_interval;
   isCustom = config.preset === 'custom';
 
@@ -360,7 +371,8 @@ function updateStatus() {
     el.className = 'status ok';
     const faults = Object.entries(config.fault_weights).filter(([k,v]) => k !== 'none' && v > 0);
     const faultStr = faults.length ? faults.map(([k,v]) => `${k}:${Math.round(v*100)}%`).join('  ') : 'none';
-    el.textContent = `ACTIVE [${config.preset}]  interval=${config.canary_interval}s  faults: ${faultStr}`;
+    const llmStr = config.use_real_llm ? 'bedrock' : 'mock';
+    el.textContent = `ACTIVE [${config.preset}]  interval=${config.canary_interval}s  llm: ${llmStr}  faults: ${faultStr}`;
   }
 }
 
@@ -372,6 +384,7 @@ async function post(data) {
 }
 
 function toggleEnabled() { post({ enabled: document.getElementById('enabled').checked }); }
+function toggleRealLLM() { post({ use_real_llm: document.getElementById('use-real-llm').checked }); }
 function updateInterval() { post({ canary_interval: parseInt(document.getElementById('interval').value) || 30 }); }
 function applyPreset(name) {
   if (name === 'custom') {
@@ -412,4 +425,4 @@ load();
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8085)

@@ -11,12 +11,14 @@ Instrumented with opensearch-genai-observability-sdk-py:
 import json
 import os
 import random
+import threading
 import time
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
 import httpx
+import requests as req_lib
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
@@ -29,11 +31,34 @@ from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
 from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from bedrock_client import (
+    get_bedrock_client, converse, extract_text, get_usage,
+    BedrockUnavailableError, BEDROCK_MODEL_ID,
+)
 
 
 # MCP Server configuration
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8003")
 MCP_PROTOCOL_VERSION = "2025-06-18"
+FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
+
+_config_cache = {"use_real_llm": False}
+
+
+def _poll_config():
+    while True:
+        try:
+            resp = req_lib.get(f"{FAULT_PANEL_URL}/config", timeout=2)
+            if resp.status_code == 200:
+                _config_cache["use_real_llm"] = resp.json().get("use_real_llm", False)
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+threading.Thread(target=_poll_config, daemon=True).start()
+
+_bedrock_client = get_bedrock_client()
 
 
 AGENT_ID = "events-agent-001"
@@ -206,16 +231,33 @@ async def get_events(request: EventsRequest):
         date = request.date or datetime.now().strftime("%Y-%m-%d")
         fault = request.fault
 
-        # Synthetic "thinking" LLM call
-        with observe("events-reasoning", op=Op.CHAT):
-            enrich(
-                model=model,
-                provider=provider,
-                input_tokens=random.randint(100, 500),
-                output_tokens=random.randint(50, 200),
-                finish_reason="tool_calls",
-            )
-            time.sleep(random.uniform(0.05, 0.15))
+        # LLM reasoning call
+        with observe("events-reasoning", op=Op.CHAT) as reasoning_span:
+            if _config_cache["use_real_llm"] and _bedrock_client:
+                try:
+                    reasoning_messages = [{"role": "user", "content": [{"text": f"What are the top attractions and things to do in {request.destination}? List briefly."}]}]
+                    reasoning_response = converse(
+                        _bedrock_client, reasoning_messages,
+                        system="You are a travel events assistant. Briefly suggest what to look for.",
+                    )
+                    usage = get_usage(reasoning_response)
+                    enrich(
+                        model=BEDROCK_MODEL_ID,
+                        provider="aws_bedrock",
+                        input_tokens=usage["input_tokens"],
+                        output_tokens=usage["output_tokens"],
+                        finish_reason=reasoning_response.get("stopReason", "end_turn"),
+                        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"What to do in {request.destination}?"}]}],
+                        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": extract_text(reasoning_response)}]}],
+                    )
+                except BedrockUnavailableError as e:
+                    reasoning_span.set_attribute("gen_ai.bedrock.fallback", True)
+                    reasoning_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    enrich(model=model, provider=provider, input_tokens=random.randint(100, 500), output_tokens=random.randint(50, 200), finish_reason="tool_calls")
+                    time.sleep(random.uniform(0.05, 0.15))
+            else:
+                enrich(model=model, provider=provider, input_tokens=random.randint(100, 500), output_tokens=random.randint(50, 200), finish_reason="tool_calls")
+                time.sleep(random.uniform(0.05, 0.15))
 
         # Check for fault injection
         if should_inject_fault(fault):
@@ -275,6 +317,10 @@ async def get_events(request: EventsRequest):
             tool_span.set_attribute("network.transport", "tcp")
             tool_span.set_attribute("network.protocol.name", "http")
 
+            enrich(
+                input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps({"destination": destination})}]}],
+            )
+
             headers = {"mcp-session-id": session_id}
             inject(headers)
             payload = {
@@ -285,6 +331,10 @@ async def get_events(request: EventsRequest):
             mcp_result = resp.json().get("result", {})
             events_list = mcp_result.get("events", [])
             events = [Event(name=e["name"], type=e.get("type", "attraction"), venue=e.get("venue", destination.title()), date=e.get("date", date)) for e in events_list]
+
+            enrich(
+                output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(mcp_result)}]}],
+            )
 
         span.set_attribute("events.count", len(events))
 
