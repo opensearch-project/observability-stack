@@ -124,7 +124,7 @@ When the **Visualization** tab is selected, a settings panel appears on the righ
 2. **Map axes**: Assign fields to the X and Y axes.
 3. **Customize styles**: Adjust colors, legends, gridlines, thresholds, and units.
 
-When you modify the settings, the visualization is updated automatically. See [Build a Dashboard](/docs/dashboards/build/) for details on each chart type and its options, and [Visualization transformations](/docs/dashboards/transformations/) for reshaping query results before they're charted.
+When you modify the settings, the visualization is updated automatically. See [Build a Dashboard](/docs/dashboards/build/) for details on each chart type and its options, and [Visualization transformations](/docs/dashboards/visualize/transformations/) for reshaping query results before they're charted.
 
 ## Saving and reusing
 

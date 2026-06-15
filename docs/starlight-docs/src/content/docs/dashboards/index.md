@@ -82,6 +82,7 @@ Use both together — variables for the parameters you expect viewers to change 
 
 - [Build a Dashboard](/docs/dashboards/build/) - create dashboards, add panels, choose visualization types, and arrange layouts
 - [Dashboard variables](/docs/dashboards/variables/) - parameterize panels with dropdowns that drive every query
-- [Visualization transformations](/docs/dashboards/transformations/) - reshape query results before they're charted
+- [Visualization Editor](/docs/dashboards/visualize/) - build query-based visualizations and configure chart-specific options
+- [Visualization transformations](/docs/dashboards/visualize/transformations/) - reshape query results before they're charted
 - [Sharing Dashboards](/docs/dashboards/sharing/) - share, export, and best practices
 - [Troubleshooting](/docs/dashboards/troubleshooting/) - diagnose panel issues, inspect queries, and fix common problems

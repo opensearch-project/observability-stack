@@ -120,7 +120,7 @@ Thresholds make it immediately obvious when a metric crosses a boundary - no men
 
 ## Chart-specific options
 
-Each chart type exposes its own controls in the **Settings** panel on the right. To reshape the query result before it's charted (filter rows, derive a field, group, sort, limit), see [Visualization transformations](/docs/dashboards/transformations/).
+Each chart type exposes its own controls in the **Settings** panel on the right. To reshape the query result before it's charted (filter rows, derive a field, group, sort, limit), see [Visualization transformations](/docs/dashboards/visualize/transformations/).
 
 ### Bucket
 
@@ -233,7 +233,7 @@ This approach ensures every panel has a clear purpose - it answers a question yo
 ## Next steps
 
 - [Dashboard variables](/docs/dashboards/variables/) - parameterize panels with dropdowns
-- [Visualization transformations](/docs/dashboards/transformations/) - reshape query results before they're charted
+- [Visualization transformations](/docs/dashboards/visualize/transformations/) - reshape query results before they're charted
 - [Sharing Dashboards](/docs/dashboards/sharing/) - share, export, and best practices
 - [Discover Logs](/docs/investigate/discover-logs/) - build log queries to power dashboard panels
 - [Discover Metrics](/docs/investigate/discover-metrics/) - build PromQL queries for metrics panels
