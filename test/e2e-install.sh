@@ -30,7 +30,8 @@ printf '%s\n' "$INSTALL_DIR" "n" "n" "n" | bash "$PATCHED_SCRIPT" --skip-pull
 rm -f "$PATCHED_SCRIPT"
 
 # Parse .env from the installed directory
-eval "$(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_PORT|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$INSTALL_DIR/.env")"
+eval "$(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$INSTALL_DIR/.env")"
 
 source "$SCRIPT_DIR/checks.sh"
 run_checks
+run_negative_checks
