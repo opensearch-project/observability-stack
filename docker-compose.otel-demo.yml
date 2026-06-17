@@ -774,7 +774,10 @@ services:
   # failure. Named separately from the base container rather than overlaying it
   # because Docker Compose >= v2.38 rejects service-name overlays on
   # `include:`-imported resources. Both containers hit idempotent upsert APIs.
+  # Requires local Cortex (prometheus) and OpenSearch backends; gated behind
+  # the local-backends profile (see COMPOSE_PROFILES in .env).
   otel-demo-alerting-rules-monitors-init:
+    profiles: ["local-backends"]
     image: python:3.11-alpine
     container_name: otel-demo-alerting-rules-monitors-init
     command:

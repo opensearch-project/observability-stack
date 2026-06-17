@@ -159,6 +159,79 @@ describe('EC2 demo buildUserData', () => {
     assert.ok(decoded.includes('docker-compose'));
     assert.ok(decoded.includes('docker-buildx'));
   });
+
+  it('pins the stack clone to a ref instead of tracking main HEAD', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('--branch "$OBS_STACK_REF"'));
+    assert.ok(decoded.includes('cli-installer-v'));
+  });
+
+  it('clears COMPOSE_PROFILES so local-backend services are pruned in managed mode', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('export COMPOSE_PROFILES='));
+  });
+});
+
+// ── managed-mode compose project resolution ──────────────────────────────────
+// Regression guard for #298: the generated docker-compose.managed.yml must
+// resolve as a valid project with COMPOSE_PROFILES empty, with every
+// local-backend service pruned (managed mode defines no opensearch/prometheus).
+
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { writeFileSync, rmSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+
+function dockerComposeAvailable() {
+  try {
+    execFileSync('docker', ['compose', 'version'], { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Extract the docker-compose.managed.yml heredoc body from generated user-data.
+function extractManagedCompose(userDataB64) {
+  const decoded = Buffer.from(userDataB64, 'base64').toString();
+  const m = decoded.match(/docker-compose\.managed\.yml << .MANAGEDEOF.\n([\s\S]*?)\nMANAGEDEOF/);
+  if (!m) throw new Error('managed compose heredoc not found in user-data');
+  return m[1];
+}
+
+describe('EC2 demo managed compose project', { skip: !dockerComposeAvailable() }, () => {
+  const cfg = {
+    pipelineName: 'test-pipeline',
+    region: 'us-west-2',
+    ingestEndpoints: ['test-pipeline-abc123.us-west-2.osis.amazonaws.com'],
+  };
+  // Repo root holds the included compose files; managed.yml's relative
+  // include: paths resolve against the file's own directory.
+  const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const managedPath = join(repoRoot, 'docker-compose.managed.yml');
+
+  function configServices(profiles) {
+    return execFileSync(
+      'docker', ['compose', '-f', managedPath, 'config', '--services'],
+      { cwd: repoRoot, env: { ...process.env, COMPOSE_PROFILES: profiles }, encoding: 'utf8' },
+    ).split('\n').filter(Boolean);
+  }
+
+  it('validates and prunes local-backend services when COMPOSE_PROFILES is empty', () => {
+    writeFileSync(managedPath, extractManagedCompose(_buildUserData(cfg)));
+    try {
+      const services = configServices('');
+      assert.ok(services.length > 0, 'expected the managed project to resolve to a non-empty service list');
+      assert.ok(!services.includes('example-agent-eval-canary'),
+        'eval canary should be pruned in managed mode (no local opensearch)');
+      assert.ok(!services.includes('otel-demo-alerting-rules-monitors-init'),
+        'otel-demo monitors-init should be pruned in managed mode (no local prometheus/opensearch)');
+      assert.ok(services.includes('otel-collector'),
+        'otel-collector should always be present');
+    } finally {
+      rmSync(managedPath, { force: true });
+    }
+  });
 });
 
 // ── renderPipeline tests ─────────────────────────────────────────────────────

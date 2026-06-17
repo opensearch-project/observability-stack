@@ -177,8 +177,11 @@ services:
           memory: 128M
     logging: *logging
 
-  # Agent Eval Canary: periodically scores un-evaluated agent traces
+  # Agent Eval Canary: periodically scores un-evaluated agent traces.
+  # Requires a local OpenSearch backend; gated behind the local-backends
+  # profile (see COMPOSE_PROFILES in .env).
   example-agent-eval-canary:
+    profiles: ["local-backends"]
     build:
       context: ./docker-compose/agent-eval-canary
       dockerfile: Dockerfile
