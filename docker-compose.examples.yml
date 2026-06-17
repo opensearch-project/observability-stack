@@ -178,9 +178,8 @@ services:
     logging: *logging
 
   # Agent Eval Canary: periodically scores un-evaluated agent traces.
-  # Hardcodes a local basic-auth OpenSearch backend (no managed-backend path),
-  # so it is gated behind the "local-backends" profile. Managed mode runs with
-  # COMPOSE_PROFILES unset, which prunes this service and its depends_on edges.
+  # Requires a local OpenSearch backend; gated behind the local-backends
+  # profile (see COMPOSE_PROFILES in .env).
   example-agent-eval-canary:
     profiles: ["local-backends"]
     build:

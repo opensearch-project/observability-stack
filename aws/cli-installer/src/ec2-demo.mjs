@@ -201,10 +201,9 @@ services:
     logging: *logging
 MANAGEDEOF
 
-# Managed mode has no local opensearch/prometheus, so prune the services that
-# require them by clearing COMPOSE_PROFILES (overrides the local-backends value
-# committed in .env). Without this, compose rejects the project on the
-# unresolved depends_on edges and starts zero containers.
+# Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES
+# (overriding the local-backends value committed in .env) to prune the services
+# that require those backends, leaving the project with resolvable depends_on.
 export COMPOSE_PROFILES=
 
 # Kafka's healthcheck can exceed compose's dependency grace window on first boot,

@@ -774,10 +774,8 @@ services:
   # failure. Named separately from the base container rather than overlaying it
   # because Docker Compose >= v2.38 rejects service-name overlays on
   # `include:`-imported resources. Both containers hit idempotent upsert APIs.
-  # Targets local Cortex (http://prometheus:9090) and local basic-auth OpenSearch
-  # (https://opensearch:9200); neither has a managed-backend path, so this is
-  # gated behind the "local-backends" profile. Managed mode runs with
-  # COMPOSE_PROFILES unset, which prunes this service and its depends_on edges.
+  # Requires local Cortex (prometheus) and OpenSearch backends; gated behind
+  # the local-backends profile (see COMPOSE_PROFILES in .env).
   otel-demo-alerting-rules-monitors-init:
     profiles: ["local-backends"]
     image: python:3.11-alpine
