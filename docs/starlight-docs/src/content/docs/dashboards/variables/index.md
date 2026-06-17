@@ -9,6 +9,14 @@ Variables let you parameterize a dashboard. A variable appears as a dropdown in 
 
 ![Dashboard with variable dropdowns in the header](https://github.com/opensearch-project/observability-stack/releases/download/v3.6.0-alpha.1/dashboard-variables.webp)
 
+Use dashboard variables to:
+
+- Change query parameters without editing visualizations.
+- Define values once and reference them across multiple visualizations.
+- Automatically update visualizations when variable values change.
+- Create cascading filters with dependent variables.
+- Dynamically control grouping, aggregation, and time intervals.
+
 ## Variable types
 
 OpenSearch Dashboards supports two variable types:
@@ -35,6 +43,27 @@ OpenSearch Dashboards supports two variable types:
    - For **Query** variables: choose a data source, write the query (PPL or PromQL) that returns the option list, optionally set a **Regex** filter, and pick when to **Refresh** the options — **On dashboard load** (default) or **On time range change**.
    - For **Custom** variables: enter the static option list (up to 100 options are displayed).
 4. Use the **Preview** button to check that the query returns the values you expect, then **Save**.
+
+For detailed edit, delete, reorder, and visibility controls, see [Managing Variables](/docs/dashboards/variables/managing-variables/).
+
+## Variable syntax
+
+Use `$variableName` for most references:
+
+```sql
+source = logs-otel-v1*
+| where `resource.attributes.service.name` = '$service'
+| stats count() by span(time, 1m)
+```
+
+Use `${variableName}` when the variable name is followed by other characters without whitespace:
+
+```sql
+source = logs
+| where ${env}_level = "error"
+```
+
+Braced syntax prevents `$env_level` from being interpreted as a different variable named `env_level`.
 
 ## Referencing a variable in a panel query
 
@@ -71,6 +100,12 @@ PromQL values are escaped for regex (e.g. `.`, `*`, `(` are backslash-escaped); 
 
 A query variable can reference another variable in its query. The order matters — a variable can only reference variables defined **above** it in the variables list. When the parent variable changes, the dependent variable's options refresh automatically. This is how you build a region → cluster → host chain, where each dropdown's options depend on the level above.
 
+## Variable storage
+
+Variables are stored as part of the dashboard saved object in OpenSearch. Each dashboard maintains its own variables independently.
+
+The dashboard saved object stores variable definitions in `variablesJSON`, including metadata, query or custom options, multi-select settings, sort order, visibility, and current values. Current variable values are also synchronized to the dashboard URL so you can share or bookmark a dashboard with specific variable values preselected.
+
 ## Filters vs. variables
 
 Filters and dashboard variables both narrow data across panels, but solve different problems:
@@ -91,6 +126,8 @@ Use both together — variables for the parameters you expect viewers to change 
 ## Related
 
 - [Build a Dashboard](/docs/dashboards/build/) — adding panels and configuring chart-specific options
-- [Visualization transformations](/docs/dashboards/transformations/) — reshape query results before they're charted
+- [Visualization transformations](/docs/dashboards/visualize/transformations/) — reshape query results before they're charted
+- [Managing Variables](/docs/dashboards/variables/managing-variables/) — edit, delete, reorder, hide, and troubleshoot variables
+- [Using Variables](/docs/dashboards/variables/using-variables/) — reference variables in PPL and PromQL queries
 - [Discover Logs](/docs/investigate/discover-logs/) — write the underlying PPL query
 - [Discover Metrics](/docs/investigate/discover-metrics/) — write the underlying PromQL query
