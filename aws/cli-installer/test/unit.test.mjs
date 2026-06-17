@@ -159,6 +159,17 @@ describe('EC2 demo buildUserData', () => {
     assert.ok(decoded.includes('docker-compose'));
     assert.ok(decoded.includes('docker-buildx'));
   });
+
+  it('pins the stack clone to a ref instead of tracking main HEAD', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('--branch "$OBS_STACK_REF"'));
+    assert.ok(decoded.includes('cli-installer-v'));
+  });
+
+  it('clears COMPOSE_PROFILES so local-backend services are pruned in managed mode', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('export COMPOSE_PROFILES='));
+  });
 });
 
 // ── renderPipeline tests ─────────────────────────────────────────────────────

@@ -177,8 +177,12 @@ services:
           memory: 128M
     logging: *logging
 
-  # Agent Eval Canary: periodically scores un-evaluated agent traces
+  # Agent Eval Canary: periodically scores un-evaluated agent traces.
+  # Hardcodes a local basic-auth OpenSearch backend (no managed-backend path),
+  # so it is gated behind the "local-backends" profile. Managed mode runs with
+  # COMPOSE_PROFILES unset, which prunes this service and its depends_on edges.
   example-agent-eval-canary:
+    profiles: ["local-backends"]
     build:
       context: ./docker-compose/agent-eval-canary
       dockerfile: Dockerfile

@@ -19,10 +19,19 @@ import {
 import {
   SSMClient, GetParameterCommand,
 } from '@aws-sdk/client-ssm';
+import { createRequire } from 'node:module';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
+
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../package.json');
 
 const TAG_KEY = 'observability-stack:pipeline-name';
 const INSTANCE_TYPE = 't3.xlarge';
+
+// The stack revision the EC2 instance clones. Defaults to the git tag matching
+// this CLI release so a pinned CLI deploys a pinned stack (no drift from main
+// HEAD at boot time). Override with OBS_STACK_REF for development.
+const STACK_REF = process.env.OBS_STACK_REF || `cli-installer-v${PKG_VERSION}`;
 
 function tags(pipelineName, extra = {}) {
   return [
@@ -127,7 +136,14 @@ curl -SL "https://github.com/docker/buildx/releases/download/\${BUILDX_VERSION}/
   -o /usr/local/lib/docker/cli-plugins/docker-buildx
 chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 
-git clone --depth 1 https://github.com/opensearch-project/observability-stack.git /opt/obs-stack
+# Clone the stack at the revision this CLI release was built against, so the
+# stack can't drift out from under a pinned CLI. Fall back to the default branch
+# if the ref is absent (e.g. an untagged dev build).
+OBS_STACK_REF="${STACK_REF}"
+if ! git clone --depth 1 --branch "\$OBS_STACK_REF" https://github.com/opensearch-project/observability-stack.git /opt/obs-stack; then
+  echo "WARNING: ref \$OBS_STACK_REF not found, falling back to default branch"
+  git clone --depth 1 https://github.com/opensearch-project/observability-stack.git /opt/obs-stack
+fi
 cd /opt/obs-stack
 
 cat > docker-compose/otel-collector/config.yaml << 'COLLECTOREOF'
@@ -184,6 +200,12 @@ services:
           memory: 500M
     logging: *logging
 MANAGEDEOF
+
+# Managed mode has no local opensearch/prometheus, so prune the services that
+# require them by clearing COMPOSE_PROFILES (overrides the local-backends value
+# committed in .env). Without this, compose rejects the project on the
+# unresolved depends_on edges and starts zero containers.
+export COMPOSE_PROFILES=
 
 # Kafka's healthcheck can exceed compose's dependency grace window on first boot,
 # leaving kafka-dependent services in 'Created' state. Retry once — second pass
