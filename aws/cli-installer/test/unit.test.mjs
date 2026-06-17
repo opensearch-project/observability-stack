@@ -173,12 +173,9 @@ describe('EC2 demo buildUserData', () => {
 });
 
 // ── managed-mode compose project resolution ──────────────────────────────────
-// Regression guard for #298: the docker-compose.managed.yml that user-data
-// writes must validate as a project. It includes examples + otel-demo but
-// defines no local opensearch/prometheus, so any service in those files that
-// depends_on a local backend must be pruned by the empty COMPOSE_PROFILES that
-// managed mode runs with. Without that, `docker compose` rejects the whole
-// project and the instance starts zero containers.
+// Regression guard for #298: the generated docker-compose.managed.yml must
+// resolve as a valid project with COMPOSE_PROFILES empty, with every
+// local-backend service pruned (managed mode defines no opensearch/prometheus).
 
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';

@@ -136,9 +136,8 @@ curl -SL "https://github.com/docker/buildx/releases/download/\${BUILDX_VERSION}/
   -o /usr/local/lib/docker/cli-plugins/docker-buildx
 chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 
-# Clone the stack at the revision this CLI release was built against, so the
-# stack can't drift out from under a pinned CLI. Fall back to the default branch
-# if the ref is absent (e.g. an untagged dev build).
+# Clone the stack at the pinned ref (see STACK_REF). Fall back to the default
+# branch if the ref is absent (e.g. an untagged dev build).
 OBS_STACK_REF="${STACK_REF}"
 if ! git clone --depth 1 --branch "\$OBS_STACK_REF" https://github.com/opensearch-project/observability-stack.git /opt/obs-stack; then
   echo "WARNING: ref \$OBS_STACK_REF not found, falling back to default branch"
@@ -203,7 +202,7 @@ MANAGEDEOF
 
 # Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES
 # (overriding the local-backends value committed in .env) to prune the services
-# that require those backends, leaving the project with resolvable depends_on.
+# that require those backends.
 export COMPOSE_PROFILES=
 
 # Kafka's healthcheck can exceed compose's dependency grace window on first boot,
