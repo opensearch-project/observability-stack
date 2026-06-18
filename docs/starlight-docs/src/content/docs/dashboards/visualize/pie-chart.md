@@ -3,6 +3,7 @@ title: "Pie chart"
 sidebar:
   order: 50
 ---
+
 A pie chart displays data as proportional slices of a circle, making it ideal for visualizing part-to-whole relationships.
 
 ## Creating a pie chart
@@ -17,7 +18,7 @@ Start with an aggregation query that counts events by category:
 source = opensearch_dashboards_sample_data_flights | stats count() by Carrier
 ```
 
-After running this query, the visualization editor maps the fields automatically:
+After running this query, change the chart type to **Pie** in the visualization type selector. The visualization editor then maps the fields automatically:
 
 - The **Size** displays the `count()` field.
 - The **Color** displays the `Carrier` field.
@@ -49,9 +50,9 @@ You can configure the following settings in the configuration panel.
 
 In the **Fields** section, configure the data fields.
 
-| Field | Description |
-| --- | --- |
-| **Size** | Select a numeric field that determines the size of each slice. For example, `count()` makes each slice proportional to the number of events in that category. |
+| Field     | Description                                                                                                                                                                         |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Size**  | Select a numeric field that determines the size of each slice. For example, `count()` makes each slice proportional to the number of events in that category.                       |
 | **Color** | Select a categorical field that splits the data into individual slices, each rendered in a different color. For example, use a `Carrier` field to display a slice for each airline. |
 
 ### Split
@@ -62,21 +63,21 @@ In the **Split by** dropdown list, select a field to split the chart into separa
 
 The following table describes the pie chart settings.
 
-| Setting | Description |
-| --- | --- |
-| **Show as** | Controls whether the chart renders as a full pie or a **Donut** (ring) shape. **Donut** is the default. |
-| **Show values** | When enabled, shows the numeric value for each slice on the chart. |
-| **Show labels** | When enabled, shows the category label for each slice on the chart. |
+| Setting            | Description                                                                                                  |
+| ------------------ | ------------------------------------------------------------------------------------------------------------ |
+| **Show as**        | Controls whether the chart renders as a full pie or a **Donut** (ring) shape. **Donut** is the default.      |
+| **Show values**    | When enabled, shows the numeric value for each slice on the chart.                                           |
+| **Show labels**    | When enabled, shows the category label for each slice on the chart.                                          |
 | **Truncate after** | Sets the maximum width in pixels for labels before truncation. Only visible when **Show labels** is enabled. |
 
 ### Legend
 
 The legend summarizes the visual color encodings used in the chart.
 
-| Setting | Description |
-| --- | --- |
-| **Show legend** | Shows or hides the legend. |
-| **Position** | Controls where the legend appears relative to the chart. Supported values: **Left**, **Right**, **Top**, **Bottom**. |
+| Setting         | Description                                                                                                          |
+| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Show legend** | Shows or hides the legend.                                                                                           |
+| **Position**    | Controls where the legend appears relative to the chart. Supported values: **Left**, **Right**, **Top**, **Bottom**. |
 
 ### Tooltip
 
