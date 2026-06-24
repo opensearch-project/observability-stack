@@ -93,6 +93,18 @@ variable "tags" {
   }
 }
 
+variable "extra_helm_values" {
+  description = "Additional Helm values file paths layered onto the release, applied last so they win. Use for deployment-specific overrides without editing chart defaults."
+  type        = list(string)
+  default     = []
+}
+
+variable "data_prepper_pipeline_secret_file" {
+  description = "Path to a pipelines.yaml template for a bring-your-own Data Prepper pipeline. When set, terraform creates the data-prepper-pipeline Secret from it and sets dataPrepperManageSecret=false so the chart renders no pipeline Secret. The template is rendered with templatefile and may reference opensearch_user, opensearch_password, and trace_flush_interval. Empty leaves the chart's managed pipeline in place."
+  type        = string
+  default     = ""
+}
+
 # ============================================================================
 # OpenSearch sizing
 # ============================================================================
