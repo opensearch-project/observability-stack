@@ -1,0 +1,24 @@
+{{- if and .Values.dataPrepperMetricsService.enabled (index .Values "data-prepper" "enabled") }}
+{{- /* The subchart's main Service omits 4900, so DP metrics aren't scrapable. Listing
+       4900 in .Values.ports duplicates the `server` containerPort and is rejected; a
+       separate Service targeting `server` by name is not. */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-data-prepper-metrics
+  labels:
+    {{- /* Must match the subchart's pod labels. */}}
+    app.kubernetes.io/name: data-prepper
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: metrics
+spec:
+  type: ClusterIP
+  ports:
+    - name: metrics
+      port: {{ .Values.dataPrepperMetricsService.port }}
+      targetPort: server
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: data-prepper
+    app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end }}

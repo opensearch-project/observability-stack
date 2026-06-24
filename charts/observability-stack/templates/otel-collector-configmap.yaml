@@ -85,7 +85,7 @@ data:
               scrape_interval: 15s
               metrics_path: /metrics/sys
               static_configs:
-                - targets: ["{{ .Release.Name }}-data-prepper:4900"]
+                - targets: ["{{ .Release.Name }}-data-prepper-metrics:4900"]
               relabel_configs:
                 - target_label: service.name
                   replacement: data-prepper
@@ -93,7 +93,7 @@ data:
               scrape_interval: 15s
               metrics_path: /metrics/prometheus
               static_configs:
-                - targets: ["{{ .Release.Name }}-data-prepper:4900"]
+                - targets: ["{{ .Release.Name }}-data-prepper-metrics:4900"]
               relabel_configs:
                 - target_label: service.name
                   replacement: data-prepper

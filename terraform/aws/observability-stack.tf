@@ -192,6 +192,72 @@ resource "helm_release" "observability_stack" {
     }
   }
 
+  # --- OpenSearch sizing ---
+  set {
+    name  = "opensearch.replicas"
+    value = var.opensearch_replicas
+  }
+  set {
+    name  = "opensearch.persistence.size"
+    value = var.opensearch_storage_size
+  }
+  set {
+    name  = "opensearch.persistence.storageClass"
+    value = var.opensearch_storage_class
+  }
+  set {
+    name  = "opensearch.resources.requests.memory"
+    value = var.opensearch_node_memory
+  }
+  set {
+    name  = "opensearch.resources.limits.memory"
+    value = var.opensearch_node_memory
+  }
+  set {
+    name  = "opensearch.opensearchJavaOpts"
+    value = "-Xms${var.opensearch_jvm_heap} -Xmx${var.opensearch_jvm_heap}"
+  }
+
+  # --- Cortex sizing ---
+  set {
+    name  = "cortex.persistence.size"
+    value = var.cortex_storage_size
+  }
+  set {
+    name  = "cortex.persistence.storageClass"
+    value = var.cortex_storage_class
+  }
+
+  # --- Data Prepper sizing ---
+  set {
+    name  = "data-prepper.resources.requests.memory"
+    value = var.data_prepper_memory
+  }
+  set {
+    name  = "data-prepper.resources.limits.memory"
+    value = var.data_prepper_memory
+  }
+  # JAVA_OPTS via extraEnvs[0], emitted only when set (else the JVM uses its
+  # MaxRAMPercentage default). Claims index 0, so don't also set data-prepper.extraEnvs.
+  dynamic "set" {
+    for_each = var.data_prepper_jvm_heap == "" ? [] : [1]
+    content {
+      name  = "data-prepper.extraEnvs[0].name"
+      value = "JAVA_OPTS"
+    }
+  }
+  dynamic "set" {
+    for_each = var.data_prepper_jvm_heap == "" ? [] : [1]
+    content {
+      name  = "data-prepper.extraEnvs[0].value"
+      value = "-Xms${var.data_prepper_jvm_heap} -Xmx${var.data_prepper_jvm_heap}"
+    }
+  }
+  set {
+    name  = "dataPrepperTraceFlushInterval"
+    value = var.data_prepper_trace_flush_interval
+  }
+
   depends_on = [
     helm_release.aws_lb_controller,
   ]

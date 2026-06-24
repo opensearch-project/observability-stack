@@ -181,8 +181,11 @@ data-prepper:
       port: 21891
     - name: otel-logs
       port: 21892
-    - name: metrics
-      port: 4900
+    # Port 4900 (the subchart's hardcoded `server` containerPort, serving
+    # /metrics/prometheus) is intentionally NOT listed here: adding it would
+    # duplicate the containerPort and the API server rejects the Deployment.
+    # It is published instead by a separate metrics Service: see
+    # templates/data-prepper-metrics-service.yaml and dataPrepperMetricsService.
   config:
     data-prepper-config.yaml: |
       ssl: false
@@ -209,6 +212,27 @@ data-prepper:
   pipelineConfig:
     enabled: false
     existingSecret: data-prepper-pipeline
+
+# -- Data Prepper pipeline Secret ownership. When true (default), the chart renders the
+# default logs/traces/service-map pipeline Secret named by data-prepper.pipelineConfig.
+# existingSecret. Set false to provide that Secret yourself (same name) with custom
+# routing/sinks; the chart renders nothing and Data Prepper mounts your Secret.
+dataPrepperManageSecret: true
+
+# -- Data Prepper otel_traces trace_flush_interval, in seconds: how long the processor
+# buffers spans before computing traceGroup and emitting completed traces. 180 matches the
+# upstream default. Higher values raise Data Prepper heap; lower values can split
+# late-arriving spans into separate traces.
+dataPrepperTraceFlushInterval: 180
+
+# -- Data Prepper metrics Service. Publishes the admin/metrics port (4900,
+# /metrics/prometheus) on a dedicated ClusterIP Service so Prometheus / the collector can
+# scrape Data Prepper's pipeline metrics. The subchart only puts 4900 on the pod, not on
+# its Service, so without this the pipeline-health dashboard's Data Prepper panels stay
+# empty.
+dataPrepperMetricsService:
+  enabled: true
+  port: 4900
 
 # -- OpenTelemetry Collector
 opentelemetry-collector:

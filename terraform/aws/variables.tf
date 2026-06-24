@@ -94,6 +94,87 @@ variable "tags" {
 }
 
 # ============================================================================
+# OpenSearch sizing
+# ============================================================================
+
+variable "opensearch_replicas" {
+  description = "Number of OpenSearch nodes (StatefulSet replicas). 3 is the production minimum."
+  type        = number
+  default     = 3
+}
+
+variable "opensearch_storage_size" {
+  description = "Per-node OpenSearch PVC size. Total cluster storage is opensearch_replicas times this value."
+  type        = string
+  default     = "100Gi"
+}
+
+variable "opensearch_storage_class" {
+  description = "EBS storage class for OpenSearch PVCs."
+  type        = string
+  default     = "gp2"
+}
+
+variable "opensearch_node_memory" {
+  description = "Per-node OpenSearch container memory. The chart sets requests equal to limits."
+  type        = string
+  default     = "4Gi"
+}
+
+variable "opensearch_jvm_heap" {
+  description = "OpenSearch JVM heap, roughly 50% of opensearch_node_memory, max 31g. JVM size syntax, e.g. '2g' or '512m'."
+  type        = string
+  default     = "2g"
+  validation {
+    # JVM -Xms/-Xmx syntax (k/m/g), not Kubernetes 'Gi'.
+    condition     = can(regex("^[0-9]+[kmg]$", var.opensearch_jvm_heap))
+    error_message = "Use JVM size syntax like '2g' or '512m', not '2Gi'."
+  }
+}
+
+# ============================================================================
+# Cortex sizing
+# ============================================================================
+
+variable "cortex_storage_size" {
+  description = "Cortex PVC size."
+  type        = string
+  default     = "50Gi"
+}
+
+variable "cortex_storage_class" {
+  description = "EBS storage class for the Cortex PVC."
+  type        = string
+  default     = "gp2"
+}
+
+# ============================================================================
+# Data Prepper sizing
+# ============================================================================
+
+variable "data_prepper_memory" {
+  description = "Data Prepper container memory request and limit. Default matches the subchart."
+  type        = string
+  default     = "1Gi"
+}
+
+variable "data_prepper_jvm_heap" {
+  description = "Data Prepper JVM heap, roughly 75% of data_prepper_memory. JVM size syntax, e.g. '512m'. Empty leaves the JVM default."
+  type        = string
+  default     = ""
+  validation {
+    condition     = var.data_prepper_jvm_heap == "" || can(regex("^[0-9]+[kmg]$", var.data_prepper_jvm_heap))
+    error_message = "Use JVM size syntax like '2g' or '512m', not '2Gi'."
+  }
+}
+
+variable "data_prepper_trace_flush_interval" {
+  description = "Seconds the otel_traces processor buffers spans before computing traceGroup. Higher values raise Data Prepper heap; lower values can mark late-arriving spans as separate traces."
+  type        = number
+  default     = 180
+}
+
+# ============================================================================
 # Derived
 # ============================================================================
 
