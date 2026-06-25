@@ -109,8 +109,9 @@ resource "kubernetes_namespace" "observability" {
   depends_on = [module.eks]
 }
 
-# EKS ships only a gp2 StorageClass. opensearch_storage_class / cortex_storage_class
-# default to gp3 (better IOPS/$ for bulk ingest), so create it via the EBS CSI driver.
+# EKS pre-creates only gp2 by default, but opensearch_storage_class / cortex_storage_class
+# default to gp3 (better IOPS/$ for bulk ingest). Without a matching StorageClass the PVCs 
+# stay Pending and the release times out, so create it via the EBS CSI driver.
 # WaitForFirstConsumer matches gp2 so a PVC binds on the node its pod lands on.
 resource "kubernetes_storage_class" "gp3" {
   metadata {
