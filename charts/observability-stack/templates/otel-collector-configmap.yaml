@@ -172,7 +172,10 @@ data:
               - set(body, ToKeyValueString(body)) where IsMap(body)
     exporters:
       debug:
-        verbosity: detailed
+        # basic logs per-batch counts only. detailed serializes every span/log/
+        # metric to stdout, which throttles the pipeline at high throughput
+        # (observed ~6x slower trace ingest).
+        verbosity: basic
       otlp/opensearch:
         endpoint: "{{ .Release.Name }}-data-prepper:21890"
         tls:

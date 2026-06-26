@@ -65,8 +65,14 @@ variable "anonymous_auth" {
   default     = false
 }
 
+variable "opensearch_username" {
+  description = "OpenSearch admin username. Leave empty to use the chart default (opensearchUsername in values.yaml)."
+  type        = string
+  default     = ""
+}
+
 variable "opensearch_password" {
-  description = "OpenSearch admin password. Leave empty to use chart default."
+  description = "OpenSearch admin password. Leave empty to use the chart default (opensearchPassword in values.yaml)."
   type        = string
   default     = ""
   sensitive   = true
@@ -91,6 +97,24 @@ variable "tags" {
     Project   = "observability-stack"
     ManagedBy = "terraform"
   }
+}
+
+variable "extra_helm_values" {
+  description = "Additional Helm values file paths layered onto the release, applied last so they win. Use for deployment-specific overrides without editing chart defaults."
+  type        = list(string)
+  default     = []
+}
+
+variable "create_gp3_storage_class" {
+  description = "Create a gp3 StorageClass via the EBS CSI driver. Set false on clusters that already provide gp3 (EKS Auto Mode, a manually created class, a shared cluster) to avoid an \"already exists\" apply error."
+  type        = bool
+  default     = true
+}
+
+variable "data_prepper_pipeline_secret_file" {
+  description = "Path to a pipelines.yaml template for a bring-your-own Data Prepper pipeline. When set, terraform creates the data-prepper-pipeline Secret from it and sets dataPrepperManageSecret=false so the chart renders no pipeline Secret. The template is rendered with templatefile and may reference opensearch_user, opensearch_password, and trace_flush_interval. Empty leaves the chart's managed pipeline in place."
+  type        = string
+  default     = ""
 }
 
 # ============================================================================
