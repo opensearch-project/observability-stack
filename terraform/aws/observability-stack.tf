@@ -110,10 +110,15 @@ resource "kubernetes_namespace" "observability" {
 }
 
 # EKS pre-creates only gp2 by default, but opensearch_storage_class / cortex_storage_class
-# default to gp3 (better IOPS/$ for bulk ingest). Without a matching StorageClass the PVCs 
+# default to gp3 (better IOPS/$ for bulk ingest). Without a matching StorageClass the PVCs
 # stay Pending and the release times out, so create it via the EBS CSI driver.
 # WaitForFirstConsumer matches gp2 so a PVC binds on the node its pod lands on.
+# Gated by create_gp3_storage_class: clusters that already ship gp3 (EKS Auto Mode,
+# a manually created class, a shared cluster) must opt out or the apply fails with
+# "storageclasses.storage.k8s.io \"gp3\" already exists".
 resource "kubernetes_storage_class" "gp3" {
+  count = var.create_gp3_storage_class ? 1 : 0
+
   metadata {
     name = "gp3"
   }
@@ -127,15 +132,21 @@ resource "kubernetes_storage_class" "gp3" {
   depends_on = [module.eks]
 }
 
-# Bring-your-own Data Prepper pipeline. When data_prepper_pipeline_secret_file
-# is set, create the Secret the chart's dataPrepperManageSecret=false gate
-# expects (same name the subchart mounts) and order it before the release so
-# Data Prepper finds it at boot. The chart default leaves this empty and
-# renders its own pipeline Secret.
+# Credentials passed into the BYO pipeline Secret below. When the corresponding
+# var is empty the chart default applies, so read both defaults from the chart's
+# values.yaml (its single source of truth) rather than re-hardcoding the literals
+# here. That way the rendered Secret and the cluster can never authenticate with
+# different credentials if the chart default changes.
 locals {
-  opensearch_password_effective = var.opensearch_password != "" ? var.opensearch_password : "My_password_123!@#"
+  chart_values                  = yamldecode(file("${path.module}/../../charts/observability-stack/values.yaml"))
+  opensearch_username_effective = var.opensearch_username != "" ? var.opensearch_username : local.chart_values.opensearchUsername
+  opensearch_password_effective = var.opensearch_password != "" ? var.opensearch_password : local.chart_values.opensearchPassword
 }
 
+# Bring-your-own Data Prepper pipeline. When data_prepper_pipeline_secret_file
+# is set, create the Secret the chart's dataPrepperManageSecret=false gate expects
+# (same name the subchart mounts) and order it before the release so Data Prepper
+# finds it at boot. The chart default leaves this empty and renders its own Secret.
 resource "kubernetes_secret" "data_prepper_pipeline" {
   count = var.data_prepper_pipeline_secret_file != "" ? 1 : 0
 
@@ -146,7 +157,7 @@ resource "kubernetes_secret" "data_prepper_pipeline" {
 
   data = {
     "pipelines.yaml" = templatefile(var.data_prepper_pipeline_secret_file, {
-      opensearch_user      = "admin"
+      opensearch_user      = local.opensearch_username_effective
       opensearch_password  = local.opensearch_password_effective
       trace_flush_interval = var.data_prepper_trace_flush_interval
     })
@@ -238,7 +249,14 @@ resource "helm_release" "observability_stack" {
     value = var.enable_otel_demo ? "true" : "false"
   }
 
-  # --- Custom password (conditional) ---
+  # --- Custom credentials (conditional) ---
+  dynamic "set" {
+    for_each = var.opensearch_username != "" ? [1] : []
+    content {
+      name  = "opensearchUsername"
+      value = var.opensearch_username
+    }
+  }
   dynamic "set_sensitive" {
     for_each = var.opensearch_password != "" ? [1] : []
     content {
