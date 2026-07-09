@@ -47,7 +47,7 @@ dependencies:
     condition: data-prepper.enabled
 
   - name: opentelemetry-collector
-    version: "0.147.0"
+    version: "0.164.1"
     repository: "https://open-telemetry.github.io/opentelemetry-helm-charts"
     condition: opentelemetry-collector.enabled
 
