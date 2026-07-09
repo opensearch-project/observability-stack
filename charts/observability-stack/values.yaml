@@ -12,9 +12,8 @@ opensearch:
   enabled: true
   singleNode: false
   replicas: 3
-  # TODO: Change to opensearchproject/opensearch after 3.7.0 official release
   image:
-    repository: "opensearchstaging/opensearch"
+    repository: "opensearchproject/opensearch"
     tag: "3.7.0"
   resources:
     requests:
@@ -77,9 +76,8 @@ opensearch:
 opensearch-dashboards:
   enabled: true
   replicaCount: 3
-  # TODO: Change to opensearchproject/opensearch-dashboards after 3.7.0 official release
   image:
-    repository: "opensearchstaging/opensearch-dashboards"
+    repository: "opensearchproject/opensearch-dashboards"
     tag: "3.7.0"
   resources:
     requests:
