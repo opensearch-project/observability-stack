@@ -129,6 +129,15 @@ data:
         send_batch_size: 1024
       resourcedetection:
         detectors: [env, system]
+      # Normalizes non-OTel GenAI span attributes (OpenInference, OpenLLMetry)
+      # into OTel GenAI semantic conventions. Traces only. Runs before the
+      # transform de-dotting so downstream conflict handling sees gen_ai.* keys.
+      gen_ai_normalizer:
+        sources:
+          - name: openinference
+            remove_originals: true
+          - name: openllmetry
+            remove_originals: true
       transform:
         error_mode: ignore
         trace_statements:
@@ -208,7 +217,7 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [resourcedetection, memory_limiter, transform, batch]
+          processors: [resourcedetection, memory_limiter, gen_ai_normalizer, transform, batch]
           exporters: [otlp/opensearch, debug]
         metrics:
           receivers: [otlp, prometheus/self, prometheus/envoy, prometheus/opensearch-exporter, prometheus/cortex, prometheus/data-prepper, prometheus/kube-state-metrics, prometheus/node-exporter]

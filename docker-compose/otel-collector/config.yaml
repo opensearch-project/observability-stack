@@ -76,6 +76,16 @@ processors:
   resourcedetection:
     detectors: [env, system]
 
+  # Normalizes non-OTel GenAI span attributes (OpenInference, OpenLLMetry)
+  # into OTel GenAI semantic conventions. Traces only. Runs before the
+  # transform de-dotting so downstream conflict handling sees gen_ai.* keys.
+  gen_ai_normalizer:
+    sources:
+      - name: openinference
+        remove_originals: true
+      - name: openllmetry
+        remove_originals: true
+
   # Transform processor handles data transformations
   transform:
     error_mode: ignore
@@ -158,7 +168,7 @@ service:
     # Traces pipeline: OTLP -> processing -> Data Prepper
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, memory_limiter, transform, batch]
+      processors: [resourcedetection, memory_limiter, gen_ai_normalizer, transform, batch]
       exporters: [otlp/opensearch, debug]
 
     # Metrics pipeline: OTLP + self-scrape + envoy scrape -> processing -> Cortex
