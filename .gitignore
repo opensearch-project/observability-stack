@@ -3,6 +3,7 @@
 *.code-workspace
 __pycache__
 .dev
+.idea
 .venv
 venv
 node_modules
