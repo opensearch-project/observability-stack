@@ -28,10 +28,11 @@ const { version: PKG_VERSION } = require('../package.json');
 const TAG_KEY = 'observability-stack:pipeline-name';
 const INSTANCE_TYPE = 't3.xlarge';
 
-// The stack revision the EC2 instance clones. Defaults to the git tag matching
-// this CLI release so a pinned CLI deploys a pinned stack (no drift from main
-// HEAD at boot time). Override with OBS_STACK_REF for development.
-const STACK_REF = process.env.OBS_STACK_REF || `cli-installer-v${PKG_VERSION}`;
+// The stack revision the EC2 instance clones. Defaults to the bundle release
+// tag matching this CLI version (CLI is version-locked to the bundle), so a
+// pinned CLI deploys the matching pinned stack (no drift from main HEAD at boot
+// time). Override with OBS_STACK_REF for development.
+const STACK_REF = process.env.OBS_STACK_REF || `v${PKG_VERSION}`;
 
 function tags(pipelineName, extra = {}) {
   return [

@@ -3,7 +3,7 @@ name: Release Workflow
 on:
   push:
     tags:
-      - "cli-installer-v*"
+      - "v*"
 
 jobs:
   release-to-npm:
@@ -16,6 +16,52 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # Enforces the version scheme from
+      # https://github.com/opensearch-project/observability-stack/issues/27:
+      # MAJOR.MINOR.PATCH[-(alpha|beta|rc).N]. The git tag and package.json
+      # version must agree; the CLI clones the stack at `v<package.json version>`.
+      - name: Validate release version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(jq -r .version aws/cli-installer/package.json)
+          tag_version="${GITHUB_REF_NAME#v}"
+
+          fail() {
+            echo "::error title=Invalid release version::$1"
+            {
+              echo "## ❌ Release rejected"
+              echo ""
+              echo "$1"
+              echo ""
+              echo "Expected scheme: \`vMAJOR.MINOR.PATCH[-(alpha|beta|rc).N]\`"
+              echo "Defined in RFC #27: https://github.com/opensearch-project/observability-stack/issues/27"
+              echo "Examples: \`v0.2.0\`, \`v0.2.0-beta.1\`, \`v1.0.0-rc.2\`"
+              echo ""
+              echo "Pushed git tag: \`${GITHUB_REF_NAME}\` · package.json: \`${version}\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          }
+
+          if [[ "$version" != "$tag_version" ]]; then
+            fail "Git tag '${GITHUB_REF_NAME}' does not match package.json version '${version}'. Tag and package.json must agree — the CLI clones the stack at v<package.json version>."
+          fi
+
+          stable_re='^[0-9]+\.[0-9]+\.[0-9]+$'
+          pre_re='^[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$'
+
+          if [[ "$version" =~ $stable_re ]]; then
+            echo "dist_tag=latest" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          elif [[ "$version" =~ $pre_re ]]; then
+            echo "dist_tag=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            fail "Version '${version}' is off-scheme. Only MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-(alpha|beta|rc).N are allowed."
+          fi
+
+          echo "✅ Release version '${version}' valid (dist-tag: $(grep '^dist_tag=' "$GITHUB_OUTPUT" | cut -d= -f2))." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -33,10 +79,11 @@ jobs:
 
       - name: Publish to npm
         working-directory: aws/cli-installer
-        run: npm publish
+        run: npm publish --tag "${{ steps.version.outputs.dist_tag }}"
 
       - name: Release on Github
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           draft: false
+          prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
