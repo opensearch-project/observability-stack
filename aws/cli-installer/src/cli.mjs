@@ -1,5 +1,9 @@
 import { Command } from 'commander';
+import { createRequire } from 'node:module';
 import { DEFAULTS } from './config.mjs';
+
+const require = createRequire(import.meta.url);
+const { version: PKG_VERSION } = require('../package.json');
 
 /**
  * Parse CLI arguments into a config object.
@@ -18,7 +22,7 @@ export function parseCli(argv) {
       'Create and manage your observability stack on AWS:\n' +
       'OpenSearch, Prometheus, IAM roles, and ingestion pipelines.'
     )
-    .version('1.0.0');
+    .version(PKG_VERSION);
 
   // Mode
   program
