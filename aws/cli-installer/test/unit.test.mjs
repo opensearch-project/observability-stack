@@ -388,13 +388,47 @@ describe('validateConfig — VPC options', () => {
   });
 });
 
+describe('validateConfig — OSI pipeline role', () => {
+  it('fails fast when no IAM action is chosen (advanced mode, no IAM flags)', () => {
+    // Regression guard for the KYL-25 e2e finding: advanced mode with no IAM
+    // flags leaves iamAction empty, the role step is skipped, and OSIS
+    // CreatePipeline gets an empty PipelineRoleArn — failing ~11 min in, after
+    // the domain is built. Symmetric to the "No OpenSearch backend" guard.
+    const errors = validateConfig(baseCfg({ iamAction: '' }));
+    assert.ok(errors.some((e) => e.includes('No OSI pipeline role specified')));
+  });
+
+  it('still requires --iam-role-arn when reusing a role', () => {
+    const errors = validateConfig(baseCfg({ iamAction: 'reuse', iamRoleArn: '' }));
+    assert.ok(errors.some((e) => e.includes('--iam-role-arn required when reusing')));
+  });
+});
+
 import {
   fgacPrincipals,
   validateVpcTopology,
+  pipelineRoleArnError,
   _withRetry,
   _isRoleNotPropagatedError,
   _isTransientHttpError,
 } from '../src/aws.mjs';
+
+// ── OSI pipeline role ARN pre-flight (last-line guard before CreatePipeline) ──
+describe('pipelineRoleArnError', () => {
+  it('flags an empty ARN', () => {
+    assert.ok(pipelineRoleArnError('').includes('none was resolved'));
+    assert.ok(pipelineRoleArnError(undefined).includes('none was resolved'));
+  });
+
+  it('flags a malformed ARN', () => {
+    assert.ok(pipelineRoleArnError('not-an-arn').includes('must be an IAM role ARN'));
+    assert.ok(pipelineRoleArnError('arn:aws:s3:::bucket').includes('must be an IAM role ARN'));
+  });
+
+  it('accepts a well-formed IAM role ARN', () => {
+    assert.equal(pipelineRoleArnError('arn:aws:iam::123456789012:role/obs-stack-osi-role'), '');
+  });
+});
 
 // ── Live VPC topology validation (EC2 API path) ───────────────────────────────
 // validateVpcTopology takes injected EC2 accessors so we can exercise every

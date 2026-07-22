@@ -970,6 +970,20 @@ export async function createApsWorkspace(cfg) {
 
 // ── OSI pipeline ────────────────────────────────────────────────────────────
 
+/**
+ * Validate an OSI pipeline role ARN before it is handed to CreatePipeline.
+ * OSIS requires a non-empty, well-formed IAM role ARN as PipelineRoleArn; an
+ * empty or malformed value is only rejected ~11 min into a run (after the domain
+ * is built), so we check it up front. Returns an error string, or '' when valid.
+ * @param {string} arn
+ * @returns {string}
+ */
+export function pipelineRoleArnError(arn) {
+  if (!arn) return 'The OSI pipeline requires an IAM role (PipelineRoleArn) but none was resolved.';
+  if (!arn.startsWith('arn:aws:iam:')) return `The OSI pipeline role must be an IAM role ARN (arn:aws:iam:...), got: ${arn}`;
+  return '';
+}
+
 export async function createOsiPipeline(cfg, pipelineYaml) {
   printStep(`Creating OSI pipeline '${cfg.pipelineName}'...`);
 
@@ -998,6 +1012,24 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   }
 
   if (!skipCreate) {
+    // Last-line guard before the expensive OSIS CreatePipeline call. The pipeline
+    // role ARN is populated several steps earlier (createIamRole, or reuse), and a
+    // gap anywhere in that chain leaves it empty — OSIS then rejects the request
+    // ~11 min into the run (after domain create) with a misleading cross-account
+    // pass-role error. validateConfig() catches the common CLI paths, but this
+    // defends the REPL/interactive/programmatic callers too so an empty or
+    // malformed ARN never reaches AWS. Fail fast, before any pipeline work.
+    const roleErr = pipelineRoleArnError(cfg.iamRoleArn);
+    if (roleErr) {
+      printError('Cannot create OSI pipeline: no valid pipeline role ARN is set.');
+      console.error();
+      console.error(`  ${roleErr}`);
+      console.error(`  Got: ${chalk.dim(cfg.iamRoleArn ? JSON.stringify(cfg.iamRoleArn) : '(empty)')}`);
+      console.error(`  Ensure the role was created (quick mode) or pass ${chalk.bold('--iam-role-arn')} to reuse one.`);
+      console.error();
+      throw new Error('OSI pipeline role ARN is missing or malformed');
+    }
+
     try {
       // When the domain lives in a VPC, attach the pipeline to the same network so it
       // can reach the private domain endpoint. OSIS accepts at most 2 subnets; pick the

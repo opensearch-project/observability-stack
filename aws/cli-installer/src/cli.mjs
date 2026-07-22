@@ -263,6 +263,14 @@ export function validateConfig(cfg) {
   if (cfg.osAction === 'reuse' && cfg.opensearchType !== 'serverless' && !cfg.opensearchPassword) {
     errors.push('--opensearch-password required when reusing an existing OpenSearch domain (needed for FGAC mapping)');
   }
+  // The OSI pipeline cannot be created without a role. In advanced mode with no
+  // IAM flags, iamAction stays empty and the role step is silently skipped — the
+  // run then reaches OSIS CreatePipeline with an empty PipelineRoleArn and fails
+  // ~11 min later (after the domain is built) with a cryptic cross-account/pass-role
+  // error. Catch it up front, symmetric to the osAction guard above.
+  if (!cfg.iamAction) {
+    errors.push('No OSI pipeline role specified. Pass --iam-role-name (create one) or --iam-role-arn (reuse an existing one). Or run with --quick to auto-create defaults.');
+  }
   if (cfg.iamAction === 'reuse' && !cfg.iamRoleArn) {
     errors.push('--iam-role-arn required when reusing IAM role');
   }
