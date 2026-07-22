@@ -30,6 +30,7 @@
     "@aws-sdk/client-secrets-manager": "^3.1022.0",
     "@aws-sdk/client-ssm": "^3.1021.0",
     "@aws-sdk/client-sts": "^3.750.0",
+    "@aws-sdk/credential-provider-node": "^3.750.0",
     "@aws-sdk/signature-v4": "^3.370.0",
     "@inquirer/prompts": "^7.0.0",
     "@smithy/protocol-http": "^5.3.12",

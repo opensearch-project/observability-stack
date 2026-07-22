@@ -1,10 +1,10 @@
 import {
-  printHeader, printStep, printInfo, printSubStep,
-  createSpinner, theme, GoBack, eSelect, eInput,
+  printHeader, printStep, printInfo, printSubStep, printWarning,
+  createSpinner, theme, GoBack, eSelect, eInput, eCheckbox,
   saveCursor, clearFromCursor,
 } from './ui.mjs';
 import { createDefaultConfig, DEFAULTS, DEFAULT_REGION } from './config.mjs';
-import { listDomains, listCollections, listWorkspaces, listApplications } from './aws.mjs';
+import { listDomains, listCollections, listWorkspaces, listApplications, listVpcs, listSubnets, listSecurityGroups } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
 
@@ -267,6 +267,103 @@ async function stepOpenSearch(cfg) {
       cfg.osEngineVersion = engineVer;
       } // end managed create else
     }
+    return;
+  }
+}
+
+async function stepVpc(cfg) {
+  if (cfg.mode !== 'advanced') return 'skip';
+  // VPC options only apply when creating a new domain (not reusing an endpoint).
+  if (cfg.osAction === 'reuse') return 'skip';
+
+  printStep('Network topology');
+  printInfo('Deploy the domain, ingestion pipeline, and demo into a VPC for private endpoints,');
+  printInfo('or use public endpoints (default).');
+  console.error();
+
+  while (true) {
+    const netChoice = await eSelect({
+      message: 'Deployment network',
+      choices: [
+        { name: `Public endpoints ${theme.muted('— default, reachable over the internet')}`, value: 'public' },
+        { name: `VPC ${theme.muted('— private endpoints inside a VPC (EKS/ECS workloads)')}`, value: 'vpc' },
+      ],
+      default: cfg.vpcId ? 'vpc' : 'public',
+    });
+    if (netChoice === GoBack) return GoBack;
+
+    if (netChoice === 'public') {
+      cfg.vpcId = '';
+      cfg.subnetIds = [];
+      cfg.securityGroupIds = [];
+      return;
+    }
+
+    // VPC selection
+    const vpcs = await fetchWithSpinner('Loading VPCs', () => listVpcs(cfg.region));
+    if (!vpcs.length) {
+      printWarning('No VPCs found in this region — falling back to public endpoints.');
+      cfg.vpcId = '';
+      return;
+    }
+    const vpcChoices = vpcs.map((v) => ({
+      name: `${v.id} ${theme.muted(`— ${v.cidr}${v.name ? ` (${v.name})` : ''}${v.isDefault ? ' [default]' : ''}`)}`,
+      value: v.id,
+    }));
+    const selectedVpc = await eSelect({ message: 'Select VPC', choices: vpcChoices });
+    if (selectedVpc === GoBack) continue;
+    cfg.vpcId = selectedVpc;
+
+    // Subnet selection (multi-select, at most 3 for the domain)
+    const subnets = await fetchWithSpinner('Loading subnets', () => listSubnets(cfg.region, cfg.vpcId));
+    if (!subnets.length) {
+      printWarning('No subnets found in that VPC — pick another VPC or use public endpoints.');
+      continue;
+    }
+    const subnetChoices = subnets.map((s) => ({
+      name: `${s.id} ${theme.muted(`— ${s.az} ${s.cidr}${s.name ? ` (${s.name})` : ''}`)}`,
+      value: s.id,
+    }));
+    const selectedSubnets = await eCheckbox({
+      message: 'Select subnets (1-3, ideally one per AZ)',
+      choices: subnetChoices,
+      required: true,
+    });
+    if (selectedSubnets === GoBack) continue;
+    if (!selectedSubnets.length) {
+      printWarning('Select at least one subnet.');
+      continue;
+    }
+    if (selectedSubnets.length > 3) {
+      printWarning('An OpenSearch domain supports at most 3 subnets — select 3 or fewer.');
+      continue;
+    }
+    cfg.subnetIds = selectedSubnets;
+
+    // Security group selection (multi-select)
+    const sgs = await fetchWithSpinner('Loading security groups', () => listSecurityGroups(cfg.region, cfg.vpcId));
+    if (!sgs.length) {
+      printWarning('No security groups found in that VPC — pick another VPC or use public endpoints.');
+      continue;
+    }
+    const sgChoices = sgs.map((g) => ({
+      name: `${g.id} ${theme.muted(`— ${g.name}${g.description ? ` (${g.description})` : ''}`)}`,
+      value: g.id,
+    }));
+    const selectedSgs = await eCheckbox({
+      message: 'Select security groups',
+      choices: sgChoices,
+      required: true,
+    });
+    if (selectedSgs === GoBack) continue;
+    if (!selectedSgs.length) {
+      printWarning('Select at least one security group.');
+      continue;
+    }
+    cfg.securityGroupIds = selectedSgs;
+
+    printInfo('The pipeline and demo instance will be placed in this VPC too.');
+    printInfo('Your IAM principal will be the domain master; FGAC mapping and UI setup run through the managed OpenSearch UI, so you can run this from anywhere.');
     return;
   }
 }
@@ -539,7 +636,7 @@ export async function runCreateWizard(session = null) {
 
   if (!session) printHeader();
 
-  const steps = [stepMode, stepCore, stepOpenSearch, stepIam, stepAps, stepConnectedDataSourceRole, stepConnectedDataSource, stepApp, stepTuning, stepDemo];
+  const steps = [stepMode, stepCore, stepOpenSearch, stepVpc, stepIam, stepAps, stepConnectedDataSourceRole, stepConnectedDataSource, stepApp, stepTuning, stepDemo];
   const visited = [];
   let i = 0;
 

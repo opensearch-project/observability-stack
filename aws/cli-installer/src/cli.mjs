@@ -53,6 +53,12 @@ export function parseCli(argv) {
     .option('--os-engine-version <ver>', 'Engine version', DEFAULTS.osEngineVersion)
     .option('--managed', 'Target is OpenSearch managed domain');
 
+  // Network topology — deploy into a VPC instead of public endpoints
+  program
+    .option('--vpc-id <id>', 'Deploy the domain, pipeline, and demo into this VPC (private endpoints)')
+    .option('--subnet-ids <ids>', 'Comma-separated subnet IDs for VPC deployment')
+    .option('--security-group-ids <ids>', 'Comma-separated security group IDs for VPC deployment');
+
   // IAM
   program
     .option('--iam-role-arn <arn>', 'Reuse an existing IAM role')
@@ -105,6 +111,15 @@ function parseDestroyArgs(argv) {
 }
 
 /**
+ * Parse a comma-separated list of IDs into a trimmed, de-duplicated array.
+ * Returns [] for empty/undefined input.
+ */
+function parseIdList(value) {
+  if (!value) return [];
+  return [...new Set(value.split(',').map((s) => s.trim()).filter(Boolean))];
+}
+
+/**
  * Convert commander opts to our normalized config shape.
  */
 function optsToConfig(opts) {
@@ -143,6 +158,9 @@ function optsToConfig(opts) {
     osInstanceCount: Number(opts.osInstanceCount),
     osVolumeSize: Number(opts.osVolumeSize),
     osEngineVersion: opts.osEngineVersion,
+    vpcId: opts.vpcId || '',
+    subnetIds: parseIdList(opts.subnetIds),
+    securityGroupIds: parseIdList(opts.securityGroupIds),
     iamAction,
     iamRoleArn: opts.iamRoleArn || '',
     iamRoleName: opts.iamRoleName || '',
@@ -232,6 +250,13 @@ export function validateConfig(cfg) {
   }
   if (!cfg.region) errors.push('--region is required');
 
+  // OpenSearch backend must be resolved to either create or reuse. In advanced
+  // mode with no OpenSearch flags, osAction stays empty and the domain step is
+  // silently skipped — the run then fails deep in pipeline creation with an empty
+  // endpoint. Catch it up front so the CLI fails fast with a clear message.
+  if (!cfg.osAction) {
+    errors.push('No OpenSearch backend specified. Pass --os-domain-name (create a managed domain), --aoss-collection-name (create a serverless collection), or --opensearch-endpoint (reuse an existing one). Or run with --quick to auto-create defaults.');
+  }
   if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
     errors.push('--opensearch-endpoint required when reusing OpenSearch');
   }
@@ -260,6 +285,32 @@ export function validateConfig(cfg) {
   }
   if (cfg.apsAction === 'reuse' && cfg.prometheusUrl && !/^https?:\/\//.test(cfg.prometheusUrl)) {
     errors.push('Prometheus URL must start with http:// or https://');
+  }
+
+  // VPC deployment: all three (vpc/subnets/SGs) must be present together and well-formed.
+  const wantsVpc = cfg.vpcId || cfg.subnetIds?.length || cfg.securityGroupIds?.length;
+  if (wantsVpc) {
+    if (!cfg.vpcId) errors.push('--vpc-id is required when configuring subnets or security groups');
+    if (!cfg.subnetIds?.length) errors.push('--subnet-ids is required for VPC deployment (at least one subnet)');
+    if (!cfg.securityGroupIds?.length) errors.push('--security-group-ids is required for VPC deployment (at least one security group)');
+
+    if (cfg.vpcId && !/^vpc-[0-9a-f]+$/.test(cfg.vpcId)) {
+      errors.push(`--vpc-id must look like vpc-xxxxxxxx (got ${cfg.vpcId})`);
+    }
+    for (const id of cfg.subnetIds || []) {
+      if (!/^subnet-[0-9a-f]+$/.test(id)) errors.push(`Invalid subnet ID: ${id} (expected subnet-xxxxxxxx)`);
+    }
+    for (const id of cfg.securityGroupIds || []) {
+      if (!/^sg-[0-9a-f]+$/.test(id)) errors.push(`Invalid security group ID: ${id} (expected sg-xxxxxxxx)`);
+    }
+    // OpenSearch domains support at most 3 subnets (one per AZ, zone-awareness limit).
+    if (cfg.subnetIds?.length > 3) {
+      errors.push(`--subnet-ids accepts at most 3 subnets for an OpenSearch domain (got ${cfg.subnetIds.length})`);
+    }
+    // A VPC domain cannot be reused via a public endpoint reference; VPC only applies to newly created domains.
+    if (cfg.osAction === 'reuse') {
+      errors.push('VPC options apply only when creating a new OpenSearch domain; omit --vpc-id when reusing an existing endpoint');
+    }
   }
 
   return errors;

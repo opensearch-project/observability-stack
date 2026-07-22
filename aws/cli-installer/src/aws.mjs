@@ -12,6 +12,7 @@ import {
   GetApplicationCommand,
   UpdateApplicationCommand,
   ListApplicationsCommand,
+  AuthorizeVpcEndpointAccessCommand,
 } from '@aws-sdk/client-opensearch';
 import {
   IAMClient,
@@ -55,8 +56,12 @@ import {
   createSpinner,
   createAsciiAnimation,
 } from './ui.mjs';
+import { SignatureV4 } from '@aws-sdk/signature-v4';
+import { Sha256 } from '@aws-crypto/sha256-js';
+import { HttpRequest } from '@smithy/protocol-http';
+import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import chalk from 'chalk';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import {
   SecretsManagerClient,
   CreateSecretCommand,
@@ -195,8 +200,42 @@ export async function createOpenSearch(cfg) {
   return createManagedDomain(cfg);
 }
 
+/**
+ * Extract the reachable endpoint from a DomainStatus, supporting both public
+ * (top-level Endpoint) and VPC domains (Endpoints.vpc map).
+ */
+function domainEndpoint(status) {
+  if (!status) return '';
+  if (status.Endpoint) return status.Endpoint;
+  return status.Endpoints?.vpc || '';
+}
+
+// Managed OpenSearch UI reaches a VPC-private domain over the domain's VPC
+// endpoint, which the domain owner must authorize for the UI service principal.
+// Idempotent: a re-authorize just no-ops.
+const OPENSEARCH_UI_SERVICE = 'application.opensearchservice.amazonaws.com';
+
+async function authorizeOpenSearchUiVpcAccess(cfg, client) {
+  try {
+    await client.send(new AuthorizeVpcEndpointAccessCommand({
+      DomainName: cfg.osDomainName,
+      Service: OPENSEARCH_UI_SERVICE,
+    }));
+    printSuccess('Authorized OpenSearch UI to reach the VPC-private domain');
+  } catch (err) {
+    // Already authorized is fine; anything else is a warning, not fatal.
+    if (/already|Conflict|LimitExceeded/i.test(err.message)) {
+      printInfo('OpenSearch UI VPC access already authorized');
+    } else {
+      printWarning(`Could not authorize OpenSearch UI VPC access: ${err.message}`);
+      printInfo(`Authorize it manually: aws opensearch authorize-vpc-endpoint-access --domain-name ${cfg.osDomainName} --service ${OPENSEARCH_UI_SERVICE} --region ${cfg.region}`);
+    }
+  }
+}
+
 async function createManagedDomain(cfg) {
-  printStep(`Creating OpenSearch domain '${cfg.osDomainName}'...`);
+  const inVpc = Boolean(cfg.vpcId);
+  printStep(`Creating OpenSearch domain '${cfg.osDomainName}'${inVpc ? ' (VPC)' : ''}...`);
   console.error();
 
   const client = new OpenSearchClient({ region: cfg.region });
@@ -204,13 +243,18 @@ async function createManagedDomain(cfg) {
   // Check if domain already exists
   try {
     const desc = await client.send(new DescribeDomainCommand({ DomainName: cfg.osDomainName }));
-    const endpoint = desc.DomainStatus?.Endpoint;
-    if (endpoint) {
+    const status = desc.DomainStatus || {};
+    const endpoint = domainEndpoint(status);
+    // Only short-circuit if the pre-existing domain is fully active. A domain
+    // still Processing (e.g. a prior interrupted run) must fall through to the
+    // wait loop, or downstream security-API calls race an unready cluster.
+    if (endpoint && !status.Processing && !status.UpgradeProcessing) {
       cfg.opensearchEndpoint = `https://${endpoint}`;
       printSuccess(`Domain '${cfg.osDomainName}' already exists: ${cfg.opensearchEndpoint}`);
+      if (inVpc) await authorizeOpenSearchUiVpcAccess(cfg, client);
       return;
     }
-    printSuccess(`Domain '${cfg.osDomainName}' already exists — waiting for endpoint`);
+    printSuccess(`Domain '${cfg.osDomainName}' already exists — waiting for it to become active`);
   } catch (err) {
     if (err.name !== 'ResourceNotFoundException') throw err;
 
@@ -227,36 +271,80 @@ async function createManagedDomain(cfg) {
       }],
     });
 
+    // Build cluster config; enable zone awareness when spanning multiple VPC subnets (AZs).
+    const clusterConfig = {
+      InstanceType: cfg.osInstanceType,
+      InstanceCount: cfg.osInstanceCount,
+    };
+    if (inVpc && cfg.subnetIds.length > 1) {
+      // Zone awareness supports 2 or 3 AZs, and the data node count must be a
+      // multiple of the AZ count. Round the requested count up to the next multiple.
+      const azCount = Math.min(cfg.subnetIds.length, 3);
+      const nodeCount = Math.max(azCount, Math.ceil(cfg.osInstanceCount / azCount) * azCount);
+      if (nodeCount !== cfg.osInstanceCount) {
+        printInfo(`Zone-aware domain across ${azCount} AZs requires the data node count to be a multiple of ${azCount}; using ${nodeCount} data nodes.`);
+        cfg.osInstanceCount = nodeCount;
+      }
+      clusterConfig.InstanceCount = nodeCount;
+      clusterConfig.ZoneAwarenessEnabled = true;
+      clusterConfig.ZoneAwarenessConfig = { AvailabilityZoneCount: azCount };
+    }
+
+    // Master user: for VPC-private domains the domain's Security API is only
+    // reachable from inside the VPC, so an internal (username/password) master
+    // can't be used to bootstrap role mappings from outside. Instead, make the
+    // caller's IAM principal the master — it can then drive role mapping through
+    // the reachable managed OpenSearch UI (which proxies to the domain over the
+    // AWS-internal path) via SigV4, no in-VPC network access required. Public
+    // domains keep the internal-database master (username/password).
+    const iamMaster = inVpc && Boolean(cfg.callerPrincipal?.arn);
+    const advancedSecurity = iamMaster
+      ? {
+          Enabled: true,
+          InternalUserDatabaseEnabled: false,
+          MasterUserOptions: { MasterUserARN: cfg.callerPrincipal.arn },
+        }
+      : {
+          Enabled: true,
+          InternalUserDatabaseEnabled: true,
+          MasterUserOptions: {
+            MasterUserName: cfg.opensearchUser || 'admin',
+            MasterUserPassword: (cfg._masterPassword = generatePassword()),
+          },
+        };
+
     try {
-      cfg._masterPassword = generatePassword();
       await client.send(new CreateDomainCommand({
         DomainName: cfg.osDomainName,
         EngineVersion: cfg.osEngineVersion,
-        ClusterConfig: {
-          InstanceType: cfg.osInstanceType,
-          InstanceCount: cfg.osInstanceCount,
-        },
+        ClusterConfig: clusterConfig,
         EBSOptions: {
           EBSEnabled: true,
           VolumeType: 'gp3',
           VolumeSize: cfg.osVolumeSize,
         },
+        // VPCOptions places the domain inside the selected subnets/SGs (private endpoint).
+        // Omitting it leaves the domain on a public endpoint (default behavior).
+        ...(inVpc ? {
+          VPCOptions: {
+            SubnetIds: cfg.subnetIds,
+            SecurityGroupIds: cfg.securityGroupIds,
+          },
+        } : {}),
         NodeToNodeEncryptionOptions: { Enabled: true },
         EncryptionAtRestOptions: { Enabled: true },
         DomainEndpointOptions: { EnforceHTTPS: true },
-        AdvancedSecurityOptions: {
-          Enabled: true,
-          InternalUserDatabaseEnabled: true,
-          MasterUserOptions: {
-            MasterUserName: cfg.opensearchUser || 'admin',
-            MasterUserPassword: cfg._masterPassword,
-          },
-        },
+        AdvancedSecurityOptions: advancedSecurity,
         AccessPolicies: accessPolicy,
         TagList: stackTags(cfg.pipelineName),
       }));
-      printSuccess('Domain creation initiated — waiting for endpoint');
-      await storeMasterPassword(cfg.region, cfg.pipelineName, cfg._masterPassword);
+      printSuccess(`Domain creation initiated${inVpc ? ` in VPC ${cfg.vpcId}` : ''} — waiting for endpoint`);
+      if (iamMaster) {
+        cfg.iamMasterArn = cfg.callerPrincipal.arn;
+        printInfo(`Master user: IAM principal ${cfg.iamMasterArn} (role mapping via OpenSearch UI)`);
+      } else {
+        await storeMasterPassword(cfg.region, cfg.pipelineName, cfg._masterPassword);
+      }
     } catch (createErr) {
       printError('Failed to create OpenSearch domain');
       console.error();
@@ -284,7 +372,7 @@ async function createManagedDomain(cfg) {
     try {
       const desc = await client.send(new DescribeDomainCommand({ DomainName: cfg.osDomainName }));
       const ds = desc.DomainStatus || {};
-      const endpoint = ds.Endpoint;
+      const endpoint = domainEndpoint(ds);
 
       // Feed real stage progress into the owl animation
       try {
@@ -294,10 +382,21 @@ async function createManagedDomain(cfg) {
         anim.setDomainStatus(current?.Description || current?.Name || 'Initializing...');
       } catch { /* change progress may not be available yet */ }
 
-      if (endpoint) {
+      // Gate on the endpoint being present AND the domain no longer processing.
+      // The endpoint URL is published while the cluster is still initializing, so
+      // returning on endpoint alone races the immediately-following security-API
+      // calls (FGAC mapping / UI→domain connection), which then hit a cluster that
+      // is not yet serving. Waiting for Processing to clear removes that race.
+      const active = !ds.Processing && !ds.UpgradeProcessing;
+      if (endpoint && active) {
         cfg.opensearchEndpoint = `https://${endpoint}`;
         anim.stop();
         spinner.succeed(`Domain ready: ${cfg.opensearchEndpoint} (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
+        // For VPC-private domains, authorize the managed OpenSearch UI service to
+        // reach the domain through its VPC endpoint. Without this the UI cannot
+        // connect to the domain ("No living connections"), so FGAC mapping and UI
+        // setup — which we route through the UI — would fail.
+        if (inVpc) await authorizeOpenSearchUiVpcAccess(cfg, client);
         return;
       }
     } catch { /* keep polling */ }
@@ -492,9 +591,39 @@ export async function createAossDataAccessPolicy(cfg) {
 
 // ── FGAC role mapping for managed domains ────────────────────────────────
 
+// Roles to map for full OpenSearch UI + PPL access.
+const FGAC_ROLES = ['all_access', 'security_manager'];
+
+/**
+ * Backend roles and users to add to the domain's FGAC role mappings: the OSI
+ * pipeline role (so ingestion can write) plus the caller's principal (so the
+ * caller can use the OpenSearch UI). Returns { backendRoles, users }.
+ */
+export function fgacPrincipals(cfg) {
+  const backendRoles = [cfg.iamRoleArn];
+  const users = [];
+  const p = cfg.callerPrincipal;
+  if (p && p.arn !== cfg.iamRoleArn) {
+    if (p.type === 'role') backendRoles.push(p.arn);
+    else users.push(p.arn);
+  }
+  return { backendRoles, users };
+}
+
 export async function mapOsiRoleInDomain(cfg) {
   if (cfg.opensearchType === 'serverless') return;
   if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
+
+  // VPC-private domains: the domain's Security API is only reachable from inside
+  // the VPC, so we can't map roles by calling the domain directly from here.
+  // Instead the caller is the IAM master, and role mapping is done through the
+  // reachable managed OpenSearch UI once the Application exists (see
+  // mapOsiRoleViaOpenSearchUI, called from executePipeline after the app is up).
+  if (cfg.vpcId) {
+    cfg.deferFgacToUi = true;
+    printInfo('VPC domain — FGAC role mapping will run through the OpenSearch UI after the Application is created.');
+    return;
+  }
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
@@ -513,26 +642,16 @@ export async function mapOsiRoleInDomain(cfg) {
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping`;
   const auth = Buffer.from(`${cfg.opensearchUser || 'admin'}:${masterPass}`).toString('base64');
 
-  // Map both the OSI pipeline role and the caller's principal (for OpenSearch UI access)
-  const callerPrincipal = cfg.callerPrincipal; // { arn, type: 'role'|'user' }
-  const newBackendRoles = [cfg.iamRoleArn];
-  const newUsers = [];
-  if (callerPrincipal && callerPrincipal.arn !== cfg.iamRoleArn) {
-    if (callerPrincipal.type === 'role') {
-      newBackendRoles.push(callerPrincipal.arn);
-    } else {
-      newUsers.push(callerPrincipal.arn);
-    }
-  }
+  const { backendRoles: newBackendRoles, users: newUsers } = fgacPrincipals(cfg);
+  const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
 
-  // Map to both all_access and security_manager for full permissions (including PPL)
-  const rolesToMap = ['all_access', 'security_manager'];
-
-  try {
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
-
-    for (const role of rolesToMap) {
-      const roleUrl = `${url}/${role}`;
+  // Map one role, retrying transient failures. The security plugin can briefly
+  // return 5xx/connection errors right after the cluster becomes active, and a
+  // silent miss here leaves the OSI role unmapped — the pipeline then goes ACTIVE
+  // but can't write. So retry, and treat a persistent failure as fatal.
+  async function mapRole(role) {
+    const roleUrl = `${url}/${role}`;
+    await withRetry(async () => {
       const getResp = await fetch(roleUrl, { headers });
       let existingBackendRoles = [];
       let existingUsers = [];
@@ -540,30 +659,160 @@ export async function mapOsiRoleInDomain(cfg) {
         const data = await getResp.json();
         existingBackendRoles = data?.[role]?.backend_roles || [];
         existingUsers = data?.[role]?.users || [];
+      } else if (getResp.status >= 500) {
+        throw new Error(`security API GET ${role} returned ${getResp.status} (cluster warming up)`);
       }
       const mergedBackendRoles = [...new Set([...existingBackendRoles, ...newBackendRoles])];
       const mergedUsers = [...new Set([...existingUsers, ...newUsers])];
 
       const ops = [{ op: 'add', path: '/backend_roles', value: mergedBackendRoles }];
-      if (newUsers.length) {
-        ops.push({ op: 'add', path: '/users', value: mergedUsers });
-      }
+      if (newUsers.length) ops.push({ op: 'add', path: '/users', value: mergedUsers });
 
-      const resp = await fetch(roleUrl, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify(ops),
-      });
-
+      const resp = await fetch(roleUrl, { method: 'PATCH', headers, body: JSON.stringify(ops) });
       if (!resp.ok) {
         const body = await resp.text();
-        printWarning(`FGAC mapping for ${role} returned ${resp.status}: ${body}`);
+        // 5xx and 401/403 right after provisioning are transient; retry. A stable
+        // 4xx (e.g. malformed) would exhaust retries and surface below.
+        throw new Error(`security API PATCH ${role} returned ${resp.status}: ${body}`);
       }
-    }
+    }, {
+      shouldRetry: (e) => isTransientHttpError(e) || /returned (401|403|5\d\d)/.test(e.message),
+      onRetry: (e, i) => printInfo(`FGAC mapping for ${role} not ready yet (attempt ${i + 1}) — retrying`),
+    });
+  }
+
+  try {
+    for (const role of FGAC_ROLES) await mapRole(role);
     printSuccess('Roles mapped to all_access and security_manager in OpenSearch');
   } catch (err) {
-    printWarning(`Could not map roles in FGAC: ${err.message}`);
-    printInfo('You may need to manually map the IAM role in OpenSearch UI → Security → Roles');
+    printError(`Could not map the OSI role in OpenSearch FGAC: ${err.message}`);
+    printInfo('The pipeline cannot write to OpenSearch until this role is mapped.');
+    printInfo('Map it manually in OpenSearch UI → Security → Roles, or re-run the installer.');
+    throw new Error('FGAC role mapping failed — pipeline would not be able to write to OpenSearch');
+  }
+}
+
+// ── SigV4 request against the managed OpenSearch UI Application endpoint ──────
+// The managed UI proxies the domain's Security API over the AWS-internal path,
+// so this reaches a VPC-private domain from anywhere the app endpoint resolves.
+
+async function osuiSecurityRequest(method, url, body) {
+  const isGet = method === 'GET' || method === 'DELETE';
+  const bodyBytes = (!isGet && body) ? JSON.stringify(body) : '';
+  const bodyHash = createHash('sha256').update(bodyBytes).digest('hex');
+  const parsed = new URL(url);
+  const query = {};
+  parsed.searchParams.forEach((v, k) => { query[k] = v; });
+
+  const request = new HttpRequest({
+    method,
+    protocol: parsed.protocol,
+    hostname: parsed.hostname,
+    port: parsed.port ? Number(parsed.port) : undefined,
+    path: parsed.pathname,
+    query,
+    headers: {
+      host: parsed.hostname,
+      'Content-Type': 'application/json',
+      'osd-xsrf': 'osd-fetch',
+      'x-amz-content-sha256': bodyHash,
+    },
+    body: bodyBytes || undefined,
+  });
+
+  const signer = new SignatureV4({
+    credentials: defaultProvider(),
+    region: parsed.hostname.split('.')[1] || 'us-east-1',
+    service: 'opensearch',
+    sha256: Sha256,
+  });
+  const signed = await signer.sign(request);
+  const resp = await fetch(url, { method, headers: signed.headers, body: isGet ? undefined : bodyBytes });
+  const text = await resp.text();
+  let data; try { data = JSON.parse(text); } catch { data = text; }
+  return { status: resp.status, data };
+}
+
+/**
+ * Discover the data-source id the managed OpenSearch UI created for the domain.
+ * The Security API proxy is keyed by this id (?dataSourceId=...).
+ */
+async function findAppDataSourceId(appEndpoint) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const r = await osuiSecurityRequest('GET', `${appEndpoint}/api/saved_objects/_find?type=data-source&per_page=10`);
+    const id = r.data?.saved_objects?.[0]?.id;
+    if (id) return id;
+    await new Promise((res) => setTimeout(res, 10_000));
+  }
+  return null;
+}
+
+/**
+ * Map the OSI pipeline role (and caller principal) into the domain's FGAC roles
+ * through the reachable managed OpenSearch UI. Used for VPC-private domains,
+ * where the domain's own Security API is not reachable from this host.
+ */
+export async function mapOsiRoleViaOpenSearchUI(cfg) {
+  if (!cfg.deferFgacToUi) return;
+  const appEndpoint = cfg.appEndpoint;
+  if (!appEndpoint) {
+    printWarning('No OpenSearch UI endpoint — cannot map FGAC roles for the VPC domain.');
+    printInfo('Map the OSI role manually in OpenSearch UI → Security → Roles once the UI is reachable.');
+    return;
+  }
+
+  printStep('Mapping roles in OpenSearch FGAC (via OpenSearch UI)...');
+
+  const dsId = await findAppDataSourceId(appEndpoint);
+  if (!dsId) {
+    printWarning('OpenSearch UI has not connected the domain data source yet — skipping FGAC mapping.');
+    printInfo('Re-run the installer, or map the OSI role manually in OpenSearch UI → Security → Roles.');
+    return;
+  }
+
+  const { backendRoles: newBackendRoles, users: newUsers } = fgacPrincipals(cfg);
+
+  // A VPC-private domain returns "No Living connections" through the UI until the
+  // UI→domain VPC endpoint connection is live, which lags the data-source object
+  // by a bit. So retry each role until the proxy actually reaches the domain.
+  const looksUnreachable = (data) => /no living connections|data source error|not ready|unavailable/i.test(
+    typeof data === 'string' ? data : JSON.stringify(data || ''),
+  );
+
+  async function mapRoleViaUi(role) {
+    const base = `${appEndpoint}/api/v1/configuration/rolesmapping/${role}?dataSourceId=${dsId}`;
+    await withRetry(async () => {
+      const getResp = await osuiSecurityRequest('GET', base);
+      if (getResp.status >= 500 || looksUnreachable(getResp.data)) {
+        throw new Error(`UI security API GET ${role}: ${getResp.status} ${JSON.stringify(getResp.data).slice(0, 160)}`);
+      }
+      const cur = (getResp.status === 200 && typeof getResp.data === 'object') ? getResp.data : {};
+      const mergedBackendRoles = [...new Set([...(cur.backend_roles || []), ...newBackendRoles])];
+      const mergedUsers = [...new Set([...(cur.users || []), ...newUsers])];
+
+      // The UI security API replaces the mapping wholesale, so send the merged set.
+      const resp = await osuiSecurityRequest('POST', base, {
+        backend_roles: mergedBackendRoles,
+        hosts: cur.hosts || [],
+        users: mergedUsers,
+      });
+      if (resp.status !== 200 || looksUnreachable(resp.data)) {
+        throw new Error(`UI security API POST ${role}: ${resp.status} ${JSON.stringify(resp.data).slice(0, 160)}`);
+      }
+    }, {
+      shouldRetry: (e) => isTransientHttpError(e) || looksUnreachable(e.message) || /: (5\d\d|4\d\d) /.test(e.message),
+      onRetry: (e, i) => printInfo(`OpenSearch UI not connected to the VPC domain yet (attempt ${i + 1}) — retrying`),
+    });
+  }
+
+  try {
+    for (const role of FGAC_ROLES) await mapRoleViaUi(role);
+    printSuccess('Roles mapped to all_access and security_manager via OpenSearch UI');
+  } catch (err) {
+    printError(`Could not map the OSI role via OpenSearch UI: ${err.message}`);
+    printInfo('The pipeline cannot write to the VPC-private domain until this role is mapped.');
+    printInfo('Map the OSI role manually in OpenSearch UI → Security → Roles, or re-run the installer.');
+    throw new Error('FGAC role mapping via OpenSearch UI failed — pipeline would not be able to write to OpenSearch');
   }
 }
 
@@ -750,15 +999,37 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
 
   if (!skipCreate) {
     try {
-      await client.send(new CreatePipelineCommand({
-        PipelineName: cfg.pipelineName,
-        MinUnits: cfg.minOcu,
-        MaxUnits: cfg.maxOcu,
-        PipelineConfigurationBody: pipelineYaml,
-        PipelineRoleArn: cfg.iamRoleArn,
-        Tags: stackTags(cfg.pipelineName),
-      }));
-      printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated`);
+      // When the domain lives in a VPC, attach the pipeline to the same network so it
+      // can reach the private domain endpoint. OSIS accepts at most 2 subnets; pick the
+      // first two provided (each in a distinct AZ). The ingestion endpoint becomes
+      // VPC-private, which is what in-VPC workloads (EKS/ECS) expect.
+      const inVpc = Boolean(cfg.vpcId);
+      const vpcOptions = inVpc ? {
+        VpcOptions: {
+          SubnetIds: cfg.subnetIds.slice(0, 2),
+          SecurityGroupIds: cfg.securityGroupIds,
+        },
+      } : {};
+
+      // OSIS validates the pipeline role's assume-role trust synchronously. When
+      // the role was just created, IAM may not have propagated yet, so retry on
+      // role-not-found / cannot-assume errors instead of failing the whole run.
+      await withRetry(
+        () => client.send(new CreatePipelineCommand({
+          PipelineName: cfg.pipelineName,
+          MinUnits: cfg.minOcu,
+          MaxUnits: cfg.maxOcu,
+          PipelineConfigurationBody: pipelineYaml,
+          PipelineRoleArn: cfg.iamRoleArn,
+          ...vpcOptions,
+          Tags: stackTags(cfg.pipelineName),
+        })),
+        {
+          shouldRetry: isRoleNotPropagatedError,
+          onRetry: (e, i) => printInfo(`Pipeline role not propagated yet (attempt ${i + 1}) — retrying`),
+        },
+      );
+      printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated${inVpc ? ` (VPC-attached)` : ''}`);
     } catch (err) {
       printError('Failed to create OSI pipeline');
       console.error();
@@ -936,16 +1207,24 @@ export async function createConnectedDataSource(cfg) {
   const workspaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/${cfg.apsWorkspaceId}`;
 
   try {
-    const result = await client.send(new AddDirectQueryDataSourceCommand({
-      DataSourceName: dataSourceName,
-      DataSourceType: {
-        Prometheus: {
-          RoleArn: cfg.connectedDataSourceRoleArn,
-          WorkspaceArn: workspaceArn,
+    // The direct-query data source assumes connectedDataSourceRoleArn, which may
+    // have just been created; retry while IAM propagation catches up.
+    const result = await withRetry(
+      () => client.send(new AddDirectQueryDataSourceCommand({
+        DataSourceName: dataSourceName,
+        DataSourceType: {
+          Prometheus: {
+            RoleArn: cfg.connectedDataSourceRoleArn,
+            WorkspaceArn: workspaceArn,
+          },
         },
+        Description: `Prometheus data source for ${cfg.pipelineName} observability stack`,
+      })),
+      {
+        shouldRetry: isRoleNotPropagatedError,
+        onRetry: (e, i) => printInfo(`Connected Data Source role not propagated yet (attempt ${i + 1}) — retrying`),
       },
-      Description: `Prometheus data source for ${cfg.pipelineName} observability stack`,
-    }));
+    );
     cfg.connectedDataSourceArn = result.DataSourceArn;
     printSuccess(`Connected Data Source created: ${cfg.connectedDataSourceArn}`);
     await tagResource(cfg.region, cfg.connectedDataSourceArn, cfg.pipelineName);
@@ -1035,15 +1314,31 @@ export async function createOpenSearchApplication(cfg) {
 }
 
 /**
- * Fetch the application endpoint via GetApplicationCommand.
+ * Fetch the application endpoint via GetApplicationCommand, waiting for the app
+ * to reach ACTIVE with a populated endpoint. CreateApplication returns before the
+ * endpoint is provisioned, so a single read races an empty value — which would
+ * skip FGAC role mapping and UI setup for VPC domains. Poll until it appears.
  */
 async function fetchAppEndpoint(client, cfg) {
   if (!cfg.appId) return;
-  try {
-    const resp = await client.send(new GetApplicationCommand({ id: cfg.appId }));
-    cfg.appEndpoint = resp.endpoint || '';
-    // endpoint logged by setupDashboards
-  } catch { /* best effort */ }
+  const maxWait = 300_000; // 5 min
+  const interval = 5_000;
+  const start = Date.now();
+  while (Date.now() - start < maxWait) {
+    try {
+      const resp = await client.send(new GetApplicationCommand({ id: cfg.appId }));
+      if (resp.endpoint) {
+        cfg.appEndpoint = resp.endpoint;
+        return; // endpoint logged by setupDashboards
+      }
+      if (resp.status && !['CREATING', 'UPDATING', 'ACTIVE'].includes(resp.status)) {
+        printWarning(`OpenSearch Application status is ${resp.status} — endpoint may not become available`);
+        return;
+      }
+    } catch { /* keep polling */ }
+    await sleep(interval);
+  }
+  printWarning('Timed out waiting for the OpenSearch Application endpoint');
 }
 
 /**
@@ -1198,6 +1493,188 @@ export async function listApplications(region) {
     id: a.id,
     endpoint: a.endpoint || '',
   }));
+}
+
+// ── VPC / subnet / security group listing (for interactive VPC selection) ────
+
+function nameTag(tags) {
+  return (tags || []).find((t) => t.Key === 'Name')?.Value || '';
+}
+
+/**
+ * List VPCs in the given region.
+ * Returns [{ id, cidr, isDefault, name }].
+ */
+export async function listVpcs(region) {
+  const { EC2Client, DescribeVpcsCommand } = await import('@aws-sdk/client-ec2');
+  const client = new EC2Client({ region });
+  const resp = await client.send(new DescribeVpcsCommand({}));
+  return (resp.Vpcs || []).map((v) => ({
+    id: v.VpcId,
+    cidr: v.CidrBlock || '',
+    isDefault: Boolean(v.IsDefault),
+    name: nameTag(v.Tags),
+  }));
+}
+
+/**
+ * List subnets for a VPC.
+ * Returns [{ id, az, cidr, name, mapPublicIp }].
+ */
+export async function listSubnets(region, vpcId) {
+  const { EC2Client, DescribeSubnetsCommand } = await import('@aws-sdk/client-ec2');
+  const client = new EC2Client({ region });
+  const resp = await client.send(new DescribeSubnetsCommand({
+    Filters: [{ Name: 'vpc-id', Values: [vpcId] }],
+  }));
+  return (resp.Subnets || []).map((s) => ({
+    id: s.SubnetId,
+    az: s.AvailabilityZone || '',
+    cidr: s.CidrBlock || '',
+    name: nameTag(s.Tags),
+    mapPublicIp: Boolean(s.MapPublicIpOnLaunch),
+  }));
+}
+
+/**
+ * List security groups for a VPC.
+ * Returns [{ id, name, description }].
+ */
+export async function listSecurityGroups(region, vpcId) {
+  const { EC2Client, DescribeSecurityGroupsCommand } = await import('@aws-sdk/client-ec2');
+  const client = new EC2Client({ region });
+  const resp = await client.send(new DescribeSecurityGroupsCommand({
+    Filters: [{ Name: 'vpc-id', Values: [vpcId] }],
+  }));
+  return (resp.SecurityGroups || []).map((g) => ({
+    id: g.GroupId,
+    name: g.GroupName || '',
+    description: g.Description || '',
+  }));
+}
+
+/**
+ * Validate the VPC topology against live EC2 state so the run fails fast, before
+ * any OpenSearch/OSIS resources are created. The syntactic checks in
+ * validateConfig() only confirm the IDs are well-formed; this confirms they
+ * actually exist, belong together, and satisfy OpenSearch's zone-awareness rules.
+ *
+ * Catches (each of which otherwise surfaces minutes into domain/pipeline creation):
+ *   - VPC does not exist / wrong region.
+ *   - A subnet or security group is not a member of the given VPC. OpenSearch's
+ *     CreateDomain rejects a subnet/SG that lives in a different VPC.
+ *   - Two subnets share an Availability Zone. createOpenSearch() derives the
+ *     zone-awareness AZ count from the subnet count (min(subnetIds.length, 3)),
+ *     so duplicate AZs make CreateDomain fail with a ValidationException.
+ *
+ * @param {object} cfg  the resolved config (needs region, vpcId, subnetIds, securityGroupIds)
+ * @param {object} [deps]  optional injected EC2 accessors for testing
+ * @returns {Promise<string[]>}  error strings (empty = valid)
+ */
+export async function validateVpcTopology(cfg, deps = {}) {
+  // Only relevant when a VPC deployment was requested. Well-formedness is assumed
+  // to have been checked by validateConfig() already.
+  if (!cfg.vpcId) return [];
+
+  const describeVpcs = deps.describeVpcs || (async (region, ids) => {
+    const { EC2Client, DescribeVpcsCommand } = await import('@aws-sdk/client-ec2');
+    const client = new EC2Client({ region });
+    return (await client.send(new DescribeVpcsCommand({ VpcIds: ids }))).Vpcs || [];
+  });
+  const describeSubnets = deps.describeSubnets || (async (region, ids) => {
+    const { EC2Client, DescribeSubnetsCommand } = await import('@aws-sdk/client-ec2');
+    const client = new EC2Client({ region });
+    return (await client.send(new DescribeSubnetsCommand({ SubnetIds: ids }))).Subnets || [];
+  });
+  const describeSecurityGroups = deps.describeSecurityGroups || (async (region, ids) => {
+    const { EC2Client, DescribeSecurityGroupsCommand } = await import('@aws-sdk/client-ec2');
+    const client = new EC2Client({ region });
+    return (await client.send(new DescribeSecurityGroupsCommand({ GroupIds: ids }))).SecurityGroups || [];
+  });
+
+  const errors = [];
+  const region = cfg.region;
+  const subnetIds = cfg.subnetIds || [];
+  const securityGroupIds = cfg.securityGroupIds || [];
+
+  // 1. VPC exists. A missing/invalid VPC throws InvalidVpcID.NotFound — translate
+  //    that into a clean error rather than an SDK stack trace.
+  try {
+    const vpcs = await describeVpcs(region, [cfg.vpcId]);
+    if (!vpcs.length) {
+      errors.push(`VPC ${cfg.vpcId} was not found in ${region}. Check the ID and region.`);
+      return errors; // Nothing else can be validated without the VPC.
+    }
+  } catch (err) {
+    if (/InvalidVpcID\.NotFound|does not exist/i.test(err.message || '')) {
+      errors.push(`VPC ${cfg.vpcId} was not found in ${region}. Check the ID and region.`);
+    } else {
+      errors.push(`Could not verify VPC ${cfg.vpcId}: ${err.message}`);
+    }
+    return errors;
+  }
+
+  // 2. Subnets: each must exist and belong to the VPC; collect their AZs.
+  if (subnetIds.length) {
+    try {
+      const subnets = await describeSubnets(region, subnetIds);
+      const found = new Map(subnets.map((s) => [s.SubnetId, s]));
+      for (const id of subnetIds) {
+        const s = found.get(id);
+        if (!s) {
+          errors.push(`Subnet ${id} was not found in ${region}.`);
+        } else if (s.VpcId !== cfg.vpcId) {
+          errors.push(`Subnet ${id} belongs to VPC ${s.VpcId}, not ${cfg.vpcId}. All subnets must be in the target VPC.`);
+        }
+      }
+      // Zone-awareness: subnets must be in distinct AZs. createOpenSearch()
+      // enables zone awareness with AvailabilityZoneCount = min(subnetIds, 3)
+      // and places one node group per AZ, so two subnets in the same AZ make
+      // CreateDomain fail. Only meaningful with more than one subnet.
+      const inVpc = subnets.filter((s) => s.VpcId === cfg.vpcId);
+      if (inVpc.length > 1) {
+        const azSeen = new Map();
+        for (const s of inVpc) {
+          const az = s.AvailabilityZone;
+          if (azSeen.has(az)) {
+            errors.push(`Subnets ${azSeen.get(az)} and ${s.SubnetId} are both in ${az}. OpenSearch requires each subnet to be in a distinct Availability Zone for a zone-aware domain.`);
+          } else {
+            azSeen.set(az, s.SubnetId);
+          }
+        }
+      }
+    } catch (err) {
+      if (/InvalidSubnetID\.NotFound|does not exist/i.test(err.message || '')) {
+        errors.push(`One or more subnets were not found in ${region}: ${subnetIds.join(', ')}.`);
+      } else {
+        errors.push(`Could not verify subnets: ${err.message}`);
+      }
+    }
+  }
+
+  // 3. Security groups: each must exist and belong to the VPC.
+  if (securityGroupIds.length) {
+    try {
+      const groups = await describeSecurityGroups(region, securityGroupIds);
+      const found = new Map(groups.map((g) => [g.GroupId, g]));
+      for (const id of securityGroupIds) {
+        const g = found.get(id);
+        if (!g) {
+          errors.push(`Security group ${id} was not found in ${region}.`);
+        } else if (g.VpcId !== cfg.vpcId) {
+          errors.push(`Security group ${id} belongs to VPC ${g.VpcId}, not ${cfg.vpcId}. All security groups must be in the target VPC.`);
+        }
+      }
+    } catch (err) {
+      if (/InvalidGroup\.NotFound|does not exist/i.test(err.message || '')) {
+        errors.push(`One or more security groups were not found in ${region}: ${securityGroupIds.join(', ')}.`);
+      } else {
+        errors.push(`Could not verify security groups: ${err.message}`);
+      }
+    }
+  }
+
+  return errors;
 }
 
 // ── Pipeline listing / describe / update ─────────────────────────────────────
@@ -1500,6 +1977,54 @@ export async function describeResource(region, resource) {
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/**
+ * Retry an async operation on transient failures with exponential backoff.
+ * `shouldRetry(err)` decides whether an error is worth retrying (default: any).
+ * Returns the operation's result, or rethrows the last error once `attempts`
+ * is exhausted. `onRetry(err, attempt)` runs between tries for progress output.
+ */
+async function withRetry(fn, { attempts = 6, delayMs = 5000, backoff = 1.6, maxDelayMs = 30_000, shouldRetry = () => true, onRetry } = {}) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn(i);
+    } catch (err) {
+      lastErr = err;
+      if (i === attempts - 1 || !shouldRetry(err)) throw err;
+      if (onRetry) onRetry(err, i);
+      await sleep(Math.min(maxDelayMs, Math.round(delayMs * backoff ** i)));
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * True when an error is a freshly-created IAM role that hasn't propagated yet.
+ * OSIS/OpenSearch validate assume-role synchronously and reject with these
+ * shapes until the role and its trust policy are globally consistent.
+ */
+function isRoleNotPropagatedError(err) {
+  const msg = err?.message || '';
+  const name = err?.name || '';
+  return (
+    /cannot be assumed|not authorized to perform: sts:AssumeRole|unable to assume|does not have permission to assume|role .*(does not exist|not found)|Invalid .*RoleArn|no such entity/i.test(msg) ||
+    name === 'ValidationException' && /role/i.test(msg)
+  );
+}
+
+/**
+ * True when an HTTP/network error against a just-provisioned OpenSearch domain
+ * or the managed UI proxy is transient (cluster still warming up, VPC endpoint
+ * connection not yet live). These clear on their own within a minute or two.
+ */
+function isTransientHttpError(err) {
+  const msg = err?.message || String(err || '');
+  return /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|fetch failed|terminated|502|503|504|timeout/i.test(msg);
+}
+
+// Exported for unit tests.
+export { withRetry as _withRetry, isRoleNotPropagatedError as _isRoleNotPropagatedError, isTransientHttpError as _isTransientHttpError };
 
 function fmtElapsed(totalSec) {
   if (totalSec < 60) return `${totalSec}s`;

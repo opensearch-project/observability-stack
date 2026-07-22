@@ -300,26 +300,41 @@ export async function launchDemoInstance(cfg) {
   const iam = new IAMClient({ region: cfg.region });
   const ssm = new SSMClient({ region: cfg.region });
 
+  // When a VPC was selected for the stack, place the demo instance in the same
+  // network so it can reach a VPC-private OSIS ingestion endpoint. Otherwise fall
+  // back to the account's default VPC subnet (current behavior).
+  const inVpc = Boolean(cfg.vpcId);
+
   const spinner = createSpinner('Looking up AMI and subnet...');
-  const [ami, subnet] = await Promise.all([getLatestAL2023Ami(ssm), getDefaultVpcSubnet(ec2, INSTANCE_TYPE)]);
+  const amiPromise = getLatestAL2023Ami(ssm);
+  const subnetId = inVpc ? cfg.subnetIds[0] : (await getDefaultVpcSubnet(ec2, INSTANCE_TYPE)).SubnetId;
+  const ami = await amiPromise;
   spinner.stop(`AMI: ${ami}`);
 
-  const sgSpinner = createSpinner('Creating security group...');
-  const sgId = await createDemoSecurityGroup(ec2, cfg);
-  sgSpinner.stop(`Security group: ${sgId}`);
+  // In VPC mode, reuse the caller-provided security groups (they should already
+  // allow the intra-VPC traffic the domain/pipeline need). Otherwise create a
+  // dedicated demo SG in the default VPC.
+  let sgIds;
+  if (inVpc) {
+    sgIds = cfg.securityGroupIds;
+  } else {
+    const sgSpinner = createSpinner('Creating security group...');
+    sgIds = [await createDemoSecurityGroup(ec2, cfg)];
+    sgSpinner.stop(`Security group: ${sgIds[0]}`);
+  }
 
   const profileSpinner = createSpinner('Creating instance profile...');
   const profileName = await createDemoInstanceProfile(iam, cfg);
   profileSpinner.stop(`Instance profile: ${profileName}`);
 
-  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance...`);
+  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`);
   const { Instances } = await ec2.send(new RunInstancesCommand({
     ImageId: ami,
     InstanceType: INSTANCE_TYPE,
     MinCount: 1,
     MaxCount: 1,
-    SubnetId: subnet.SubnetId,
-    SecurityGroupIds: [sgId],
+    SubnetId: subnetId,
+    SecurityGroupIds: sgIds,
     IamInstanceProfile: { Name: profileName },
     UserData: buildUserData(cfg),
     TagSpecifications: tagSpec('instance', cfg.pipelineName),
@@ -338,7 +353,7 @@ export async function launchDemoInstance(cfg) {
   printInfo(`View init logs: aws ssm start-session --target ${instanceId} --region ${cfg.region}`);
 
   cfg.demoInstanceId = instanceId;
-  cfg.demoSecurityGroupId = sgId;
+  cfg.demoSecurityGroupId = sgIds[0];
   return instanceId;
 }
 

@@ -46,7 +46,7 @@ function connector(width, specs) {
   return theme.muted(arr.join('').trimEnd());
 }
 
-function renderArchitectureDiagram(cfg) {
+export function renderArchitectureDiagram(cfg) {
   const osLabel = cfg.opensearchType === 'serverless' ? 'AOSS Collection' : 'OpenSearch';
   const pathLabel = `/${cfg.pipelineName}/v1/*`;
   const m = theme.muted;
@@ -55,14 +55,23 @@ function renderArchitectureDiagram(cfg) {
   const h = theme.highlight;
   const sp = (n) => ' '.repeat(Math.max(0, n));
 
+  // VPC mode tags the boxes that actually live inside the VPC (EC2, the OSI
+  // ingest endpoint, and the OpenSearch domain). Prometheus, the Connected Data
+  // Source, and the UI are regional managed services reached over the
+  // AWS-internal path, so they stay untagged. The tag is short enough to fit the
+  // boxes' existing minimum widths, so it adds no width and the column math below
+  // is unchanged from the public render.
+  const inVpc = Boolean(cfg.vpcId);
+  const vpcTag = inVpc ? '  ' + theme.success('[vpc]') : '';
+
   // ── Define all boxes ──────────────────────────────────────────────────
-  const otlp    = box([a('OSI Endpoint'), m(pathLabel)], 21);
+  const otlp    = box([a('OSI Endpoint') + vpcTag, m(pathLabel)], 21);
   const logs    = box([h('Logs')],    9);
   const traces  = box([h('Traces')],  9);
   const metrics = box([h('Metrics')], 9);
   const raw     = box([m('Raw'), m('Traces')],  9);
   const svc     = box([m('Service'), m('Map')], 9);
-  const os      = box([p(osLabel), m('logs, traces, svc-map')]);
+  const os      = box([p(osLabel) + vpcTag, m('logs, traces, svc-map')]);
   const prom    = box([p('AWS Prometheus'), m('metrics, svc-map')]);
   const dash    = box([p('OpenSearch UI'), m('Observability workspace')]);
 
@@ -98,7 +107,7 @@ function renderArchitectureDiagram(cfg) {
   const out = [''];
 
   // EC2 Demo box (above OTLP)
-  const ec2 = box([p('EC2 Instance'), m('OTel Demo + Agents')], 21);
+  const ec2 = box([p('EC2 Instance') + vpcTag, m('OTel Demo + Agents')], 21);
   const ec2Off = Math.max(0, C_OTLP - ec2.mid);
   out.push(sp(ec2Off) + ec2.top);
   for (const l of ec2.lines) out.push(sp(ec2Off) + l);
@@ -182,6 +191,15 @@ function renderArchitectureDiagram(cfg) {
   out.push(sp(dashOff) + dash.top);
   for (const l of dash.lines) out.push(sp(dashOff) + l);
   out.push(sp(dashOff) + dash.bot);
+
+  // Network-topology legend — only in VPC mode. Placed after the arch diagram.
+  if (inVpc) {
+    out.push('');
+    out.push(a('Network topology'));
+    out.push(m(`VPC ${cfg.vpcId}  ·  subnets ${(cfg.subnetIds || []).join(', ')}  ·  security groups ${(cfg.securityGroupIds || []).join(', ')}`));
+    out.push(m(`${theme.success('[vpc]')} boxes run inside the VPC; Prometheus, Connected Data Source, and the UI are regional (AWS-internal path).`));
+  }
+
   out.push('');
 
   return out;
