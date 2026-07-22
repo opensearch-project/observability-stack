@@ -1049,7 +1049,11 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
   spinner.start();
   const anim = createAsciiAnimation('pipeline');
   anim.start(spinner);
-  const maxWait = 1200_000; // 20 min
+  // OSIS pipeline activation is AWS-paced and routinely takes ~15-20 min; under
+  // regional load or for VPC-attached pipelines it can exceed 20 min. Use the same
+  // 30-min ceiling as domain provisioning so a legitimately-slow-but-healthy
+  // pipeline isn't abandoned in CREATING (which then can't even be torn down).
+  const maxWait = 1800_000; // 30 min
   const start = Date.now();
   anim.setStatus(() => `Waiting for pipeline... (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
 
@@ -1092,7 +1096,7 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
 
   anim.stop();
   spinner.fail(`Timed out waiting for pipeline (${fmtElapsed(Math.round((Date.now() - start) / 1000))})`);
-  throw new Error(`Pipeline '${cfg.pipelineName}' did not become active within 15 minutes`);
+  throw new Error(`Pipeline '${cfg.pipelineName}' did not become active within 30 minutes`);
 }
 
 // ── OpenSearch UI workspace ──────────────────────────────────────────
