@@ -8,6 +8,7 @@ import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCom
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
+import { FGAC_ROLES } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
   try {
@@ -51,25 +52,28 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
     }
 
     const endpoint = `https://${DomainStatus.Endpoint}`;
-    const url = `${endpoint}/_plugins/_security/api/rolesmapping/all_access`;
     const auth = Buffer.from(`admin:${masterPass}`).toString('base64');
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
 
-    const getResp = await fetch(url, { headers });
-    if (!getResp.ok) return;
+    let cleaned = false;
+    for (const role of FGAC_ROLES) {
+      const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
+      const getResp = await fetch(url, { headers });
+      if (!getResp.ok) continue;
 
-    const data = await getResp.json();
-    const existing = data?.all_access?.backend_roles || [];
-    const filtered = existing.filter(r => !r.includes(pipelineName));
-
-    if (filtered.length !== existing.length) {
-      await fetch(url, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
-      });
-      printSuccess('FGAC backend role mappings cleaned up');
+      const data = await getResp.json();
+      const existing = data?.[role]?.backend_roles || [];
+      const filtered = existing.filter(r => !r.includes(pipelineName));
+      if (filtered.length !== existing.length) {
+        await fetch(url, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
+        });
+        cleaned = true;
+      }
     }
+    if (cleaned) printSuccess('FGAC backend role mappings cleaned up');
   } catch (e) {
     printWarning(`FGAC cleanup: ${e.message}`);
   }
@@ -108,15 +112,19 @@ async function cleanupFgacRolesViaUi(appEndpoint, pipelineName) {
   const dsId = find.data?.saved_objects?.[0]?.id;
   if (!dsId) return;
 
-  const base = `${appEndpoint}/api/v1/configuration/rolesmapping/all_access?dataSourceId=${dsId}`;
-  const cur = await req('GET', base);
-  if (cur.status !== 200 || typeof cur.data !== 'object') return;
-  const existing = cur.data.backend_roles || [];
-  const filtered = existing.filter(r => !r.includes(pipelineName));
-  if (filtered.length !== existing.length) {
-    await req('POST', base, { backend_roles: filtered, hosts: cur.data.hosts || [], users: cur.data.users || [] });
-    printSuccess('FGAC backend role mappings cleaned up (via OpenSearch UI)');
+  let cleaned = false;
+  for (const role of FGAC_ROLES) {
+    const base = `${appEndpoint}/api/v1/configuration/rolesmapping/${role}?dataSourceId=${dsId}`;
+    const cur = await req('GET', base);
+    if (cur.status !== 200 || typeof cur.data !== 'object') continue;
+    const existing = cur.data.backend_roles || [];
+    const filtered = existing.filter(r => !r.includes(pipelineName));
+    if (filtered.length !== existing.length) {
+      await req('POST', base, { backend_roles: filtered, hosts: cur.data.hosts || [], users: cur.data.users || [] });
+      cleaned = true;
+    }
   }
+  if (cleaned) printSuccess('FGAC backend role mappings cleaned up (via OpenSearch UI)');
 }
 
 export async function destroy(cfg) {

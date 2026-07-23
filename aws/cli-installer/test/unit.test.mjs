@@ -91,7 +91,7 @@ describe('caller role ARN extraction', () => {
 
 // ── EC2 demo unit tests ──────────────────────────────────────────────────────
 
-import { _tags, _tagSpec, _buildUserData } from '../src/ec2-demo.mjs';
+import { _tags, _tagSpec, _buildUserData, _getVpcSubnetForInstance } from '../src/ec2-demo.mjs';
 
 describe('EC2 demo tags', () => {
   it('includes pipeline tag and Name tag', () => {
@@ -170,6 +170,50 @@ describe('EC2 demo buildUserData', () => {
   it('clears COMPOSE_PROFILES so local-backend services are pruned in managed mode', () => {
     const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
     assert.ok(decoded.includes('export COMPOSE_PROFILES='));
+  });
+});
+
+describe('EC2 demo getVpcSubnetForInstance — AZ offering guard', () => {
+  // Stub EC2: subnet-a in us-east-1a, subnet-b in us-east-1b; offerings configurable.
+  const makeEc2 = (offeringAzs) => ({
+    send: async (cmd) => {
+      const name = cmd.constructor.name;
+      if (name === 'DescribeSubnetsCommand') {
+        const ids = cmd.input.Filters[0].Values;
+        const all = { 'subnet-a': 'us-east-1a', 'subnet-b': 'us-east-1b' };
+        return { Subnets: ids.filter(id => all[id]).map(id => ({ SubnetId: id, AvailabilityZone: all[id] })) };
+      }
+      if (name === 'DescribeInstanceTypeOfferingsCommand') {
+        return { InstanceTypeOfferings: offeringAzs.map(az => ({ Location: az })) };
+      }
+      throw new Error(`unexpected command ${name}`);
+    },
+  });
+
+  it('returns subnetIds[0] when its AZ offers the instance type', async () => {
+    const ec2 = makeEc2(['us-east-1a', 'us-east-1b']);
+    assert.equal(await _getVpcSubnetForInstance(ec2, ['subnet-a', 'subnet-b'], 't3.xlarge'), 'subnet-a');
+  });
+
+  it('skips to the next subnet whose AZ offers the instance type', async () => {
+    const ec2 = makeEc2(['us-east-1b']); // only b offers it
+    assert.equal(await _getVpcSubnetForInstance(ec2, ['subnet-a', 'subnet-b'], 't3.xlarge'), 'subnet-b');
+  });
+
+  it('throws when no provided subnet is in a supporting AZ', async () => {
+    const ec2 = makeEc2(['us-east-1c']); // neither a nor b
+    await assert.rejects(
+      () => _getVpcSubnetForInstance(ec2, ['subnet-a', 'subnet-b'], 't3.xlarge'),
+      /No provided subnet is in an AZ that supports t3\.xlarge/,
+    );
+  });
+
+  it('throws when none of the provided subnets are found', async () => {
+    const ec2 = makeEc2(['us-east-1a']);
+    await assert.rejects(
+      () => _getVpcSubnetForInstance(ec2, ['subnet-missing'], 't3.xlarge'),
+      /None of the provided subnets were found/,
+    );
   });
 });
 
