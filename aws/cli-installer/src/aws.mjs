@@ -292,11 +292,11 @@ async function createManagedDomain(cfg) {
 
     // Master user: for VPC-private domains the domain's Security API is only
     // reachable from inside the VPC, so an internal (username/password) master
-    // can't be used to bootstrap role mappings from outside. Instead, make the
-    // caller's IAM principal the master — it can then drive role mapping through
-    // the reachable managed OpenSearch UI (which proxies to the domain over the
-    // AWS-internal path) via SigV4, no in-VPC network access required. Public
-    // domains keep the internal-database master (username/password).
+    // user can't be used to bootstrap role mappings from outside. Instead, make
+    // the caller's IAM principal the master user — it can then drive role mapping
+    // through the reachable managed OpenSearch UI (which proxies to the domain over
+    // the AWS-internal path) via SigV4, no in-VPC network access required. Public
+    // domains keep the internal-database master user (username/password).
     const iamMaster = inVpc && Boolean(cfg.callerPrincipal?.arn);
     const advancedSecurity = iamMaster
       ? {
@@ -616,7 +616,7 @@ export async function mapOsiRoleInDomain(cfg) {
 
   // VPC-private domains: the domain's Security API is only reachable from inside
   // the VPC, so we can't map roles by calling the domain directly from here.
-  // Instead the caller is the IAM master, and role mapping is done through the
+  // Instead the caller is the IAM master user, and role mapping is done through the
   // reachable managed OpenSearch UI once the Application exists (see
   // mapOsiRoleViaOpenSearchUI, called from executePipeline after the app is up).
   if (cfg.vpcId) {

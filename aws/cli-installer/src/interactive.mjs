@@ -363,7 +363,7 @@ async function stepVpc(cfg) {
     cfg.securityGroupIds = selectedSgs;
 
     printInfo('The pipeline and demo instance will be placed in this VPC too.');
-    printInfo('Your IAM principal will be the domain master; FGAC mapping and UI setup run through the managed OpenSearch UI, so you can run this from anywhere.');
+    printInfo("Your IAM principal will be the domain's master user; FGAC mapping and UI setup run through the managed OpenSearch UI, so you can run this from anywhere.");
     return;
   }
 }

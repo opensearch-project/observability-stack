@@ -38,7 +38,7 @@ export function createDefaultConfig() {
     vpcId: '',
     subnetIds: [],
     securityGroupIds: [],
-    // For VPC-private domains: the domain master is the caller's IAM principal
+    // For VPC-private domains: the domain's master user is the caller's IAM principal
     // (set at create time) and FGAC role mapping is deferred to run through the
     // reachable managed OpenSearch UI once the Application exists.
     iamMasterArn: '',
