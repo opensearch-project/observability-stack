@@ -455,6 +455,7 @@ import {
   _withRetry,
   _isRoleNotPropagatedError,
   _isTransientHttpError,
+  _isOsisInternalError,
 } from '../src/aws.mjs';
 
 // ── OSI pipeline role ARN pre-flight (last-line guard before CreatePipeline) ──
@@ -672,6 +673,29 @@ describe('isTransientHttpError', () => {
   it('does not match a plain 400 / auth error', () => {
     assert.ok(!_isTransientHttpError(new Error('400 bad request: malformed body')));
     assert.ok(!_isTransientHttpError(new Error('ValidationException')));
+  });
+});
+
+describe('isOsisInternalError', () => {
+  it('matches the OSIS CreatePipeline internal exception', () => {
+    for (const msg of [
+      'Unable to create pipeline due to an internal exception. Please try again, and contact AWS Support if the problem persists.',
+      'internal failure',
+      'InternalServerError',
+    ]) {
+      assert.ok(_isOsisInternalError(new Error(msg)), `expected retry for: ${msg}`);
+    }
+  });
+
+  it('matches by error name', () => {
+    const err = new Error('something opaque');
+    err.name = 'InternalException';
+    assert.ok(_isOsisInternalError(err));
+  });
+
+  it('does not match validation or auth errors', () => {
+    assert.ok(!_isOsisInternalError(new Error('ValidationException: Invalid PipelineRoleArn')));
+    assert.ok(!_isOsisInternalError(new Error('is not authorized to perform: osis:CreatePipeline')));
   });
 });
 

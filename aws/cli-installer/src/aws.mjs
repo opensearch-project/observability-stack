@@ -1062,8 +1062,8 @@ export async function createOsiPipeline(cfg, pipelineYaml) {
           Tags: stackTags(cfg.pipelineName),
         })),
         {
-          shouldRetry: isRoleNotPropagatedError,
-          onRetry: (e, i) => printInfo(`Pipeline role not propagated yet (attempt ${i + 1}) — retrying`),
+          shouldRetry: (e) => isRoleNotPropagatedError(e) || isOsisInternalError(e) || isTransientHttpError(e),
+          onRetry: (e, i) => printInfo(`CreatePipeline failed (attempt ${i + 1}), retrying: ${e.message.slice(0, 120)}`),
         },
       );
       printSuccess(`Pipeline '${cfg.pipelineName}' creation initiated${inVpc ? ` (VPC-attached)` : ''}`);
@@ -2064,8 +2064,20 @@ function isTransientHttpError(err) {
   return /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|fetch failed|terminated|502|503|504|timeout/i.test(msg);
 }
 
+// OSIS CreatePipeline intermittently returns an internal exception that the API
+// itself asks the caller to retry ("Please try again..."). This fails a deploy
+// after the domain is already built, so treat it as retryable.
+function isOsisInternalError(err) {
+  const msg = err?.message || '';
+  const name = err?.name || '';
+  return (
+    name === 'InternalException' ||
+    /internal (exception|failure|error)|please try again|internalservererror/i.test(msg)
+  );
+}
+
 // Exported for unit tests.
-export { withRetry as _withRetry, isRoleNotPropagatedError as _isRoleNotPropagatedError, isTransientHttpError as _isTransientHttpError };
+export { withRetry as _withRetry, isRoleNotPropagatedError as _isRoleNotPropagatedError, isTransientHttpError as _isTransientHttpError, isOsisInternalError as _isOsisInternalError };
 
 function fmtElapsed(totalSec) {
   if (totalSec < 60) return `${totalSec}s`;
