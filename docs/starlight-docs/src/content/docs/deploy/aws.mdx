@@ -39,6 +39,34 @@ npx @opensearch-project/observability-stack --serverless
 
 Takes ~15 minutes. See [aws/cli-installer/README.md](https://github.com/opensearch-project/observability-stack/tree/main/aws/cli-installer) for full options.
 
+#### Deploy into a VPC
+
+Pass `--vpc-id` with `--subnet-ids` and `--security-group-ids` to place the OpenSearch domain, the OSIS ingestion pipeline, and the EC2 demo instance inside a VPC on private endpoints. Omit `--vpc-id` and you get the default public-endpoint deployment. VPC mode requires the managed backend.
+
+```bash
+npx @opensearch-project/observability-stack --advanced --managed \
+  --pipeline-name obs-stack \
+  --region us-east-1 \
+  --os-domain-name obs-stack \
+  --vpc-id vpc-xxxxxxxx \
+  --subnet-ids subnet-aaaa,subnet-bbbb \
+  --security-group-ids sg-xxxxxxxx
+```
+
+Use this when your telemetry sources (EKS, ECS, EC2) run inside a VPC and you want the OpenSearch stack in the same network boundary.
+
+- Pass 1-3 subnets, each in a distinct AZ. With more than one subnet the domain is created zone-aware and the pipeline attaches to the first two.
+- Security groups must allow the intra-VPC traffic between the pipeline, domain, and demo instance. A single group that allows traffic from itself works.
+- The installer validates the VPC, subnets, and security groups against the EC2 Describe APIs before creating anything, so wrong network inputs fail in seconds rather than partway through domain or pipeline creation.
+
+In interactive mode, advanced mode adds a **Network topology** step where you pick public endpoints or a VPC, then select subnets and security groups from your account.
+
+:::note[You can run this from anywhere]
+You do not need to be inside the VPC. A VPC-private domain's own endpoint isn't reachable from your machine, but the managed OpenSearch UI (Application) endpoint is public and proxies to the domain over the AWS-internal network. For VPC domains the installer sets your IAM principal as the domain's master user, authorizes the OpenSearch UI service (`application.opensearchservice.amazonaws.com`) to reach the domain through its VPC endpoint, and runs all FGAC role mapping and UI setup through that reachable Application endpoint. No bastion or VPN is required.
+
+If you deploy a VPC domain by other means, run `aws opensearch authorize-vpc-endpoint-access --domain-name <name> --service application.opensearchservice.amazonaws.com` yourself, or the UI returns `No Living connections`.
+:::
+
 #### Demo
 
 Some loading time is cut from the video.
@@ -91,6 +119,8 @@ exporters:
 ```
 
 The IAM principal sending data needs `osis:Ingest` permission on the pipeline ARN.
+
+For a VPC deployment the ingest endpoint is VPC-private, so your collector must run inside the VPC (or reach it over peering/Transit Gateway). A VPC OSIS endpoint also takes ~10-15 minutes after the pipeline reports `ACTIVE` before it serves requests; until then connections close with no HTTP response. This is AWS-side ingestion warmup, not a configuration problem.
 
 ## Cleanup
 
