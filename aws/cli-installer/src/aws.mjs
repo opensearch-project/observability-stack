@@ -591,8 +591,10 @@ export async function createAossDataAccessPolicy(cfg) {
 
 // ── FGAC role mapping for managed domains ────────────────────────────────
 
-// Roles to map for full OpenSearch UI + PPL access.
-const FGAC_ROLES = ['all_access', 'security_manager'];
+// Roles mapped on create for full OpenSearch UI + PPL access. Exported so
+// destroy strips the same set — mapping any role here without removing it on
+// teardown leaks it on shared domains.
+export const FGAC_ROLES = ['all_access', 'security_manager'];
 
 /**
  * Backend roles and users to add to the domain's FGAC role mappings: the OSI
@@ -737,8 +739,11 @@ async function osuiSecurityRequest(method, url, body) {
  * Discover the data-source id the managed OpenSearch UI created for the domain.
  * The Security API proxy is keyed by this id (?dataSourceId=...).
  */
+// The UI connects the domain data source only after its VPC endpoint warms up,
+// which routinely takes 10-15 min for a fresh VPC-private domain. Poll up to
+// ~18 min so a healthy-but-slow warm-up isn't misread as a missing data source.
 async function findAppDataSourceId(appEndpoint) {
-  for (let attempt = 0; attempt < 12; attempt++) {
+  for (let attempt = 0; attempt < 108; attempt++) {
     const r = await osuiSecurityRequest('GET', `${appEndpoint}/api/saved_objects/_find?type=data-source&per_page=10`);
     const id = r.data?.saved_objects?.[0]?.id;
     if (id) return id;
@@ -756,18 +761,18 @@ export async function mapOsiRoleViaOpenSearchUI(cfg) {
   if (!cfg.deferFgacToUi) return;
   const appEndpoint = cfg.appEndpoint;
   if (!appEndpoint) {
-    printWarning('No OpenSearch UI endpoint — cannot map FGAC roles for the VPC domain.');
+    printError('No OpenSearch UI endpoint — cannot map FGAC roles for the VPC domain.');
     printInfo('Map the OSI role manually in OpenSearch UI → Security → Roles once the UI is reachable.');
-    return;
+    throw new Error('FGAC role mapping via OpenSearch UI failed — no app endpoint; pipeline would not be able to write to OpenSearch');
   }
 
   printStep('Mapping roles in OpenSearch FGAC (via OpenSearch UI)...');
 
   const dsId = await findAppDataSourceId(appEndpoint);
   if (!dsId) {
-    printWarning('OpenSearch UI has not connected the domain data source yet — skipping FGAC mapping.');
+    printError('OpenSearch UI has not connected the domain data source yet — cannot map FGAC roles.');
     printInfo('Re-run the installer, or map the OSI role manually in OpenSearch UI → Security → Roles.');
-    return;
+    throw new Error('FGAC role mapping via OpenSearch UI failed — data source not ready; pipeline would not be able to write to OpenSearch');
   }
 
   const { backendRoles: newBackendRoles, users: newUsers } = fgacPrincipals(cfg);
