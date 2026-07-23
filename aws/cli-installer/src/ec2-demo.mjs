@@ -71,6 +71,32 @@ async function getDefaultVpcSubnet(ec2, instanceType) {
   return match;
 }
 
+// Pick the first caller-provided VPC subnet whose AZ offers instanceType.
+// t3.xlarge (and other types) aren't offered in every AZ, so a raw subnetIds[0]
+// can fail RunInstances ~15 min into the deploy; mirror the default-VPC guard.
+async function getVpcSubnetForInstance(ec2, subnetIds, instanceType) {
+  const { Subnets } = await ec2.send(new DescribeSubnetsCommand({
+    Filters: [{ Name: 'subnet-id', Values: subnetIds }],
+  }));
+  if (!Subnets?.length) throw new Error(`None of the provided subnets were found: ${subnetIds.join(', ')}`);
+
+  const { InstanceTypeOfferings } = await ec2.send(new DescribeInstanceTypeOfferingsCommand({
+    LocationType: 'availability-zone',
+    Filters: [{ Name: 'instance-type', Values: [instanceType] }],
+  }));
+  const supportedAzs = new Set((InstanceTypeOfferings || []).map(o => o.Location));
+
+  // Preserve caller subnet order so subnetIds[0] wins when its AZ qualifies.
+  const byCallerOrder = subnetIds
+    .map(id => Subnets.find(s => s.SubnetId === id))
+    .filter(Boolean);
+  const match = byCallerOrder.find(s => supportedAzs.has(s.AvailabilityZone));
+  if (!match) {
+    throw new Error(`No provided subnet is in an AZ that supports ${instanceType}. Supported AZs: ${[...supportedAzs].join(', ') || '(none)'}`);
+  }
+  return match.SubnetId;
+}
+
 function buildUserData(cfg) {
   const osiEndpoint = `https://${cfg.ingestEndpoints[0]}`;
   const region = cfg.region;
@@ -277,7 +303,7 @@ async function createDemoInstanceProfile(iam, cfg) {
   return profileName;
 }
 
-export { tags as _tags, tagSpec as _tagSpec, buildUserData as _buildUserData };
+export { tags as _tags, tagSpec as _tagSpec, buildUserData as _buildUserData, getVpcSubnetForInstance as _getVpcSubnetForInstance };
 
 export async function launchDemoInstance(cfg) {
   printStep('Launching EC2 demo instance...');
@@ -307,7 +333,9 @@ export async function launchDemoInstance(cfg) {
 
   const spinner = createSpinner('Looking up AMI and subnet...');
   const amiPromise = getLatestAL2023Ami(ssm);
-  const subnetId = inVpc ? cfg.subnetIds[0] : (await getDefaultVpcSubnet(ec2, INSTANCE_TYPE)).SubnetId;
+  const subnetId = inVpc
+    ? await getVpcSubnetForInstance(ec2, cfg.subnetIds, INSTANCE_TYPE)
+    : (await getDefaultVpcSubnet(ec2, INSTANCE_TYPE)).SubnetId;
   const ami = await amiPromise;
   spinner.stop(`AMI: ${ami}`);
 
