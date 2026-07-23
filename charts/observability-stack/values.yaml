@@ -13,8 +13,8 @@ opensearch:
   singleNode: false
   replicas: 3
   image:
-    repository: "opensearchproject/opensearch"
-    tag: "3.7.0"
+    repository: "opensearchstaging/opensearch"
+    tag: "3.8.0"
   resources:
     requests:
       memory: "4Gi"
@@ -77,8 +77,8 @@ opensearch-dashboards:
   enabled: true
   replicaCount: 3
   image:
-    repository: "opensearchproject/opensearch-dashboards"
-    tag: "3.7.0"
+    repository: "opensearchstaging/opensearch-dashboards"
+    tag: "3.8.0"
   resources:
     requests:
       cpu: "500m"
@@ -131,6 +131,8 @@ opensearch-dashboards:
       explore.discoverTraces.enabled: true
       explore.discoverMetrics.enabled: true
       explore.agentTraces.enabled: true
+      explore.logsQueryBuilder.enabled: true
+      explore.logsDrilldown.enabled: true
       workspace.enabled: true
       data_source.enabled: true
       data_source.ssl.verificationMode: none
