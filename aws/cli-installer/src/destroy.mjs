@@ -8,6 +8,7 @@ import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCom
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
+import { FGAC_ROLES } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
   try {
@@ -15,12 +16,22 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
     const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
     if (!app) return;
 
-    const { dataSources } = await os.send(new GetApplicationCommand({ id: app.id }));
+    const { dataSources, endpoint: appEndpoint } = await os.send(new GetApplicationCommand({ id: app.id }));
     const domainArn = (dataSources || []).find(d => d.dataSourceArn?.includes(':domain/'))?.dataSourceArn;
     if (!domainArn) return;
 
     const domainName = domainArn.split('/').pop();
     const { DomainStatus } = await os.send(new DescribeDomainCommand({ DomainName: domainName }));
+    const isVpc = Boolean(DomainStatus?.VPCOptions?.VPCId);
+
+    // VPC-private domain: its Security API is unreachable from here, but the
+    // managed OpenSearch UI proxies to it. Clean up role mappings through the UI.
+    if (isVpc) {
+      if (!appEndpoint) return;
+      await cleanupFgacRolesViaUi(appEndpoint, pipelineName);
+      return;
+    }
+
     if (!DomainStatus?.Endpoint) return;
 
     // Get password from Secrets Manager or flag
@@ -41,28 +52,79 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
     }
 
     const endpoint = `https://${DomainStatus.Endpoint}`;
-    const url = `${endpoint}/_plugins/_security/api/rolesmapping/all_access`;
     const auth = Buffer.from(`admin:${masterPass}`).toString('base64');
     const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
 
-    const getResp = await fetch(url, { headers });
-    if (!getResp.ok) return;
+    let cleaned = false;
+    for (const role of FGAC_ROLES) {
+      const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
+      const getResp = await fetch(url, { headers });
+      if (!getResp.ok) continue;
 
-    const data = await getResp.json();
-    const existing = data?.all_access?.backend_roles || [];
-    const filtered = existing.filter(r => !r.includes(pipelineName));
-
-    if (filtered.length !== existing.length) {
-      await fetch(url, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
-      });
-      printSuccess('FGAC backend role mappings cleaned up');
+      const data = await getResp.json();
+      const existing = data?.[role]?.backend_roles || [];
+      const filtered = existing.filter(r => !r.includes(pipelineName));
+      if (filtered.length !== existing.length) {
+        await fetch(url, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
+        });
+        cleaned = true;
+      }
     }
+    if (cleaned) printSuccess('FGAC backend role mappings cleaned up');
   } catch (e) {
     printWarning(`FGAC cleanup: ${e.message}`);
   }
+}
+
+// Remove this stack's backend roles from all_access via the managed OpenSearch
+// UI (SigV4), used for VPC-private domains that aren't reachable directly.
+async function cleanupFgacRolesViaUi(appEndpoint, pipelineName) {
+  const { createHash } = await import('node:crypto');
+  const { SignatureV4 } = await import('@aws-sdk/signature-v4');
+  const { Sha256 } = await import('@aws-crypto/sha256-js');
+  const { HttpRequest } = await import('@smithy/protocol-http');
+  const { defaultProvider } = await import('@aws-sdk/credential-provider-node');
+
+  async function req(method, url, body) {
+    const isGet = method === 'GET';
+    const bodyBytes = (!isGet && body) ? JSON.stringify(body) : '';
+    const parsed = new URL(url);
+    const query = {}; parsed.searchParams.forEach((v, k) => { query[k] = v; });
+    const request = new HttpRequest({
+      method, protocol: parsed.protocol, hostname: parsed.hostname, path: parsed.pathname, query,
+      headers: { host: parsed.hostname, 'Content-Type': 'application/json', 'osd-xsrf': 'osd-fetch',
+        'x-amz-content-sha256': createHash('sha256').update(bodyBytes).digest('hex') },
+      body: bodyBytes || undefined,
+    });
+    const signer = new SignatureV4({ credentials: defaultProvider(),
+      region: parsed.hostname.split('.')[1] || 'us-east-1', service: 'opensearch', sha256: Sha256 });
+    const signed = await signer.sign(request);
+    const resp = await fetch(url, { method, headers: signed.headers, body: isGet ? undefined : bodyBytes });
+    const text = await resp.text();
+    let data; try { data = JSON.parse(text); } catch { data = text; }
+    return { status: resp.status, data };
+  }
+
+  const find = await req('GET', `${appEndpoint}/api/saved_objects/_find?type=data-source&per_page=10`);
+  const dsId = find.data?.saved_objects?.[0]?.id;
+  if (!dsId) return;
+
+  let cleaned = false;
+  for (const role of FGAC_ROLES) {
+    const base = `${appEndpoint}/api/v1/configuration/rolesmapping/${role}?dataSourceId=${dsId}`;
+    const cur = await req('GET', base);
+    if (cur.status !== 200 || typeof cur.data !== 'object') continue;
+    const existing = cur.data.backend_roles || [];
+    const filtered = existing.filter(r => !r.includes(pipelineName));
+    if (filtered.length !== existing.length) {
+      await req('POST', base, { backend_roles: filtered, hosts: cur.data.hosts || [], users: cur.data.users || [] });
+      cleaned = true;
+    }
+  }
+  if (cleaned) printSuccess('FGAC backend role mappings cleaned up (via OpenSearch UI)');
 }
 
 export async function destroy(cfg) {

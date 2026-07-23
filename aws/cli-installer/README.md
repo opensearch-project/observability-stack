@@ -70,10 +70,48 @@ node bin/launch-demo.mjs \
   --region us-east-1
 ```
 
+**Deploy into a VPC** (private endpoints):
+```bash
+node bin/cli-installer.mjs --advanced --managed \
+  --pipeline-name obs-stack-<your-alias> \
+  --region us-east-1 \
+  --os-domain-name obs-stack-<your-alias> \
+  --vpc-id vpc-xxxxxxxx \
+  --subnet-ids subnet-aaaa,subnet-bbbb \
+  --security-group-ids sg-xxxxxxxx
+```
+
+The domain, OSIS ingestion pipeline, and EC2 demo instance are all placed in the
+selected VPC. Use this when your telemetry sources (EKS, ECS, EC2) run inside a VPC
+and you want the OpenSearch stack in the same network boundary.
+
+- Pass **1-3 subnets** (each in a distinct AZ). With more than one subnet the domain
+  is created zone-aware; the pipeline attaches to the first two.
+- Security groups must allow the intra-VPC traffic between the pipeline, domain, and
+  demo instance (a single group that allows traffic from itself works well).
+- Omitting `--vpc-id` keeps the default behavior: public endpoints.
+
+> **You can run this from anywhere** — you do not need to be inside the VPC. A
+> VPC-private domain's endpoint isn't reachable from your machine, but the managed
+> OpenSearch UI (Application) endpoint is public and proxies to the domain over the
+> AWS-internal network. For VPC domains the installer:
+> - sets your IAM principal as the domain's master user,
+> - authorizes the OpenSearch UI service (`application.opensearchservice.amazonaws.com`)
+>   to reach the domain through its VPC endpoint, and
+> - performs all FGAC role mapping and UI setup through that reachable Application
+>   endpoint.
+>
+> So no bastion or VPN is required. (If you deploy a VPC domain by other means, run
+> `aws opensearch authorize-vpc-endpoint-access --domain-name <name> --service
+> application.opensearchservice.amazonaws.com` yourself, or the UI cannot connect.)
+
 **Interactive mode** (TUI wizard):
 ```bash
 node bin/cli-installer.mjs
 ```
+
+Advanced mode adds a **Network topology** step where you pick public endpoints or a
+VPC, then select subnets and security groups from your account.
 
 ## Destroy
 
@@ -96,6 +134,7 @@ Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipel
 - **Index pattern fields need manual refresh** — After data starts flowing, go to Management → Index Patterns → select pattern → click 🔄 to pick up new fields.
 - **Demo data takes 10-15 minutes** — The EC2 instance needs time to bootstrap Docker, pull images, and start sending telemetry.
 - **Idempotent but not updateable** — Running twice safely no-ops, but won't update existing resources with new config.
+- **VPC mode maps FGAC through the OpenSearch UI** — for VPC-private domains your IAM principal is the domain's master user and role mapping runs through the managed OpenSearch UI (Application) endpoint, so the CLI does not need to be inside the VPC. VPC options apply only to newly created domains, not reused endpoints.
 
 ## Development
 

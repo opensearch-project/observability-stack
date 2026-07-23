@@ -1,7 +1,7 @@
 import chalk from 'chalk';
 import ora from 'ora';
 import readline from 'node:readline';
-import { search, input, confirm } from '@inquirer/prompts';
+import { search, input, confirm, checkbox } from '@inquirer/prompts';
 
 // ── Theme colors ─────────────────────────────────────────────────────────────
 
@@ -274,6 +274,52 @@ export function eSelect(opts) {
     process.stdin.removeListener('keypress', onKeypress);
     process.stdin.emit = origEmit;
   };
+
+  return promise.then(
+    (val) => { cleanup(); return val; },
+    (err) => {
+      cleanup();
+      if (escaped) return GoBack;
+      if (err.name === 'ExitPromptError') {
+        console.error();
+        console.error(`  ${theme.muted('Goodbye.')}`);
+        console.error();
+        process.exit(0);
+      }
+      throw err;
+    },
+  );
+}
+
+// ── Multi-select checkbox ─────────────────────────────────────────────────────
+
+/**
+ * Checkbox (multi-select) prompt with Escape-to-go-back.
+ * Space to toggle, Enter to confirm, Esc to go back.
+ * Returns an array of selected values, or GoBack on Escape.
+ */
+export function eCheckbox(opts) {
+  if (!_keypressInit && process.stdin.isTTY) {
+    readline.emitKeypressEvents(process.stdin);
+    _keypressInit = true;
+  }
+
+  const promise = checkbox({
+    message: opts.message || 'Select',
+    choices: opts.choices || [],
+    required: opts.required ?? false,
+    theme: _selectKeyTheme,
+  });
+
+  let escaped = false;
+  const onKeypress = (_ch, key) => {
+    if (key?.name === 'escape') {
+      escaped = true;
+      promise.cancel();
+    }
+  };
+  process.stdin.on('keypress', onKeypress);
+  const cleanup = () => process.stdin.removeListener('keypress', onKeypress);
 
   return promise.then(
     (val) => { cleanup(); return val; },
