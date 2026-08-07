@@ -15,7 +15,7 @@
     "@aws-sdk/signature-v4": "^3.374.0",
     "@smithy/protocol-http": "^5.0.0",
     "aws-cdk-lib": "^2.262.1",
-    "constructs": "^10.0.0"
+    "constructs": "^10.7.2"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
