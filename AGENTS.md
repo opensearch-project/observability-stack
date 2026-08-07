@@ -862,6 +862,11 @@ The docs site is built with [Starlight](https://starlight.astro.build/) (Astro).
 - **Do not use frontmatter `sidebar.label` or `sidebar.order` to control group/section headings.** Frontmatter only controls individual page labels, not the group name shown in the sidebar for a directory. Use explicit `items` with `label` in `astro.config.mjs` instead (see "Send Data" and "Get Started" sections as examples).
 - Sections using `autogenerate` derive group labels from directory names (lowercase). Replace `autogenerate` with explicit `items` when proper casing or custom ordering is needed.
 
+**llms.txt:**
+- `docs/public/llms.txt` is a maintained artifact, served at the site root (`https://observability.opensearch.org/llms.txt`). It lists every docs page with a one-line description, for AI assistants and other automated readers.
+- It is generated, not hand-written. Regenerate it whenever a page is added, removed, or renamed, or a page's `title`/`description` frontmatter changes. Do not hand-edit `docs/public/llms.txt` directly.
+- The generator config lives in `docs/starlight-docs/llms-txt/`. All links in the file are fully qualified `https://observability.opensearch.org/...` URLs, not relative paths, because the file is read out of page context.
+
 ### Icons
 
 Use OpenSearch UI (OUI) icons for documentation components. Browse the full set at https://oui.opensearch.org/1.23/#/display/icons. SVG sources are at https://github.com/opensearch-project/oui/tree/main/src/components/icon/assets. Prefer 32x32 icons over 16x16 for consistent sizing.
