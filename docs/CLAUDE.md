@@ -52,5 +52,10 @@ Documentation content lives in `starlight-docs/src/content/docs/` organized by s
 
 To dev the docs site independently:
 ```bash
+# Install deps in BOTH docs/ and docs/starlight-docs/, then start the docs dev server.
+# The parent docs/tsconfig.json extends `astro/tsconfigs/strict`, so astro must be
+# installed at the docs/ level too — otherwise Astro fails to load its config with
+# "Tsconfig not found astro/tsconfigs/strict" before rendering any page.
+npm install                                    # in docs/
 cd starlight-docs && npm install && npm run dev
 ```

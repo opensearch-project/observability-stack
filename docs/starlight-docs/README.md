@@ -35,6 +35,11 @@ Static assets, like favicons, can be placed in the `public/` directory.
 
 All commands are run from the root of the project, from a terminal:
 
+> **Note:** Also run `npm install` in the parent `docs/` directory before starting the
+> dev server. The parent `docs/tsconfig.json` extends `astro/tsconfigs/strict`, so astro
+> must be installed at the `docs/` level too — otherwise Astro fails to load its config
+> with `Tsconfig not found astro/tsconfigs/strict` before any page renders.
+
 | Command                   | Action                                           |
 | :------------------------ | :----------------------------------------------- |
 | `npm install`             | Installs dependencies                            |
