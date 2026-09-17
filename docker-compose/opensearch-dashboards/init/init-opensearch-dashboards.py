@@ -18,6 +18,9 @@ ALERTMANAGER_PORT = os.getenv("ALERTMANAGER_PORT", "9093")
 _opensearch_protocol = os.getenv("OPENSEARCH_PROTOCOL", "https")
 OPENSEARCH_ENDPOINT = f"{_opensearch_protocol}://{os.getenv('OPENSEARCH_HOST', 'opensearch')}:{os.getenv('OPENSEARCH_PORT', '9200')}"
 ISM_RETENTION_DAYS = int(os.getenv("ISM_RETENTION_DAYS", "7"))
+INSTALL_VISUALIZATION_SAMPLES = os.getenv(
+    "INSTALL_VISUALIZATION_SAMPLES", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
 DEMO_DASHBOARD_PATHS = (
     "/config/demo-dashboards/viz-demo-bar-and-pie.ndjson",
     "/config/demo-dashboards/viz-demo-dashboard-variables.ndjson",
@@ -1832,6 +1835,27 @@ def import_ndjson_dashboard(workspace_id, ndjson_path, id_mappings=None):
     return total_success
 
 
+def install_visualization_samples(workspace_id, logs_pattern_id, id_mappings):
+    """Install optional sample data and dashboards without blocking core setup."""
+    try:
+        flights_pattern_id = ensure_sample_data(workspace_id, "flights")
+    except RuntimeError as e:
+        print(
+            "⚠️  Could not prepare optional visualization samples; "
+            f"continuing core initialization: {e}"
+        )
+        return False
+
+    if logs_pattern_id:
+        id_mappings["85c9f700-905d-11f1-8e13-1fc52a695474"] = logs_pattern_id
+    id_mappings["d3d7af60-4c81-11e8-b3d7-01146121b73d"] = flights_pattern_id
+
+    for dashboard_path in DEMO_DASHBOARD_PATHS:
+        import_ndjson_dashboard(workspace_id, dashboard_path, id_mappings)
+
+    return True
+
+
 def main():
     """Initialize OpenSearch Dashboards with workspace and datasources"""
     wait_for_dashboards()
@@ -1919,14 +1943,17 @@ def main():
     # the ObservabilityStack_Prometheus datasource created above.
     import_ndjson_dashboard(workspace_id, "/config/dashboard-astronomy-service-telemetry.ndjson", ndjson_id_mappings)
 
-    # Visualization demos reuse the live logs pattern, the Prometheus datasource,
-    # and OpenSearch Dashboards' built-in Flights sample dataset.
-    flights_pattern_id = ensure_sample_data(workspace_id, "flights")
-    if logs_pattern_id:
-        ndjson_id_mappings["85c9f700-905d-11f1-8e13-1fc52a695474"] = logs_pattern_id
-    ndjson_id_mappings["d3d7af60-4c81-11e8-b3d7-01146121b73d"] = flights_pattern_id
-    for dashboard_path in DEMO_DASHBOARD_PATHS:
-        import_ndjson_dashboard(workspace_id, dashboard_path, ndjson_id_mappings)
+    if INSTALL_VISUALIZATION_SAMPLES:
+        # Visualization demos reuse the live logs pattern, the Prometheus
+        # datasource, and OpenSearch Dashboards' built-in Flights sample data.
+        install_visualization_samples(
+            workspace_id, logs_pattern_id, ndjson_id_mappings
+        )
+    else:
+        print(
+            "⏭️  INSTALL_VISUALIZATION_SAMPLES=false, skipping Flights data "
+            "and bundled visualization samples"
+        )
 
     # Create saved queries for common agent observability patterns
     create_default_saved_queries(workspace_id)
