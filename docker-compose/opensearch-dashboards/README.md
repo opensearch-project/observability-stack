@@ -22,21 +22,10 @@ Python script that runs once during stack startup to:
 
 ### Bundled Visualization Demos
 
-Set `INSTALL_VISUALIZATION_SAMPLES=true` to import the NDJSON exports under
-`init/demo-dashboards/` into the Observability Stack workspace during
-initialization. The repository's `.env` enables them for the default quickstart,
-while the init container defaults to disabled when the variable is absent.
-Their exported `logs-otel-v1*` references and dashboard-variable datasets are
-rewritten to the live index pattern created by the stack.
-
-Some demos use OpenSearch Dashboards' built-in Flights sample dataset. The init
-script checks `GET /api/sample_data` first and installs `flights` only when it
-is missing, avoiding destructive reinstallation on subsequent runs. The
-workspace-integrated Flights index-pattern ID is mapped into the demo exports.
-If the optional sample dataset cannot be prepared, initialization logs a
-warning and continues creating the stack's core saved objects.
-Setting `INSTALL_VISUALIZATION_SAMPLES=false` prevents future installation but
-does not delete sample data or saved objects that were installed previously.
+Set `INSTALL_VISUALIZATION_SAMPLES=true` to install the demo dashboards and
+required Flights data. Initialization remaps exported dataset IDs to the live
+workspace and logs sample failures without blocking core setup. Disabling the
+flag skips installation but does not remove existing samples.
 
 ## Customizing Saved Queries
 
