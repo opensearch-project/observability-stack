@@ -16,7 +16,21 @@ Python script that runs once during stack startup to:
 - Create index patterns for logs, traces, and service maps
 - Set up APM correlation between traces and logs
 - Create Prometheus and OpenSearch datasources
+- Install the built-in Flights sample dataset when it is missing
+- Import the bundled Astronomy Shop and visualization demo dashboards
 - Load and create saved queries from `saved-queries.yaml`
+
+### Bundled Visualization Demos
+
+The NDJSON exports under `init/demo-dashboards/` are imported into the
+Observability Stack workspace during initialization. Their exported
+`logs-otel-v1*` references and dashboard-variable datasets are rewritten to the
+live index pattern created by the stack.
+
+Some demos use OpenSearch Dashboards' built-in Flights sample dataset. The init
+script checks `GET /api/sample_data` first and installs `flights` only when it
+is missing, avoiding destructive reinstallation on subsequent runs. The
+workspace-integrated Flights index-pattern ID is mapped into the demo exports.
 
 ## Customizing Saved Queries
 
