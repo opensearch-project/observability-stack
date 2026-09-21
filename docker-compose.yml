@@ -290,6 +290,9 @@ services:
       - OPENSEARCH_DASHBOARDS_HOST=${OPENSEARCH_DASHBOARDS_HOST}
       - OPENSEARCH_DASHBOARDS_PORT=${OPENSEARCH_DASHBOARDS_PORT}
       - OPENSEARCH_DASHBOARDS_PROTOCOL=${OPENSEARCH_DASHBOARDS_PROTOCOL}
+      # Safe fallback is disabled when this stack is run without the checked-in
+      # .env quickstart configuration.
+      - INSTALL_VISUALIZATION_SAMPLES=${INSTALL_VISUALIZATION_SAMPLES:-false}
       - PROMETHEUS_HOST=${PROMETHEUS_HOST}
       - PROMETHEUS_PORT=${PROMETHEUS_PORT}
       # alertmanager.uri is set on the Prometheus datasource unconditionally.
@@ -307,6 +310,7 @@ services:
       - ./docker-compose/opensearch-dashboards/init/architecture.png:/config/architecture.png
       - ./docker-compose/opensearch-dashboards/init/dashboard-astronomy-shop.ndjson:/config/dashboard-astronomy-shop.ndjson
       - ./docker-compose/opensearch-dashboards/init/dashboard-astronomy-service-telemetry.ndjson:/config/dashboard-astronomy-service-telemetry.ndjson
+      - ./docker-compose/opensearch-dashboards/init/demo-dashboards:/config/demo-dashboards:ro
     networks:
       - observability-stack-network
     restart: "no"
@@ -339,4 +343,3 @@ services:
       - observability-stack-network
     restart: "no"
     logging: *logging
-

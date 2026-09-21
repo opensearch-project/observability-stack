@@ -16,7 +16,16 @@ Python script that runs once during stack startup to:
 - Create index patterns for logs, traces, and service maps
 - Set up APM correlation between traces and logs
 - Create Prometheus and OpenSearch datasources
+- Import the bundled Astronomy Shop dashboards
+- Optionally install the built-in Flights dataset and visualization samples
 - Load and create saved queries from `saved-queries.yaml`
+
+### Bundled Visualization Demos
+
+Set `INSTALL_VISUALIZATION_SAMPLES=true` to install the demo dashboards and
+required Flights data. Initialization remaps exported dataset IDs to the live
+workspace and logs sample failures without blocking core setup. Disabling the
+flag skips installation but does not remove existing samples.
 
 ## Customizing Saved Queries
 

@@ -140,6 +140,7 @@ All configuration files are organized by service in subdirectories:
   - `INCLUDE_COMPOSE_EXAMPLES`: Controls whether example services are included (default: `docker-compose.examples.yml`)
   - `INCLUDE_COMPOSE_LOCAL_OPENSEARCH`: Controls whether local OpenSearch is included (default: `docker-compose.local-opensearch.yml`)
   - `INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS`: Controls whether local OpenSearch Dashboards is included (default: `docker-compose.local-opensearch-dashboards.yml`)
+  - `INSTALL_VISUALIZATION_SAMPLES`: Installs the Flights dataset and bundled visualization samples during dashboard initialization (default quickstart: `true`; container fallback: `false`)
 - **docker-compose.yml**: Main service definitions for core observability stack (in repository root)
 - **docker-compose.examples.yml**: Example services (weather-agent, canary) included via .env (in repository root)
 - **otel-collector/config.yaml**: OpenTelemetry Collector receivers, processors, and exporters
