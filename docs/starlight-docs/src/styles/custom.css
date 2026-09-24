@@ -1,5 +1,325 @@
+/* ==========================================================================
+   OpenSearch Observability Stack — clean docs-site theme
+   Light: clean white canvas. Dark: true AMOLED midnight (#000 canvas).
+   Accent: OpenSearch brand blue, brightened for dark-mode contrast.
+   Only overrides Starlight's public --sl-* design tokens; no component
+   internals are touched, so it survives Starlight upgrades.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
-  --sl-content-width: 60rem;
+  --sl-content-width: 62rem;
+
+  /* Typography — Inter for body, JetBrains Mono for code (clean, modern feel) */
+  --sl-font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    Helvetica, Arial, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Menlo',
+    'Consolas', monospace;
+  --sl-text-code: 0.8125rem;
+
+  /* Softer radius + shadow tokens used by our component polish below */
+  --obs-radius: 0.625rem;
+  --obs-radius-sm: 0.5rem;
+  --obs-border: 1px solid var(--sl-color-hairline);
+}
+
+/* --------------------------------------------------------------------------
+   LIGHT MODE — crisp off-white
+   -------------------------------------------------------------------------- */
+:root[data-theme='light'] {
+  /* OpenSearch brand blue accent scale */
+  --sl-color-accent-low: #d6e6f4;
+  --sl-color-accent: #0a5faf;
+  --sl-color-accent-high: #063d73;
+
+  --sl-color-text-accent: #0a5faf;
+
+  --sl-color-white: #0b0d0f;      /* darkest text */
+  --sl-color-gray-1: #1b1f24;
+  --sl-color-gray-2: #363b42;
+  --sl-color-gray-3: #5c636d;
+  --sl-color-gray-4: #868e96;
+  --sl-color-gray-5: #c3c9cf;
+  --sl-color-gray-6: #eceef0;
+  --sl-color-gray-7: #f6f7f8;
+  --sl-color-black: #fcfcfd;      /* page background — whisper off-white so pure-white cards lift */
+
+  --sl-color-bg: #fcfcfd;
+  --sl-color-bg-nav: rgba(252, 252, 253, 0.85);
+  --sl-color-bg-sidebar: #fcfcfd;  /* same as page — no separate tint */
+  --sl-color-bg-inline-code: #f2f4f6;
+  --sl-color-hairline: rgba(11, 13, 15, 0.08);
+  --sl-color-hairline-shade: rgba(11, 13, 15, 0.06);
+
+  --obs-code-bg: #ffffff;          /* pure white lifts off the off-white page */
+  --obs-card-bg: #ffffff;
+  --obs-card-shadow: 0 1px 2px rgba(11, 13, 15, 0.05),
+    0 1px 3px rgba(11, 13, 15, 0.06);
+  --obs-card-shadow-hover: 0 4px 12px rgba(10, 95, 175, 0.12);
+}
+
+/* --------------------------------------------------------------------------
+   DARK MODE — true AMOLED midnight (#000 canvas)
+   -------------------------------------------------------------------------- */
+:root[data-theme='dark'] {
+  /* Brand blue brightened so it reads on pure black */
+  --sl-color-accent-low: #10243a;
+  --sl-color-accent: #3b9be8;
+  --sl-color-accent-high: #bcdcf7;
+
+  --sl-color-text-accent: #4aa8f0;
+
+  --sl-color-white: #f4f6f8;      /* brightest text */
+  --sl-color-gray-1: #e4e7ea;
+  --sl-color-gray-2: #c0c6cd;
+  --sl-color-gray-3: #949ba3;
+  --sl-color-gray-4: #6b727a;
+  --sl-color-gray-5: #3a3f45;
+  --sl-color-gray-6: #17191c;
+  --sl-color-gray-7: #0b0c0e;
+  --sl-color-black: #000000;      /* AMOLED page background */
+
+  --sl-color-bg: #000000;
+  --sl-color-bg-nav: rgba(0, 0, 0, 0.72);
+  --sl-color-bg-sidebar: #000000;
+  --sl-color-bg-inline-code: #16181b;
+  --sl-color-hairline: rgba(255, 255, 255, 0.09);
+  --sl-color-hairline-shade: rgba(255, 255, 255, 0.05);
+
+  --obs-code-bg: #0a0b0d;         /* barely-lifted from pure black */
+  --obs-card-bg: #0a0b0d;
+  --obs-card-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --obs-card-shadow-hover: 0 0 0 1px rgba(74, 168, 240, 0.4),
+    0 4px 24px rgba(59, 155, 232, 0.15);
+}
+
+/* --------------------------------------------------------------------------
+   Component polish (clean, modern feel) — uses public classes only
+   -------------------------------------------------------------------------- */
+
+/* Frosted, hairline-bordered top nav */
+.header {
+  backdrop-filter: saturate(160%) blur(10px);
+  -webkit-backdrop-filter: saturate(160%) blur(10px);
+  background-color: var(--sl-color-bg-nav);
+  border-bottom: var(--obs-border);
+}
+
+/* Sidebar: pill-style active item, tighter spacing */
+.sidebar-content a[aria-current='page'] {
+  background: none;
+  color: var(--sl-color-white);
+  border-radius: 0;
+  font-weight: 500;
+}
+.sidebar-content a {
+  border-radius: var(--obs-radius-sm);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.sidebar-content a:hover {
+  background-color: var(--sl-color-hairline-shade);
+}
+
+/* Code blocks: ONE clean frame. The outer .frame owns the rounding + border;
+   the title bar shares the top corners; the inner <pre> has no border/radius
+   of its own, so the title bar and code window read as a single connected
+   window instead of two nested boxes with mismatched corners. */
+.sl-markdown-content .expressive-code .frame {
+  border-radius: var(--obs-radius);
+  border: var(--obs-border);
+  overflow: hidden;               /* clip children to the frame's rounded corners */
+}
+/* Title bar ("terminal" chrome): flush to the frame top, no inner rounding,
+   a single hairline divider to the code below. */
+.sl-markdown-content .expressive-code .frame .header {
+  border-radius: 0 !important;
+  border: 0 !important;
+  border-bottom: var(--obs-border) !important;
+}
+/* Inner code surface: fill the frame, no second border or radius. */
+.sl-markdown-content .expressive-code .frame pre,
+.sl-markdown-content pre {
+  border: 0;
+  border-radius: 0;
+  background-color: var(--obs-code-bg) !important;
+}
+/* A standalone <pre> with no expressive-code frame still gets the rounded look. */
+.sl-markdown-content pre:not(.expressive-code pre) {
+  border-radius: var(--obs-radius);
+  border: var(--obs-border);
+}
+
+/* Inline code: pill with hairline */
+.sl-markdown-content code:not(pre code) {
+  border: var(--obs-border);
+  border-radius: 0.375rem;
+  padding: 0.12em 0.4em;
+  font-size: 0.85em;
+}
+
+/* Asides / callouts: rounded, left accent bar, soft tint */
+.sl-markdown-content .starlight-aside {
+  border-radius: var(--obs-radius);
+  border: var(--obs-border);
+  border-inline-start-width: 3px;
+}
+
+/* Cards + our icon cards: flat, hairline-framed, quiet hover (clean, flat) */
+.sl-markdown-content .card,
+.sl-markdown-content .icon-card {
+  background-color: var(--obs-card-bg);
+  border: var(--obs-border);
+  border-radius: var(--obs-radius);
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.sl-markdown-content .card:hover,
+.sl-markdown-content .icon-card:hover {
+  border-color: var(--sl-color-accent);
+  background-color: var(--sl-color-hairline-shade);
+}
+
+/* Headings: use lighter weights + generous spacing above */
+.sl-markdown-content h1,
+.content-panel h1 {
+  --sl-text-h1: 1.875rem;   /* Starlight sizes h1 from this var; override it */
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-size: 1.875rem;      /* ~30px, modern docs-site scale (was 42px) */
+  line-height: 1.15;
+  margin-top: 0;            /* was 16px — killed the air above the title */
+  margin-bottom: 0;
+}
+/* Trim the content wrapper's own top padding (was 24px) so the title
+   sits close to the top of the reading column, clean, modern. The title
+   lives in the first .content-panel; trim its top padding specifically. */
+/* Align anchor-scroll landing with Starlight's scroll-spy observer band.
+   starlight-toc.ts marks a heading current only while it sits in a band from
+   `nav-height + 2rem` downward. But Starlight's Page.astro sets
+   `scroll-padding-top: calc(1.5rem + nav-height)` — 0.5rem SHORT of the band
+   top — so a clicked heading lands just above the band, never intersects, and
+   the "On this page" highlight stays one section behind. Match the band top
+   (nav-height + 2rem, +0.25rem to land safely inside). Page.astro scopes its
+   rule in a cascade layer, so an unlayered !important here wins cleanly. */
+html {
+  scroll-padding-top: calc(var(--sl-nav-height) + 2.25rem) !important;
+}
+.sl-markdown-content,
+main .sl-markdown-content {
+  padding-top: 0.5rem;
+}
+/* Let the LAST section reach the scroll-spy band. Starlight's observer only
+   marks a heading current while it sits ~100px below the top; a page's final
+   section often cannot scroll that high because nothing sits beneath it, so
+   its "On this page" entry never activates. Add trailing scroll room AFTER the
+   whole content column (below the Edit-page / prev-next footer), so it adds
+   invisible scroll room at the very bottom without opening a visible gap
+   between the content and the footer. Self-adjusts to the viewport. */
+.content-panel:last-of-type::after,
+main > .sl-container:last-child::after {
+  content: "";
+  display: block;
+  height: calc(100vh - var(--sl-nav-height) - 10rem);
+  pointer-events: none;
+}
+.content-panel:first-of-type {
+  padding-top: 0.75rem;
+  padding-bottom: 0.5rem;   /* was 24px — half of the title/body dead space */
+}
+/* The body panel sits right under the title panel; its 24px top padding is
+   the other half of the gap. Trim it so title and first paragraph sit close. */
+.content-panel + .content-panel {
+  padding-top: 0.5rem;
+}
+/* Tighten the wasted gap between the page title and the first content block */
+.sl-markdown-content h1 + *,
+.sl-markdown-content > h1 + p {
+  margin-top: 0.6rem;
+}
+.sl-markdown-content h2 {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-size: 1.375rem;
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: var(--obs-border);
+}
+.sl-markdown-content h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  font-size: 1.0625rem;
+  margin-top: 1.75rem;
+}
+
+/* Links: accent, underline only on hover */
+.sl-markdown-content a:not(.card):not(.icon-card):not(.sl-anchor-link) {
+  text-decoration: none;
+  color: var(--sl-color-text-accent);
+}
+.sl-markdown-content a:not(.card):not(.icon-card):not(.sl-anchor-link):hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+/* Heading anchor-link icon: this Starlight build renders it INLINE after the
+   heading text (not in the left gutter), but ships a negative margin-left that
+   drags the chain icon back on top of the last word. Clear it and add a small
+   gap so the icon sits cleanly after the text. */
+.sl-markdown-content .sl-anchor-link {
+  text-decoration: none;
+  color: var(--sl-color-gray-4);
+  margin-left: 0.4rem;
+}
+.sl-markdown-content .sl-anchor-link:hover {
+  color: var(--sl-color-text-accent);
+}
+/* Click feedback: flash the icon to the accent and show a "Copied!" bubble
+   (the header script writes the section URL to the clipboard on click). */
+.sl-markdown-content .sl-anchor-link.copied {
+  color: var(--sl-color-text-accent);
+  position: relative;
+}
+.sl-markdown-content .sl-anchor-link.copied::after {
+  content: "Copied!";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 0.15rem 0.45rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--sl-color-white);
+  background: var(--sl-color-accent);
+  border-radius: 0.375rem;
+  pointer-events: none;
+}
+
+/* Tables: rounded frame, hairline rows */
+.sl-markdown-content table {
+  border-radius: var(--obs-radius);
+  overflow: hidden;
+  border: var(--obs-border);
+  border-collapse: collapse;   /* so cell borders/padding align to the frame */
+  width: 100%;
+}
+/* Cells: symmetric horizontal padding (Starlight ships padding-left:0, which
+   jammed the first column against the frame edge) + comfortable row height. */
+.sl-markdown-content th,
+.sl-markdown-content td {
+  padding: 0.55rem 0.9rem !important;
+  vertical-align: top;
+  border-bottom: var(--obs-border);
+}
+.sl-markdown-content th {
+  background-color: var(--sl-color-hairline-shade);
+  text-align: start;
+  font-weight: 600;
+}
+/* No divider under the last row (the frame border closes it). */
+.sl-markdown-content tr:last-child td {
+  border-bottom: 0;
 }
 
 .sl-markdown-content .icon-card-grid {
@@ -15,15 +335,252 @@
   margin: 0 !important;
 }
 
-/* Clickable sidebar group header links */
+/* Clickable sidebar group header links (Agent Health, Overview).
+   The Sidebar.astro script clears the .large label and appends an anchor into
+   it. Left unstyled, that anchor renders with an inline offset that makes the
+   group look indented and dimmed vs. its flush siblings. Pin it to a
+   full-width, zero-offset inline that inherits the .large eyebrow styling. */
+.sidebar-content .group-label .large .group-header-link,
 .group-header-link {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: inherit;
   color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   text-decoration: none;
+  background: none;
+  cursor: pointer;
 }
 .group-header-link:hover {
-  text-decoration: underline;
   color: var(--sl-color-text-accent);
 }
 .group-header-link[aria-current='page'] {
   color: var(--sl-color-text-accent);
+}
+
+/* ==========================================================================
+   Modern docs-site structural refinement
+   Whitespace, reading rhythm, quiet sidebar — the "clean" layer that
+   distinguishes a polished docs site from a recolored default.
+   ========================================================================== */
+
+/* Body reading rhythm: lighter weight, roomier line-height (clean, flat) */
+.sl-markdown-content {
+  font-weight: 400;
+  line-height: 1.75;
+  font-size: 0.9375rem;
+}
+.sl-markdown-content p,
+.sl-markdown-content li {
+  color: var(--sl-color-gray-2);
+}
+
+/* First heading shouldn't carry the h2 top rule */
+.sl-markdown-content > :first-child,
+.sl-markdown-content h2:first-child {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+/* Page title block: more air below, quiet subtitle */
+.sl-markdown-content h1 + p,
+.content-panel h1 + p {
+  color: var(--sl-color-gray-3);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+/* Sidebar: compressed, uniform 0.6875rem; hierarchy via weight/case/color. */
+.sidebar-content {
+  font-size: 0.6875rem;
+}
+.sidebar-content .large,
+.sidebar-content summary {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-white);
+}
+.sidebar-content ul ul summary .large {
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--sl-color-gray-2);
+}
+.sidebar-content a {
+  padding-block: 0.32rem;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  color: var(--sl-color-gray-1);
+}
+.sidebar-content a:hover {
+  color: var(--sl-color-white);
+}
+/* No vertical rail on nested groups — indent only. */
+.sidebar-content ul ul {
+  border-inline-start: 0;
+  margin-inline-start: 0.5rem;
+  padding-inline-start: 0.5rem;
+}
+/* Active item: accent pill (no rail bar). */
+.sidebar-content a[aria-current='page'] {
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+  border-radius: var(--obs-radius-sm);
+  font-weight: 600;
+  box-shadow: none;
+  margin-inline-start: 0;
+  padding-inline-start: 0.5rem;
+}
+
+/* Right-hand "On this page" TOC — modern docs-site style:
+   small, regular weight, muted gray; accent + medium weight only on the
+   active item. High specificity to beat PageSidebar.astro's :global() rules. */
+.right-sidebar-panel :where(a),
+.right-sidebar a,
+.sl-container nav a {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--sl-color-gray-3);
+  line-height: 1.5;
+}
+.right-sidebar-panel :where(a):hover,
+.right-sidebar a:hover {
+  color: var(--sl-color-white);
+}
+.right-sidebar-panel :where(a[aria-current='true']),
+.right-sidebar a[aria-current='true'] {
+  color: var(--sl-color-text-accent);
+  font-weight: 500;
+}
+/* TOC heading "On this page": smaller uppercase eyebrow like the nav labels */
+.right-sidebar-panel :where(h2),
+.right-sidebar h2 {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+
+/* Tighten the frosted nav + hairline search box */
+.header {
+  box-shadow: none;
+}
+site-search button,
+.sl-flex.action {
+  border-radius: var(--obs-radius-sm);
+  border: var(--obs-border);
+}
+
+/* Pagination (prev/next) footer cards: flat, hairline, quiet hover */
+.pagination-links a {
+  border-radius: var(--obs-radius);
+  border: var(--obs-border);
+  box-shadow: none;
+  padding: 0.6rem 0.85rem;      /* was 16px all round → tighter card */
+  gap: 0.2rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+/* Shrink the oversized label + title inside each prev/next card. */
+.pagination-links a > span,
+.pagination-links .link-title {
+  font-size: 0.875rem;          /* title was 16px */
+  font-weight: 500;
+}
+.pagination-links a[rel] svg,
+.pagination-links a .caret {
+  width: 1rem;
+  height: 1rem;
+}
+.pagination-links a:hover {
+  border-color: var(--sl-color-accent);
+  background-color: var(--sl-color-hairline-shade);
+}
+
+/* ==========================================================================
+   Left navigation — richer, modern docs-site feel
+   Rotating chevrons, active-trail highlight, indent guides, scroll fade.
+   ========================================================================== */
+
+/* Give the nav its own scroll context with a little breathing room */
+nav.sidebar {
+  padding-inline: 0.25rem;
+}
+nav.sidebar .sidebar-content {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sl-color-gray-5) transparent;
+}
+nav.sidebar .sidebar-content::-webkit-scrollbar {
+  width: 6px;
+}
+nav.sidebar .sidebar-content::-webkit-scrollbar-thumb {
+  background: var(--sl-color-gray-5);
+  border-radius: 3px;
+}
+
+/* Top-level group labels: quiet uppercase eyebrows with space above */
+nav.sidebar > ul > li > details > summary .group-label,
+nav.sidebar > ul > li > .large {
+  margin-top: 0.5rem;
+}
+
+/* Collapse chevron: replace the default marker with a rotating caret */
+nav.sidebar details > summary {
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--obs-radius-sm);
+  padding-inline: 0.5rem;
+  transition: background-color 0.12s ease;
+}
+nav.sidebar details > summary::-webkit-details-marker {
+  display: none;
+}
+nav.sidebar details > summary:hover {
+  background-color: var(--sl-color-hairline-shade);
+}
+nav.sidebar details > summary .caret {
+  transition: transform 0.18s ease;
+}
+nav.sidebar details[open] > summary .caret {
+  transform: rotate(90deg);
+}
+
+/* Indent guides on nested groups: a hairline rail the active item lights up */
+nav.sidebar details ul {
+  margin-inline-start: 0.6rem;
+  padding-inline-start: 0.7rem;
+  border-inline-start: 0;
+}
+
+/* Active leaf: accent pill, no rail bar. */
+nav.sidebar a[aria-current='page'] {
+  position: relative;
+  background-color: var(--sl-color-accent-low);
+  color: var(--sl-color-text-accent);
+  font-weight: 600;
+  border-radius: var(--obs-radius-sm);
+  box-shadow: none;
+}
+
+/* Active TRAIL: highlight the open ancestor group labels so you see where
+   you are in a deep tree (PPL has 6+ levels). */
+nav.sidebar details[open] > summary .group-label {
+  color: var(--sl-color-white);
+}
+
+/* Links: comfortable target, quiet default, accent on hover */
+nav.sidebar a {
+  padding-block: 0.34rem;
+  padding-inline: 0.5rem;
+  border-radius: var(--obs-radius-sm);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+nav.sidebar a:not([aria-current='page']):hover {
+  background-color: var(--sl-color-hairline-shade);
+  color: var(--sl-color-white);
 }

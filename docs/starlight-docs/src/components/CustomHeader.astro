@@ -26,6 +26,32 @@ const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL :
 	</div>
 </div>
 
+<script>
+	// Make heading anchor-link icons copy the section's full URL to the clipboard
+	// (modern docs-site behavior) instead of only navigating to the hash.
+	function initAnchorCopy() {
+		document.addEventListener('click', async (e) => {
+			const target = e.target as HTMLElement;
+			const anchor = target.closest('a.sl-anchor-link') as HTMLAnchorElement | null;
+			if (!anchor) return;
+			e.preventDefault();
+			const url = anchor.href; // absolute, includes the #section hash
+			// Update the address bar so a manual copy also works.
+			history.replaceState(null, '', anchor.getAttribute('href') || url);
+			try {
+				await navigator.clipboard.writeText(url);
+				anchor.classList.add('copied');
+				window.setTimeout(() => anchor.classList.remove('copied'), 1200);
+			} catch {
+				// Clipboard API unavailable (e.g. non-secure context): the hash
+				// still updated above, so the link is at least navigable.
+			}
+		});
+	}
+	initAnchorCopy();
+	document.addEventListener('astro:after-swap', initAnchorCopy);
+</script>
+
 <style>
 	.header {
 		gap: var(--sl-nav-gap);
@@ -62,12 +88,32 @@ const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL :
 	.brand-text {
 		font-size: 1.5rem;
 		font-weight: 600;
+		white-space: nowrap;
+		line-height: 1.1;
 		background: linear-gradient(to right, #c084fc, #f472b6);
 		-webkit-background-clip: text;
 		background-clip: text;
 		-webkit-text-fill-color: transparent;
 		color: transparent;
 		filter: drop-shadow(0 0 8px rgba(192, 132, 252, 0.5));
+	}
+
+	/* Responsive header: the custom brand text must not wrap or overflow next
+	   to the logo and the collapsed nav controls on narrow screens. */
+	@media (max-width: 72rem) {
+		.brand-text {
+			font-size: 1.125rem;
+		}
+	}
+	@media (max-width: 30rem) {
+		/* On phones, drop the brand text entirely and keep just the logo so the
+		   hamburger + search never collide with wrapping title text. */
+		.brand-text {
+			display: none;
+		}
+		.site-title {
+			gap: 0;
+		}
 	}
 
 	.nav-links {
