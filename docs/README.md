@@ -1,7 +1,7 @@
 # OpenSearch - Observability Stack
 
-[![CI](https://github.com/opensearch-project/observability-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/ci.yml)
-[![Deploy](https://github.com/opensearch-project/observability-stack/actions/workflows/deploy.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/deploy.yml)
+[![CI](https://github.com/opensearch-project/observability-stack/actions/workflows/docs-ci.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/docs-ci.yml)
+[![Deploy](https://github.com/opensearch-project/observability-stack/actions/workflows/docs-deploy.yml/badge.svg)](https://github.com/opensearch-project/observability-stack/actions/workflows/docs-deploy.yml)
 [![codecov](https://codecov.io/gh/opensearch-project/observability-stack/branch/main/graph/badge.svg)](https://codecov.io/gh/opensearch-project/observability-stack)
 [![GitHub Pages](https://img.shields.io/badge/GitHub%20Pages-Live-success?logo=github)](https://observability.opensearch.org)
 
