@@ -109,6 +109,35 @@ A **metric rule** alerts on Prometheus time series. You write a **PromQL** expre
 
 </Steps>
 
+### Building the condition without PromQL
+
+The **Query** section has an **Editor** toggle with **Builder** and **Code** modes. In **Builder** mode, you build the expression in layers, and the resulting PromQL appears under **Expression** as you go:
+
+| Layer | Options |
+|---|---|
+| **Metric** | A metric name and optional **Label filter** (`=`, `!=`, `=~`, `!~`). |
+| **Function** (optional) | **Rate**, **Increase**, **Delta**, **Avg over time**, **Min over time**, **Max over time**, **Sum over time**, **Count over time**, or **Last over time**, applied over a **Window** such as `5m`. The default, **None (instant value)**, uses the raw series. |
+| **Aggregate** (optional) | **Sum**, **Average**, **Min**, **Max**, or **Count**, with **Grouping** `by` or `without` the labels you choose. |
+| **Condition** | **IS ABOVE**, **IS ABOVE OR EQUAL**, **IS BELOW**, **IS BELOW OR EQUAL**, **IS EQUAL TO**, **IS NOT EQUAL TO**, **IS OUTSIDE RANGE**, or **IS WITHIN RANGE**, and a **Value**. |
+
+For example, **Metric** `fault`, **Function** **Rate** over `5m`, **Aggregate** **Sum** by `service`, and **Condition** **IS ABOVE** `0.05` produce `sum by (service) (rate(fault[5m])) > 0.05`.
+
+![Builder mode of the Create metrics rule flyout with metric, function, aggregate, and condition layers, the generated expression, and a sample preview](/docs/images/alerting/create-metrics-rule-builder.png)
+
+Switching between **Builder** and **Code** doesn't lose any part of the expression. If an expression written in **Code** mode can't be represented in the builder (for example, one that uses `$__rate_interval`), the builder says so and leaves the expression unchanged until you pick a new metric. Select **Run preview** to plot the underlying series against live data and see whether the rule would fire.
+
+<Aside type="caution" title="Always set a condition">
+An expression without a comparison fires for every series it returns. The flyout warns you when the expression has no condition.
+</Aside>
+
+### Starting from Discover Metrics
+
+You can start a metric rule from a query you're already exploring. In **Discover** > **Metrics**, run a PromQL query and select **Create alert rule**. The **Create metrics rule** flyout opens with that query in the editor.
+
+### Rule groups
+
+Prometheus rules are organized as **Namespace** → **Rule group** → **Rule**. Rules created here are stored in the `observability-alerting` namespace. Enter a **Rule group** name to add the rule to a new or existing group. If you leave it empty, the group name defaults to the rule name. Rules in the same group share an evaluation interval, and adding a rule to an existing group keeps the rules already in it.
+
 Metric-rule alerts are delivered through the Prometheus Alertmanager — set up where they go in [Notifications](/docs/alerting/notifications/#prometheus-rules--alertmanager-receivers), and view the resulting [routing tree](/docs/alerting/unified-alerts/routing/). Because [SLOs](/docs/slo/) deploy their burn-rate alerts as Prometheus rules, SLO breaches show up here as **Metric** rules too.
 
 ## Anomaly detection rule

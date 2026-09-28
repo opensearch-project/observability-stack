@@ -176,6 +176,34 @@ Layout tips:
 - Use full-width panels for time-series charts that benefit from horizontal space
 - Use narrow panels for metric values and gauges - they don't need much room
 
+### Sections
+
+Sections group panels under a named heading that you can collapse. Each section has its own grid, so you can keep related panels together (for example, **Traffic & errors** and **Latency**) and collapse the ones you don't need right now.
+
+Sections are turned off by default. To turn them on, add the following setting to `opensearch_dashboards.yml` and restart OpenSearch Dashboards:
+
+```yaml
+dashboard.allowDashboardSections: true
+```
+
+To work with sections, open the dashboard in **Edit** mode:
+
+- **Add a section**: Select **Add** > **Section**.
+- **Add panels to a section**: Use the section's **Add from library** or **Create new visualization** options, or move an existing panel into the section.
+- **Reorder sections**: Drag a section by its header.
+- **Rename or delete a section**: Open the section options menu and select **Rename** or **Delete**. Deleting a section also deletes its panels.
+- **Ungroup all sections**: Moves every panel back into a single grid.
+
+Panels that don't belong to any section appear in an **Ungrouped** group at the bottom of the dashboard.
+
+### Synchronized crosshair
+
+When you turn on the crosshair option, hovering over one time-series panel draws a crosshair at the same timestamp on every other time-series panel on the dashboard. Use it to line up a spike in one metric with changes in the others, such as request rate, errors, and latency.
+
+To turn it on, open the dashboard in **Edit** mode, select **Options**, and turn on **Sync crosshair across panels**. The setting is saved with the dashboard and is off by default. It applies to line, area, and bar charts with a time-based x-axis that were built in Discover or the visualization editor. Legacy visualizations aren't affected.
+
+![Dashboard with Traffic & errors and Latency sections, a Service variable, and tooltips synchronized across four time-series panels](/docs/images/dashboards/dashboard-sections-crosshair.png)
+
 ### Recommended dashboard layouts
 
 **Service health overview (4–6 panels):**

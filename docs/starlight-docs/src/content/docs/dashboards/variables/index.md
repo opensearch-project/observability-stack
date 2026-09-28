@@ -19,12 +19,27 @@ Use dashboard variables to:
 
 ## Variable types
 
-OpenSearch Dashboards supports two variable types:
+OpenSearch Dashboards supports three variable types:
 
 | Type | Options come from | Use when |
 |---|---|---|
 | **Query** | A PPL or PromQL query against a data source | Options should match what's actually in your data (services, regions, hosts) |
 | **Custom** | A static list you define | You want a fixed set of choices (environments, severity levels) |
+| **Text** | A free-form text box with no option list | Viewers should type any value, such as a trace ID or a search term |
+
+### PromQL query types
+
+When a **Query** variable uses a Prometheus data source, choose a **Query type** instead of writing a free-text query:
+
+| Query type | Returns |
+|---|---|
+| **Label names** | The label names present across all metrics. Optionally scope them with a **Metric regex**. |
+| **Label values** | The values of one label, such as `service`. Optionally scope them to a **Metric** and add **Label filters** (`=`, `!=`, `=~`, `!~`). |
+| **Metrics** | Metric names, optionally filtered by a **Metric regex**. |
+| **Series query** | Every time series that matches a Prometheus series selector. |
+| **Query result (PromQL)** | Values extracted from the result of a full PromQL expression. |
+
+For example, a **Label values** variable named `service` on the `service` label lets one RED-metrics dashboard serve every service. Reference it in panel queries as `rate(request{service=~"$service"}[5m])` and in panel titles as `Request rate for $service`.
 
 ## Adding a variable
 
@@ -35,13 +50,14 @@ OpenSearch Dashboards supports two variable types:
 3. Configure the variable:
    - **Name** — used to reference the variable in queries (letters, digits, and underscores; must start with a letter or underscore).
    - **Label** — optional display name shown above the dropdown.
-   - **Type** — **Query** or **Custom**.
+   - **Type** — **Query**, **Custom**, or **Text**.
    - **Multi-select** — let viewers pick more than one value at a time.
    - **Include All** — adds an **All** option that selects every value at once (only with multi-select).
    - **Sort** — alphabetical or numerical, ascending or descending.
    - **Hide** — keep the variable in memory but hide its dropdown.
    - For **Query** variables: choose a data source, write the query (PPL or PromQL) that returns the option list, optionally set a **Regex** filter, and pick when to **Refresh** the options — **On dashboard load** (default) or **On time range change**.
    - For **Custom** variables: enter the static option list (up to 100 options are displayed).
+   - **Allow custom values** — let viewers type a value that isn't in the option list.
 4. Use the **Preview** button to check that the query returns the values you expect, then **Save**.
 
 For detailed edit, delete, reorder, and visibility controls, see [Managing Variables](/docs/dashboards/variables/managing-variables/).

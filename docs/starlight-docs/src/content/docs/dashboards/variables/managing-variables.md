@@ -18,23 +18,27 @@ To create a new variable, follow these steps:
      - **Name** (required): The identifier used to reference the variable in queries using `$variableName` or `${variableName}` syntax.
      - **Label** (optional): A display name shown at the top of the dashboard.
      - **Description** (optional): Additional context about the variable's purpose.
-     - **Type** (required): Select **Query** or **Custom**. For more information about variable types, see [Variable types](/docs/dashboards/variables/#variable-types).
+     - **Type** (required): Select **Query**, **Custom**, or **Text**. For more information about variable types, see [Variable types](/docs/dashboards/variables/#variable-types).
    - **Query type configuration** (for query type variables):
      - **Options Query**: Define a query to fetch variable options dynamically.
        - If needed, update the default language (PPL) to PromQL using the language toggle.
        - In the **Select dataset** dropdown list, select a dataset. For PPL, select an index pattern. For PromQL, select a Prometheus data source.
-       - Write a query that returns a single column of values.
+       - For PromQL, choose a **Query type**: **Label names**, **Label values**, **Metrics**, **Series query**, or **Query result (PromQL)**. For details, see [PromQL query types](/docs/dashboards/variables/#promql-query-types).
+       - For PPL or **Query result (PromQL)**, write a query that returns the values. If the result has more than one field, choose the **Value field** and an optional **Label field**.
        - Select **Preview** to validate the query and view the first 100 results.
-     - **Regex** (optional): Filter query results using a regular expression. Only values matching the pattern are displayed.
+     - **Regex** (optional): Filter query results using a regular expression. Only values matching the pattern are displayed. To extract part of each value, use named capture groups: `(?<value>...)` sets the stored value and `(?<label>...)` sets the displayed label. For example, `/^svc-(?<value>[a-z]+)$/` turns `svc-checkout` into `checkout`.
      - **Refresh**: Choose when to update variable options:
        - **On dashboard load**: Options are fetched once when the dashboard loads.
        - **On time range change**: Options refresh automatically when the dashboard time range changes.
    - **Custom type configuration** (for custom type variables):
      - **Custom options**: Enter custom values for the variable. Type a value and press Enter to add it. The maximum of 100 options can be displayed in the dropdown list.
+   - **Text type configuration** (for text type variables):
+     - Enter an optional default value. Viewers type any value into a text box at the top of the dashboard.
    - **Selection configuration** (available for both query and custom types):
      - **Sort**: Choose how options are sorted in the dropdown list (**Disabled**, **Alphabetical** (ascending or descending), or **Numerical** (ascending or descending)).
      - **Allow multiple selections**: Enables you to select multiple values from the dropdown.
      - **Include All option** (only available when multiple selections are enabled): Adds an **All** option to the dropdown that selects all available values.
+     - **Allow custom values**: Lets viewers type a value that isn't in the option list.
 
 1. Select **Add variable** to save.
 

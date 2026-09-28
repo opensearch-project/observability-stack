@@ -62,9 +62,54 @@ To access the full trace detail page from the **Trace Details** flyout, use one 
 - Select the **span ID** from the **Traces** page table.
 - Select **Open full page** from the flyout.
 
-The full page view provides an expanded interface for deeper trace analysis, featuring a timeline visualization that shows the hierarchical span relationships and durations, along with detailed span information in a side panel.
+The full page view provides an expanded interface for deeper trace analysis, featuring a timeline visualization that shows the hierarchical span relationships and durations, along with detailed span information in a side panel. The page has four tabs: **Timeline**, **Span list**, **Trace map**, and **Related logs**.
 
-![Discover Traces page with RED metrics and faceted fields](/docs/images/discover-traces/trace-detail-page.png)
+![Trace detail page showing the timeline waterfall with service-colored bars, inline span durations, and error markers](/docs/images/discover-traces/trace-details-timeline.png)
+
+#### Reading the timeline
+
+The **Timeline** tab shows the trace as a waterfall:
+
+- Each bar is colored by service. Select **Service legend** to see which color maps to which service.
+- Each span's duration appears at the end of its bar.
+- Error spans are outlined in red and marked with a warning icon.
+- Light vertical guides show nesting depth. The service name appears only when it changes from the row above.
+
+Use the toolbar above the waterfall to control the view:
+
+| Control | What it does |
+|---|---|
+| **Expand all** / **Collapse all** | Expands or collapses the entire span tree. |
+| **Expand one level** / **Collapse one level** | Moves the whole tree one level at a time. Disabled at the top and bottom levels. |
+| **Full screen** | Opens the timeline in full screen. |
+| **Density** | Switches row density between **Compact**, **Normal**, and **Expanded**. |
+| **Reset zoom** | Restores the full trace duration after you zoom. |
+
+To zoom, drag the slider under the time ruler. The bars and ruler rescale to the selected window, and spans outside it are dimmed.
+
+#### Filtering spans
+
+The **Filters** bar above the tabs narrows the timeline, span list, and trace map at the same time:
+
+- **Status**: Show only spans with the **Error**, **OK**, or **Unset** status.
+- **Duration**: Show only spans at least as long as a minimum duration. Enter a value in milliseconds, or select a **p90** or **p99** preset calculated from the current trace.
+- **Attributes**: Filter on any span field with `=` or `!=`. Choose the field from the dataset's field list, then pick a value from the loaded spans or type one.
+
+Each applied filter appears as a pill, such as `status = Error`. Select a pill to edit its value, select its **x** to remove it, or select **Clear all** to remove every filter. **Status** and **Duration** filters apply instantly without querying the cluster again.
+
+![Filters bar with a status = Error pill applied and the Duration popover showing p90 and p99 presets](/docs/images/discover-traces/trace-details-filters.png)
+
+#### Viewing the trace map
+
+The **Trace map** tab shows how the services in the trace call each other:
+
+- Each service is a card with **Requests**, **Errors**, and **Duration** bars. Services with errors show an error marker.
+- Edges get thicker as call volume increases and are labeled with the call count.
+- Select a service card to add a `serviceName` filter that scopes the whole page to that service.
+
+You can drag cards, zoom, and fit the map to the view. A minimap appears on the full page but not in the flyout.
+
+![Trace map tab showing service cards with request, error, and duration bars connected by call-count edges](/docs/images/discover-traces/trace-details-trace-map.png)
 
 ## Correlating traces with logs
 
