@@ -148,6 +148,8 @@ class EventsRequest(BaseModel):
     destination: str
     date: Optional[str] = None
     fault: Optional[FaultConfig] = None
+    # Propagated from the orchestrator for multi-turn sessions (gen_ai.conversation.id)
+    conversation_id: Optional[str] = None
 
 
 class Event(BaseModel):
@@ -213,6 +215,7 @@ async def get_events(request: EventsRequest):
         model=model,
         provider=provider,
         agent_id=AGENT_ID,
+        session_id=request.conversation_id,
         input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Find events in {request.destination}"}]}],
     )
     root_span = trace.get_current_span()
@@ -224,6 +227,7 @@ async def get_events(request: EventsRequest):
             model=model,
             provider=provider,
             agent_id=AGENT_ID,
+            session_id=request.conversation_id,
             tool_definitions=TOOL_DEFINITIONS,
         )
 

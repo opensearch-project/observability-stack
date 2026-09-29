@@ -38,7 +38,7 @@ class InvokeRequest(BaseModel):
 
 class InvokeResponse(BaseModel):
     response: str
-    conversation_id: str
+    conversation_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -76,7 +76,9 @@ async def health():
 
 @inner_app.post("/invoke", response_model=InvokeResponse)
 async def invoke(request: InvokeRequest):
-    conversation_id = request.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    # Per OTel GenAI semconv, only set gen_ai.conversation.id when the caller provides one;
+    # never fabricate a fallback (UUID, trace id, content hash).
+    conversation_id = request.conversation_id
 
     fault_config = None
     if request.fault:

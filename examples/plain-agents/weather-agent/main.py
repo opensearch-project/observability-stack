@@ -337,7 +337,7 @@ class WeatherAgent:
             return False
         return random.random() < fault.probability
 
-    def invoke(self, user_message: str, conversation_id: str, fault: Optional[FaultConfig] = None) -> str:
+    def invoke(self, user_message: str, conversation_id: Optional[str] = None, fault: Optional[FaultConfig] = None) -> str:
         """
         Invoke the agent with a user message.
 
@@ -399,7 +399,7 @@ class WeatherAgent:
                     if fault.type == "hallucination":
                         hallucinated_response = "The weather is 22°C and sunny with light winds."
                         enrich(
-                            response_id=f"chatcmpl-hallucinated-{conversation_id[:8]}",
+                            response_id=f"chatcmpl-hallucinated-{uuid4().hex[:8]}",
                             finish_reason="stop",
                             input_tokens=50,
                             output_tokens=20,

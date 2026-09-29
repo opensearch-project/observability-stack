@@ -160,6 +160,11 @@ class PlanRequest(BaseModel):
     destination: str
     origin: Optional[str] = None
     fault: Optional[FaultConfig] = None
+    # Multi-turn session support: callers pass a stable conversation id across turns.
+    # Per OTel GenAI semconv, only set gen_ai.conversation.id when the caller provides one.
+    conversation_id: Optional[str] = None
+    # User turn text; defaults to "Plan a trip to <destination>".
+    message: Optional[str] = None
 
 
 class PlanResponse(BaseModel):
@@ -238,12 +243,15 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
 async def plan_trip(request: PlanRequest):
     model = random.choice(MODELS)
     provider = SYSTEMS[model]
+    user_text = request.message or f"Plan a trip to {request.destination}"
+    conversation_id = request.conversation_id
 
     enrich(
         model=model,
         provider=provider,
         agent_id=AGENT_ID,
-        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {request.destination}"}]}],
+        session_id=conversation_id,
+        input_messages=[{"role": "user", "parts": [{"type": "text", "content": user_text}]}],
     )
     root_span = trace.get_current_span()
     root_span.set_attribute("gen_ai.agent.name", AGENT_NAME)
@@ -254,6 +262,7 @@ async def plan_trip(request: PlanRequest):
             model=model,
             provider=provider,
             agent_id=AGENT_ID,
+            session_id=conversation_id,
             tool_definitions=TOOL_DEFINITIONS,
             destination=request.destination,
         )
@@ -281,7 +290,7 @@ async def plan_trip(request: PlanRequest):
                         input_tokens=usage["input_tokens"],
                         output_tokens=usage["output_tokens"],
                         finish_reason=planning_response.get("stopReason", "end_turn"),
-                        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {request.destination}"}]}],
+                        input_messages=[{"role": "user", "parts": [{"type": "text", "content": user_text}]}],
                         output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": extract_text(planning_response)}]}],
                     )
                 except BedrockUnavailableError as e:
@@ -296,6 +305,9 @@ async def plan_trip(request: PlanRequest):
         # Build sub-agent payloads with fault pass-through
         weather_payload = {"message": f"What's the weather in {request.destination}?"}
         events_payload = {"destination": request.destination}
+        if conversation_id:
+            weather_payload["conversation_id"] = conversation_id
+            events_payload["conversation_id"] = conversation_id
 
         if fault:
             if fault.weather:
