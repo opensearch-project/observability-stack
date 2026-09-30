@@ -1,0 +1,123 @@
+# Data Prepper optimized-index pipeline template.
+# The `composite-index` component template must exist in OpenSearch before this
+# pipeline starts.
+
+# --- OTLP ingress: split the stream into logs and traces ---
+otlp-pipeline:
+  delay: 10
+  source:
+    otlp:
+      port: 21890
+      ssl: false
+  route:
+    - logs: "getEventType() == \"LOG\""
+    - traces: "getEventType() == \"TRACE\""
+  sink:
+    - pipeline:
+        name: "otel-logs-pipeline"
+        routes:
+          - "logs"
+    - pipeline:
+        name: "otel-traces-pipeline"
+        routes:
+          - "traces"
+
+# --- LOGS ---
+otel-logs-pipeline:
+  workers: 5
+  delay: 10
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  buffer:
+    bounded_blocking:
+  processor:
+    # UI sorts on @timestamp; DP only emits `time`.
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
+        insecure: true
+        index_type: log-analytics-plain
+        template_type: index-template
+        component_templates: ["composite-index"]
+
+# --- TRACES: fan out to raw spans and the v2 service map ---
+otel-traces-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  sink:
+    - pipeline:
+        name: "traces-raw-pipeline"
+    - pipeline:
+        name: "service-map-pipeline"
+
+# --- RAW SPANS ---
+traces-raw-pipeline:
+  source:
+    pipeline:
+      name: "otel-traces-pipeline"
+  processor:
+    - otel_traces:
+  sink:
+    - opensearch:
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
+        insecure: true
+        index_type: trace-analytics-plain-raw
+        template_type: index-template
+        component_templates: ["composite-index"]
+
+# --- SERVICE MAP (v2), plus METRICS branch to Cortex ---
+service-map-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "otel-traces-pipeline"
+  processor:
+    - otel_apm_service_map:
+        group_by_attributes: [telemetry.sdk.language]
+        window_duration: 10s
+  route:
+    - otel_apm_service_map_route: 'getEventType() == "SERVICE_MAP"'
+    - service_processed_metrics: 'getEventType() == "METRIC"'
+  sink:
+    - opensearch:
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
+        insecure: true
+        index_type: otel-v2-apm-service-map
+        template_type: index-template
+        component_templates: ["composite-index"]
+        routes: [otel_apm_service_map_route]
+    - pipeline:
+        name: "service-metrics-cortex-pipeline"
+        routes: [service_processed_metrics]
+
+# --- METRICS → Cortex (Prometheus remote-write) ---
+service-metrics-cortex-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "service-map-pipeline"
+  processor:
+    - delete_entries:
+        with_keys:
+          - "/attributes/randomKey"
+          - "randomKey"
+  sink:
+    - prometheus:
+        url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/push"
+        insecure: true
+        threshold:
+          max_events: 500
+          flush_interval: 5s

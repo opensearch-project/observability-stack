@@ -1,0 +1,12 @@
+{
+  "template": {
+    "settings": {
+      "index.pluggable.dataformat.enabled": true,
+      "index.pluggable.dataformat": "composite",
+      "index.composite.primary_data_format": "parquet",
+      "index.composite.secondary_data_formats": [
+        "lucene"
+      ]
+    }
+  }
+}
