@@ -192,6 +192,8 @@ services:
       SERVICE: planner
       OTEL_SERVICE_NAME: strands-travel-planner
       OTEL_EXPORTER_OTLP_ENDPOINT: http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      # Logs go over gRPC, as in the plain-agents example (spans and metrics use HTTP).
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       WEATHER_AGENT_URL: http://strands-weather-agent:8000
       EVENTS_AGENT_URL: http://strands-events-agent:8000
       MCP_SERVER_URL: http://mcp-server:8003

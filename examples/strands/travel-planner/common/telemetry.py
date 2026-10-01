@@ -6,12 +6,20 @@ what a real service needs around them:
 - an OTLP exporter for those spans and Strands' metrics
 - FastAPI server spans and httpx client spans, so each turn is one trace across services
   and the APM service map shows the service-to-service calls
+- OTLP logs from Python logging, each carrying the active trace and span ids, for
+  trace-to-logs correlation
 """
 
 import json
+import logging
 import os
 
 from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.resources import Resource
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from strands.telemetry import StrandsTelemetry
@@ -30,6 +38,24 @@ def setup_telemetry(app) -> None:
     telemetry.setup_meter(enable_otlp_exporter=True)
     FastAPIInstrumentor.instrument_app(app, excluded_urls="health")
     HTTPXClientInstrumentor().instrument()
+    setup_logs()
+
+
+def setup_logs() -> None:
+    """Send Python logging over OTLP gRPC (OTEL_EXPORTER_OTLP_LOGS_ENDPOINT, OTEL_SERVICE_NAME).
+
+    A log written inside a span carries its trace and span ids, so Agent Traces and Explore
+    traces list it under the trace (trace-to-logs correlation).
+    """
+    provider = LoggerProvider(resource=Resource.create())
+    provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter(insecure=True)))
+    set_logger_provider(provider)
+    handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
+    # The SDK's own warnings (e.g. export retries) stay local instead of being exported.
+    handler.addFilter(lambda record: not record.name.startswith("opentelemetry"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.INFO)
 
 
 def session_attributes(conversation_id: str | None, user_id: str | None = None) -> dict:

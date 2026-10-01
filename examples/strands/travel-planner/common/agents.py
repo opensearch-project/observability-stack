@@ -48,6 +48,7 @@ def apply_fault(fault: Optional[SubAgentFault]) -> Optional[str]:
     """
     if not fault or random.random() > fault.probability:
         return None
+    logger.warning("Fault injected: %s", fault.type, extra={"fault.type": fault.type})
     span = trace.get_current_span()
     span.set_attribute("fault.type", fault.type)
     if fault.type == "high_latency":
@@ -66,6 +67,7 @@ def apply_fault(fault: Optional[SubAgentFault]) -> Optional[str]:
 
 def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
     """Call a tool on the stack's MCP server (JSON-RPC over HTTP; httpx propagates the trace)."""
+    logger.info("Calling MCP tool %s", tool_name, extra={"gen_ai.tool.name": tool_name})
     payload = {
         "jsonrpc": "2.0",
         "method": "tools/call",
@@ -76,7 +78,9 @@ def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
     resp = httpx.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers, timeout=30)
     data = resp.json()
     if "error" in data:
-        raise RuntimeError(data["error"].get("message", f"MCP tool {tool_name} failed"))
+        message = data["error"].get("message", f"MCP tool {tool_name} failed")
+        logger.error("MCP tool %s failed: %s", tool_name, message, extra={"gen_ai.tool.name": tool_name})
+        raise RuntimeError(message)
     return data.get("result", {})
 
 
@@ -92,11 +96,15 @@ async def run_agent(
     Returns the answer and the agent, whose `messages` hold the conversation so far.
     """
     if use_bedrock():
+        logger.info("Running the agent on Bedrock")
         agent = make_agent(bedrock_model())
         try:
             return str(await agent.invoke_async(prompt)), agent
         except Exception as e:  # noqa: BLE001 - fall back so demos keep producing traces
             logger.warning("Bedrock call failed, falling back to the scripted model: %s", e)
             trace.get_current_span().set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+    logger.info("Running the agent on the scripted model")
     agent = make_agent(scripted)
-    return str(await agent.invoke_async(prompt)), agent
+    answer = str(await agent.invoke_async(prompt))
+    logger.info("Agent answered (%d characters)", len(answer))
+    return answer, agent

@@ -6,6 +6,7 @@ drive both. Multi-turn: requests with the same conversation_id continue one conv
 gen_ai.conversation.id.
 """
 
+import logging
 import json
 import os
 import random
@@ -27,6 +28,8 @@ from common.telemetry import (
     session_attributes,
     setup_telemetry,
 )
+
+logger = logging.getLogger(__name__)
 
 AGENT_NAME = "Strands Travel Planner"
 SYSTEM_PROMPT = (
@@ -136,13 +139,16 @@ async def plan(request: PlanRequest):
         if fault and fault.orchestrator == "partial_failure" and random.random() < 0.5:
             errors.append({"agent": name, "error": "Simulated partial failure"})
             raise RuntimeError(f"Simulated partial failure: skipped the {name} agent")
+        logger.info("Asking the %s agent", name)
         try:
             resp = httpx.post(url, json=payload, timeout=timeout)
         except httpx.HTTPError as e:
+            logger.error("The %s agent is unreachable: %s", name, e)
             errors.append({"agent": name, "error": str(e) or type(e).__name__})
             raise RuntimeError(f"{name} agent unreachable: {e}") from e
         body = resp.json()
         if resp.status_code != 200:
+            logger.error("The %s agent returned %s", name, resp.status_code)
             errors.append({"agent": name, "error": body.get("error", resp.text)})
             raise RuntimeError(f"{name} agent returned {resp.status_code}: {body.get('error', resp.text)}")
         return body
@@ -210,6 +216,7 @@ async def plan(request: PlanRequest):
 
     prompt = request.message or f"Plan a trip to {destination} from {origin}"
     describe_request_span(AGENT_NAME, prompt, request.conversation_id, request.user_id)
+    logger.info("Trip plan requested for %s", destination, extra={"destination": destination})
     text, agent = await run_agent(make_agent, prompt, ScriptedModel(scripted_plan, scripted_answer_for(destination)))
 
     finish_request_span(text)
@@ -219,6 +226,10 @@ async def plan(request: PlanRequest):
         while len(_histories) > MAX_CONVERSATIONS:
             _histories.popitem(last=False)
 
+    if errors:
+        logger.warning("Trip plan for %s completed with %d failed sub-agent(s)", destination, len(errors))
+    else:
+        logger.info("Trip plan for %s completed", destination)
     if errors:
         # Mark the request span, so partial failures show as errors on the root and service map.
         trace.get_current_span().set_status(

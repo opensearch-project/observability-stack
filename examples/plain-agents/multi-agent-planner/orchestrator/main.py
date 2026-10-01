@@ -9,6 +9,7 @@ Instrumented with opensearch-genai-observability-sdk-py:
 """
 
 import asyncio
+import logging
 import json
 import os
 import random
@@ -21,6 +22,10 @@ import httpx
 import requests
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -195,6 +200,17 @@ metric_reader = PeriodicExportingMetricReader(
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
+# Logs: OTLP export, so each log carries the active trace and span ids (trace-to-logs
+# correlation in Agent Traces and Explore traces).
+logger_provider = LoggerProvider(resource=resource)
+logger_provider.add_log_record_processor(
+    BatchLogRecordProcessor(OTLPLogExporter(endpoint=otlp_endpoint, insecure=True))
+)
+set_logger_provider(logger_provider)
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
+logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger("travel-planner")
+
 HTTPXClientInstrumentor().instrument()
 
 inner_app = FastAPI(title="Travel Planner", version="1.0.0")
@@ -220,6 +236,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict, conversation_id: Option
         span.set_attribute("mcp.protocol.version", MCP_PROTOCOL_VERSION)
         span.set_attribute("jsonrpc.request.id", request_id)
         span.set_attribute("gen_ai.tool.name", tool_name)
+        logger.info("Calling MCP tool %s", tool_name, extra={"gen_ai.tool.name": tool_name})
 
         enrich(
             session_id=conversation_id,
@@ -236,7 +253,9 @@ async def call_mcp_tool(tool_name: str, arguments: dict, conversation_id: Option
             resp = await client.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers)
             result = resp.json()
             if "error" in result:
-                raise Exception(result["error"].get("message", "MCP tool call failed"))
+                message = result["error"].get("message", "MCP tool call failed")
+                logger.error("MCP tool %s failed: %s", tool_name, message)
+                raise Exception(message)
             tool_result = result.get("result", {})
             enrich(
                 output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(tool_result)}]}],
@@ -272,6 +291,10 @@ async def plan_trip(request: PlanRequest):
             destination=request.destination,
         )
 
+        logger.info(
+            "Trip plan requested for %s", request.destination,
+            extra={"destination": request.destination},
+        )
         fault = request.fault
         errors = []
         weather_data = None
@@ -328,6 +351,7 @@ async def plan_trip(request: PlanRequest):
             timeout = 30.0
 
         # Fan out to sub-agents (weather + events in parallel)
+        logger.info("Asking weather-agent and events-agent about %s", request.destination)
         async with httpx.AsyncClient(timeout=timeout) as client:
             with observe("weather-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
                 agent_span.set_attribute("gen_ai.agent.name", "weather-agent")
@@ -419,6 +443,8 @@ async def plan_trip(request: PlanRequest):
                 time.sleep(random.uniform(0.05, 0.15))
 
         partial = len(errors) > 0
+        for err in errors:
+            logger.warning("Sub-task %s failed: %s", err["agent"], str(err["error"])[:200])
         if partial:
             span.set_attribute("response.partial", True)
             span.set_attribute("response.errors_count", len(errors))
@@ -429,6 +455,10 @@ async def plan_trip(request: PlanRequest):
 
         if not recommendation:
             recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
+        if partial:
+            logger.warning("Trip plan for %s completed with %d failed sub-task(s)", request.destination, len(errors))
+        else:
+            logger.info("Trip plan for %s completed", request.destination)
 
     enrich(
         output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],

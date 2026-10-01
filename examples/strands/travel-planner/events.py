@@ -1,6 +1,7 @@
 """Strands Events Agent: finds attractions for a destination using the MCP events tool."""
 
 import json
+import logging
 import random
 from typing import Optional
 
@@ -17,6 +18,8 @@ from common.telemetry import (
     session_attributes,
     setup_telemetry,
 )
+
+logger = logging.getLogger(__name__)
 
 AGENT_NAME = "Strands Events Agent"
 SYSTEM_PROMPT = (
@@ -90,6 +93,7 @@ async def events(request: EventsRequest):
 
     prompt = f"What should I see in {request.destination}?"
     describe_request_span(AGENT_NAME, prompt, request.conversation_id, request.user_id)
+    logger.info("Attractions requested for %s", request.destination)
     text, _ = await run_agent(make_agent, prompt, ScriptedModel(scripted_plan, scripted_answer))
     finish_request_span(text)
     body = {"destination": request.destination, "events": found["events"], "summary": text}

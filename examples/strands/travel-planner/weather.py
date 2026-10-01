@@ -1,6 +1,7 @@
 """Strands Weather Assistant: answers weather questions using the MCP weather tool."""
 
 import json
+import logging
 import re
 from typing import Optional
 
@@ -17,6 +18,8 @@ from common.telemetry import (
     session_attributes,
     setup_telemetry,
 )
+
+logger = logging.getLogger(__name__)
 
 AGENT_NAME = "Strands Weather Assistant"
 SYSTEM_PROMPT = (
@@ -85,6 +88,7 @@ async def invoke(request: InvokeRequest):
         )
 
     describe_request_span(AGENT_NAME, request.message, request.conversation_id, request.user_id)
+    logger.info("Weather requested: %s", request.message)
     text, _ = await run_agent(make_agent, request.message, ScriptedModel(scripted_plan, scripted_answer))
     finish_request_span(text)
     if failures:

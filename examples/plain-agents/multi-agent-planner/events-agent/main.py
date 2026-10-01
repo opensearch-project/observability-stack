@@ -8,6 +8,7 @@ Instrumented with opensearch-genai-observability-sdk-py:
 - observe() + enrich() replace manual span creation + set_attribute() calls
 """
 
+import logging
 import json
 import os
 import random
@@ -21,6 +22,10 @@ import httpx
 import requests as req_lib
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
@@ -191,6 +196,17 @@ metric_reader = PeriodicExportingMetricReader(
 meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
 metrics.set_meter_provider(meter_provider)
 
+# Logs: OTLP export, so each log carries the active trace and span ids (trace-to-logs
+# correlation in Agent Traces and Explore traces).
+logger_provider = LoggerProvider(resource=resource)
+logger_provider.add_log_record_processor(
+    BatchLogRecordProcessor(OTLPLogExporter(endpoint=otlp_endpoint, insecure=True))
+)
+set_logger_provider(logger_provider)
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
+logging.getLogger().setLevel(logging.INFO)
+logger = logging.getLogger("events-agent")
+
 inner_app = FastAPI(title="Events Agent", version="1.0.0")
 
 
@@ -234,6 +250,7 @@ async def get_events(request: EventsRequest):
         destination = request.destination.lower()
         date = request.date or datetime.now().strftime("%Y-%m-%d")
         fault = request.fault
+        logger.info("Events lookup for %s", request.destination, extra={"destination": request.destination})
 
         # LLM reasoning call
         with observe("events-reasoning", op=Op.CHAT) as reasoning_span:
@@ -266,6 +283,7 @@ async def get_events(request: EventsRequest):
         # Check for fault injection
         if should_inject_fault(fault):
             span.set_attribute("fault.injected", fault.type)
+            logger.warning("Fault injected: %s", fault.type, extra={"fault.type": fault.type})
 
             if fault.type == "high_latency":
                 delay = fault.delay_ms / 1000.0
@@ -325,6 +343,7 @@ async def get_events(request: EventsRequest):
                 session_id=request.conversation_id,
                 input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps({"destination": destination})}]}],
             )
+            logger.info("Calling MCP tool fetch_events_api", extra={"gen_ai.tool.name": "fetch_events_api"})
 
             headers = {"mcp-session-id": session_id}
             inject(headers)
@@ -342,6 +361,7 @@ async def get_events(request: EventsRequest):
             )
 
         span.set_attribute("events.count", len(events))
+        logger.info("Found %d events in %s", len(events), request.destination)
 
     # Set output on the parent HTTP request span. This enrich() is intentionally
     # outside the observe() block — exiting observe() restores the parent span
