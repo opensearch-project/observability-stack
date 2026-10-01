@@ -80,6 +80,19 @@ explore.discoverMetrics.enabled: true
 explore.agentTraces.enabled: true
 explore.logsDrilldown.enabled: true
 explore.logsQueryBuilder.enabled: true
+# SQL as a query language in Explore alongside PPL. Ships in OSD 3.8, off by
+# default.
+explore.sqlSupport.enabled: true
+# Profiles Explore PPL queries and warns when saving a complex (resource-heavy)
+# query as a visualization. Ships in OSD 3.8, off by default.
+explore.queryProfiling.enabled: true
+# Analyze panel in Explore logs: query phase timeline, operator waterfall and
+# recommendations from the PPL analyze endpoint. Ships in OSD 3.9, off by
+# default.
+explore.pplAnalyze.enabled: true
+# Collapsible sections for grouping dashboard panels. Ships in OSD 3.9, off by
+# default.
+dashboard.allowDashboardSections: true
 # PPL syntax linter in the query editor (Explore / PPL query builder). Ships in
 # OSD 3.8, off by default; the queryEnhancements plugin reads this via
 # DynamicConfigService, which falls back to this static value.
