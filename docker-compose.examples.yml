@@ -177,6 +177,114 @@ services:
           memory: 128M
     logging: *logging
 
+  # Strands Travel Planner: the same multi-agent planner built on the Strands Agents SDK,
+  # running next to the plain-agents version (separate service names and ports). One image,
+  # three services; SERVICE picks planner, weather or events. Strands emits the GenAI spans,
+  # and trace_attributes put gen_ai.conversation.id on every span of a session turn.
+  example-strands-travel-planner:
+    build: &strands-build
+      context: ./examples/strands/travel-planner
+      dockerfile: Dockerfile
+    container_name: strands-travel-planner
+    ports:
+      - "${STRANDS_TRAVEL_PLANNER_PORT:-8010}:8000"
+    environment: &strands-env
+      SERVICE: planner
+      OTEL_SERVICE_NAME: strands-travel-planner
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+      WEATHER_AGENT_URL: http://strands-weather-agent:8000
+      EVENTS_AGENT_URL: http://strands-events-agent:8000
+      MCP_SERVER_URL: http://mcp-server:8003
+      FAULT_PANEL_URL: http://fault-panel:8085
+      AWS_REGION: ${AWS_REGION:-us-west-2}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
+    depends_on:
+      - otel-collector
+      - example-strands-weather-agent
+      - example-strands-events-agent
+      - example-mcp-server
+      - example-fault-panel
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
+
+  example-strands-weather-agent:
+    build: *strands-build
+    container_name: strands-weather-agent
+    ports:
+      - "${STRANDS_WEATHER_AGENT_PORT:-8011}:8000"
+    environment:
+      <<: *strands-env
+      SERVICE: weather
+      OTEL_SERVICE_NAME: strands-weather-agent
+    depends_on:
+      - otel-collector
+      - example-mcp-server
+      - example-fault-panel
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
+
+  example-strands-events-agent:
+    build: *strands-build
+    container_name: strands-events-agent
+    ports:
+      - "${STRANDS_EVENTS_AGENT_PORT:-8012}:8000"
+    environment:
+      <<: *strands-env
+      SERVICE: events
+      OTEL_SERVICE_NAME: strands-events-agent
+    depends_on:
+      - otel-collector
+      - example-mcp-server
+      - example-fault-panel
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging: *logging
+
+  # Canary for the Strands planner: same canary image and shapes (normal, shallow, deep,
+  # multi-turn sessions), pointed at the Strands services.
+  example-strands-canary:
+    build:
+      context: ./docker-compose/canary
+      dockerfile: Dockerfile
+    container_name: strands-canary
+    environment:
+      - TRAVEL_PLANNER_URL=http://strands-travel-planner:8000
+      - WEATHER_AGENT_URL=http://strands-weather-agent:8000
+      - EVENTS_AGENT_URL=http://strands-events-agent:8000
+      - FAULT_PANEL_URL=http://fault-panel:8085
+      - CANARY_INTERVAL=${CANARY_INTERVAL}
+    depends_on:
+      - example-strands-travel-planner
+      - example-fault-panel
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: ${CANARY_MEMORY_LIMIT}
+    logging: *logging
+
   # Agent Eval Canary: periodically scores un-evaluated agent traces.
   # Requires a local OpenSearch backend; gated behind the local-backends
   # profile (see COMPOSE_PROFILES in .env).
