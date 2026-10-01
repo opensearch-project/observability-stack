@@ -445,7 +445,7 @@ class WeatherAgent:
                                 wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
                                 tool_name = wrong_tools.get(tool_name, tool_name)
 
-                            tool_result = self.execute_tool(tool_name, tool_args, tool_use_id, fault)
+                            tool_result = self.execute_tool(tool_name, tool_args, tool_use_id, fault, conversation_id)
 
                             # Second Bedrock call with tool result for final answer
                             bedrock_messages.append(bedrock_response["output"]["message"])
@@ -467,7 +467,7 @@ class WeatherAgent:
                         if tool_call:
                             tool_name = tool_call["function"]["name"]
                             tool_args = json.loads(tool_call["function"]["arguments"])
-                            tool_result = self.execute_tool(tool_name, tool_args, tool_call["id"], fault)
+                            tool_result = self.execute_tool(tool_name, tool_args, tool_call["id"], fault, conversation_id)
                             final_response = f"The weather in {tool_result.get('location', 'unknown')} is {tool_result.get('condition', 'unknown')} with a temperature of {tool_result.get('temperature', 'N/A')}."
                         else:
                             final_response = "I couldn't determine what you're asking about."
@@ -508,7 +508,7 @@ class WeatherAgent:
                             if tool_name == "get_historical_weather":
                                 tool_args["date"] = "2026-01-25"
 
-                        tool_result = self.execute_tool(tool_name, tool_args, tool_call_id, fault)
+                        tool_result = self.execute_tool(tool_name, tool_args, tool_call_id, fault, conversation_id)
 
                         if "temperature" in tool_result:
                             final_response = f"The weather in {tool_result['location']} is {tool_result['condition']} with a temperature of {tool_result['temperature']}."
@@ -608,7 +608,7 @@ class WeatherAgent:
             )
             return tool_result
 
-    def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None, fault: Optional[FaultConfig] = None) -> Dict[str, Any]:
+    def execute_tool(self, tool_name: str, arguments: Dict[str, Any], tool_call_id: str = None, fault: Optional[FaultConfig] = None, conversation_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute a tool with proper instrumentation.
 
@@ -627,6 +627,7 @@ class WeatherAgent:
                 span.set_attribute("gen_ai.tool.call.arguments", json.dumps(arguments))
 
                 enrich(
+                    session_id=conversation_id,
                     input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
                 )
 

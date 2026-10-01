@@ -205,8 +205,12 @@ async def health():
     return {"status": "healthy", "agent_id": AGENT_ID, "agent_name": AGENT_NAME}
 
 
-async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
-    """Call MCP server directly for a tool execution."""
+async def call_mcp_tool(tool_name: str, arguments: dict, conversation_id: Optional[str] = None) -> dict:
+    """Call MCP server directly for a tool execution.
+
+    The execute_tool span carries gen_ai.conversation.id when the caller has one
+    (OTel GenAI semconv allows it on execute_tool spans, semantic-conventions-genai#518).
+    """
     session_id = uuid4().hex
     request_id = uuid4().hex[:8]
 
@@ -218,6 +222,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
         span.set_attribute("gen_ai.tool.name", tool_name)
 
         enrich(
+            session_id=conversation_id,
             input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
         )
 
@@ -365,7 +370,7 @@ async def plan_trip(request: PlanRequest):
             flights_data = await call_mcp_tool("fetch_flights_api", {
                 "origin": origin,
                 "destination": request.destination,
-            })
+            }, conversation_id)
         except Exception as e:
             errors.append({"agent": "flights", "error": str(e)})
 
@@ -377,7 +382,7 @@ async def plan_trip(request: PlanRequest):
                     "amount": 100,
                     "from_currency": "USD",
                     "to_currency": target_currency,
-                })
+                }, conversation_id)
             except Exception as e:
                 errors.append({"agent": "currency", "error": str(e)})
 

@@ -322,6 +322,7 @@ async def get_events(request: EventsRequest):
             tool_span.set_attribute("network.protocol.name", "http")
 
             enrich(
+                session_id=request.conversation_id,
                 input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps({"destination": destination})}]}],
             )
 
