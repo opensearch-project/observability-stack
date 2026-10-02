@@ -131,6 +131,10 @@ These services demonstrate how to instrument agent applications and generate tes
   - Generates synthetic multi-agent traffic with fault injection
   - Configurable fault distribution (50% normal, 50% various faults)
   - Validates the observability pipeline end-to-end
+- **strands-travel-planner**, **strands-weather-agent**, **strands-events-agent**: the same travel planner built on the Strands Agents SDK (ports 8010, 8011, 8012). See [examples/strands/travel-planner](../examples/strands/travel-planner/).
+  - Strands emits the GenAI spans; multi-turn sessions carry `gen_ai.conversation.id` on every span, tool spans included
+  - Bedrock when enabled in the fault panel, a scripted fallback model otherwise
+- **strands-canary**: the canary pointed at the Strands planner
 
 ## Configuration Files
 
