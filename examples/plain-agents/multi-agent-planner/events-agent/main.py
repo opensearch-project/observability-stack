@@ -207,7 +207,10 @@ logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provide
 logging.getLogger().setLevel(logging.INFO)
 logger = logging.getLogger("events-agent")
 
-inner_app = FastAPI(title="Events Agent", version="1.0.0")
+# FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
+# This service instruments itself, and enrich()/get_current_span() must reach the request span,
+# so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
+inner_app = FastAPI(title="Events Agent", version="1.0.0", telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False})
 
 
 def should_inject_fault(fault: Optional[FaultConfig]) -> bool:

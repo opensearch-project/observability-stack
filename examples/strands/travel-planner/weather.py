@@ -27,7 +27,10 @@ SYSTEM_PROMPT = (
     "about and answer in one or two sentences."
 )
 
-app = FastAPI(title=AGENT_NAME)
+# FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
+# This service instruments itself, and enrich()/get_current_span() must reach the request span,
+# so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
+app = FastAPI(title=AGENT_NAME, telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False})
 setup_telemetry(app)
 
 
