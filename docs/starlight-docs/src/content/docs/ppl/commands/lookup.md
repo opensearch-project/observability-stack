@@ -9,9 +9,60 @@ import { Tabs, TabItem, Aside } from '@astrojs/starlight/components';
 **Experimental** since OpenSearch 3.0 - syntax may change based on community feedback.
 </Aside>
 
-The `lookup` command enriches your search results by matching rows against a reference index (dimension table) and pulling in additional fields. It is the simplest way to add context -- team ownership, environment labels, cost centers, or any static metadata -- to streaming event data.
+The `lookup` command enriches your search results with fields from a second index (a "dimension table" or "lookup table"). For each row in your search results, `lookup` finds the matching row in the lookup index and copies fields from it onto your result.
 
-Compared with `join`, `lookup` is more efficient for one-to-one enrichment against a relatively small, static dataset.
+Think of it as a left join tuned for enrichment: every row from your search is kept, and matched fields from the lookup index are added or overwritten. If there is no match, the added fields are `null`. Compared with the `join` command, `lookup` is simpler and better suited for attaching a static reference dataset (region names, user departments, product categories) to streaming data.
+
+## How to read a lookup clause
+
+A lookup clause has three parts, read left to right:
+
+```
+lookup  <lookupIndex>   <matchFields>   [<strategy> <copyFields>]
+        ─────────────   ─────────────   ─────────────────────────
+        which index     how to match    what to copy over
+        to enrich from  rows            (optional)
+```
+
+### Match fields: `lookupField AS sourceField`
+
+The match fields tell `lookup` how to pair a row in your results with a row in the lookup index.
+
+> **The name on the left of `AS` is a field in the lookup index. The name on the right is the field in the search results.**
+
+So `lookup work_information uid AS id` reads as:
+
+> "Match each result row where **my** `id` equals `work_information`'s `uid`."
+
+The lookup field comes first because you are describing the lookup index (`uid`) and then saying which of your own fields it lines up with (`id`). If both indexes already use the same field name, you can drop the `AS` entirely: `lookup work_information id` matches `id` to `id`.
+
+You can match on several fields at once with a comma-separated list; a row matches only when all of them are equal. Fields without `AS` match by the same name; you can mix remapped and same-name fields:
+
+```
+lookup work_information uid AS id, name            -- match work_information.uid = worker.id AND work_information.name = worker.name
+lookup work_information uid AS id, dept AS department  -- both fields remapped
+```
+
+### Copy fields: `inputField AS outputField`
+
+After the match fields, you optionally list which fields to copy from the lookup index onto your results, and optionally rename them. This follows the same left-to-right pattern as match fields:
+
+> **The name on the left of `AS` is a field in the LOOKUP index (the source of the value). The name on the right is the field name it has in the results.**
+
+So `replace department AS dept` reads as "copy `work_information.department` onto my results under the name `dept`."
+
+If you list no copy fields at all, `lookup` copies all fields from the lookup index except the ones used for matching.
+
+### Strategy: `replace` vs. `append`
+
+The strategy controls what happens when the output field already exists on your result row:
+
+| Strategy | Behavior when the output field already has a value | Behavior when it is `null` / missing |
+| --- | --- | --- |
+| `replace` (default) | Overwrites it with the value from the lookup index (even overwriting with `null` on no match) | Fills it in from the lookup index |
+| `append` | Keeps your existing value | Fills it in from the lookup index |
+
+`replace` wins; `append` only fills gaps. If the output field does not exist on your results yet, both strategies simply add it. `output` is an accepted synonym for `replace`.
 
 ## Syntax
 
@@ -20,32 +71,16 @@ lookup <lookupIndex> (<lookupMappingField> [AS <sourceMappingField>])...
   [(replace | append | output) (<inputField> [AS <outputField>])...]
 ```
 
-## Arguments
+## Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `<lookupIndex>` | Yes | The name of the lookup index (dimension table) to match against. |
-| `<lookupMappingField>` | Yes | A key field in the lookup index used for matching, similar to a join key. Specify multiple fields as a comma-separated list. |
-| `<sourceMappingField>` | No | A key field in the source data to match against `lookupMappingField`. Defaults to the same name as `lookupMappingField`. Use `AS` to map differently named fields. |
-| `replace \| append \| output` | No | Controls how matched values are applied. Default: `replace`. |
-| `<inputField>` | No | A field from the lookup index whose matched value is added to results. If omitted, all non-key fields from the lookup index are applied. |
-| `<outputField>` | No | The name of the result field where matched values are placed. Defaults to `inputField`. |
-
-## Output modes
-
-| Mode | Behavior |
-|------|----------|
-| `replace` | Overwrites existing field values with matched values from the lookup index. If no match is found, the field is set to `null`. This is the default. |
-| `append` | Fills only missing (`null`) values in the source data. Existing non-null values are preserved. |
-| `output` | Synonym for `replace`. Provided for compatibility. |
-
-## Usage notes
-
-- **Use `lookup` instead of `join`** when enriching events from a small, static reference table. It avoids the overhead of a full join.
-- **`replace` overwrites existing values.** If the source data already has a `team` field and the lookup also provides `team`, the lookup value wins. Use `append` if you only want to fill gaps.
-- **`append` only fills nulls.** Non-null values in the source data are never overwritten. If the `outputField` does not already exist in the source and you use `append`, the operation fails. Use `replace` to create new fields.
-- **Multiple mapping fields** are supported. Separate them with commas to match on a composite key.
-- When `<inputField>` is omitted, **all fields** from the lookup index (except the mapping keys) are applied to the output.
+| `<lookupIndex>` | Yes | The lookup index (dimension table) to enrich from. |
+| `<lookupMappingField>` | Yes | A field in the **lookup index** used for matching. With no `as` clause, a field of the same name is expected in your search results. List several as a comma-separated set; all must match. |
+| `<sourceMappingField>` | No | The field in **your search results** that `<lookupMappingField>` is matched against. Defaults to the same name as `<lookupMappingField>`. |
+| `replace \| append \| output` | No | How copied values are applied. `replace` (default) overwrites; `append` fills only missing/`null` values; `output` is a synonym for `replace`. |
+| `<inputField>` | No | A field in the **lookup index** whose matched value is copied onto your results. List several as a comma-separated set. If omitted, every field in the lookup index except the match fields is copied. |
+| `<outputField>` | No | The field name on **your results** where the copied value lands. Defaults to `<inputField>`. `replace` can create new fields or overwrite existing ones; `append` fills existing fields only. |
 
 <Aside type="note">
 The `lookup` command requires a pre-existing lookup index (dimension table) in your cluster. The examples below assume you have created the referenced lookup indices. They are not available in the public playground.
