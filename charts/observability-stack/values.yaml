@@ -133,6 +133,8 @@ opensearch-dashboards:
       explore.agentTraces.enabled: true
       explore.logsDrilldown.enabled: true
       explore.logsQueryBuilder.enabled: true
+      explore.sqlSupport.enabled: true
+      explore.queryProfiling.enabled: true
       queryEnhancements.ppl.lint.enabled: true
       workspace.enabled: true
       data_source.enabled: true
@@ -149,6 +151,7 @@ opensearch-dashboards:
       uiSettings.overrides.query:enhancements:enabled: true
       uiSettings.overrides.explore:experimental: true
       observability.alertManager.enabled: true
+      opensearch_alerting.pplAlertingEnabled: true
 
 # -- Data Prepper
 data-prepper:
