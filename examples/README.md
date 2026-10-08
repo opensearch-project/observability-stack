@@ -9,6 +9,7 @@ Instrumented agent examples for the Observability Stack. Each demonstrates OpenT
 | [plain-agents/weather-agent](./plain-agents/weather-agent/) | OpenTelemetry SDK | Standalone weather assistant with fault injection, OTLP traces/metrics/logs |
 | [plain-agents/multi-agent-planner](./plain-agents/multi-agent-planner/) | OpenTelemetry SDK | Distributed travel planner with trace context propagation across sub-agents |
 | [strands/code-assistant](./strands/code-assistant/) | Strands SDK | AI coding assistant with auto-instrumented GenAI spans |
+| [strands/travel-planner](./strands/travel-planner/) | Strands SDK | The multi-agent travel planner on Strands: service map, multi-turn sessions with the conversation id on every span, fault injection |
 | [langchain/bedrock-financial-assistant](./langchain/bedrock-financial-assistant/) | LangChain | Financial assistant using Bedrock Claude with automatic LangChain tracing |
 
 ## Prerequisites
