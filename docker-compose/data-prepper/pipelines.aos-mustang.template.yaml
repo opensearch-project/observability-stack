@@ -1,0 +1,165 @@
+# Data Prepper pipeline: OTel demo -> local Mustang node (composite parquet+lucene indices),
+# RED metrics -> the bundled Cortex. See AOS-MUSTANG-SETUP.md. Placeholders (MUSTANG_ENDPOINT,
+# MUSTANG_USER, MUSTANG_PASSWORD, PROMETHEUS_HOST, PROMETHEUS_PORT) are filled in by
+# docker-compose.aos-mustang.yml at container start. The `composite-index` component template
+# must exist on the node before Data Prepper starts (aos-mustang-up.sh creates it).
+
+# Data Prepper Pipeline Configuration
+# Processes and transforms logs, traces, and metrics before writing to OpenSearch
+
+# Main OTLP pipeline - receives all telemetry and routes by type
+otlp-pipeline:
+  delay: 10
+  source:
+    # OTLP source receives telemetry via OpenTelemetry Protocol
+    otlp:
+      # Listen on port 21890 for gRPC connections from OpenTelemetry Collector
+      port: 21890
+      # Disable SSL for development
+      ssl: false
+  # Route telemetry by signal type
+  route:
+    - logs: "getEventType() == \"LOG\""
+    - traces: "getEventType() == \"TRACE\""
+  # Send to appropriate sub-pipelines
+  sink:
+    - pipeline:
+        name: "otel-logs-pipeline"
+        routes:
+          - "logs"
+    - pipeline:
+        name: "otel-traces-pipeline"
+        routes:
+          - "traces"
+
+# Log processing pipeline
+# Receives logs from main pipeline and writes to OpenSearch
+otel-logs-pipeline:
+  workers: 5
+  delay: 10
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  buffer:
+    bounded_blocking:
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  # Write processed logs to OpenSearch
+  sink:
+    - opensearch:
+        hosts: ["MUSTANG_ENDPOINT"]
+        username: 'MUSTANG_USER'
+        password: 'MUSTANG_PASSWORD'
+        insecure: true
+        # Use log analytics index type for automatic index management
+        index_type: log-analytics-plain
+        template_type: index-template
+        component_templates: ["composite-index"]
+
+# Trace processing pipeline
+# Receives traces from main pipeline and distributes to raw and service map pipelines
+otel-traces-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  # Send traces to both raw storage and service map generation
+  sink:
+    - pipeline:
+        name: "traces-raw-pipeline"
+    - pipeline:
+        name: "service-map-pipeline"
+
+# Raw trace storage pipeline
+# Stores individual trace spans in OpenSearch
+traces-raw-pipeline:
+  source:
+    pipeline:
+      name: "otel-traces-pipeline"
+  processor:
+    # Process raw trace data for OpenSearch storage
+    - otel_traces:
+  sink:
+    - opensearch:
+        hosts: ["MUSTANG_ENDPOINT"]
+        username: 'MUSTANG_USER'
+        password: 'MUSTANG_PASSWORD'
+        insecure: true
+        # Use trace analytics index type for automatic index management
+        index_type: trace-analytics-plain-raw
+        # Span template with events/links as `object` + `multi_value: true` (spans with >1 event
+        # are otherwise rejected) and typed dynamic templates for events/links attributes.
+        template_content: '{"version":2,"template":{"mappings":{"date_detection":false,"_source":{"enabled":true},"dynamic_templates":[{"long_events_attributes":{"path_match":"events.attributes.*","match_mapping_type":"long","mapping":{"type":"long","multi_value":true}}},{"double_events_attributes":{"path_match":"events.attributes.*","match_mapping_type":"double","mapping":{"type":"double","multi_value":true}}},{"boolean_events_attributes":{"path_match":"events.attributes.*","match_mapping_type":"boolean","mapping":{"type":"boolean","multi_value":true}}},{"string_events_attributes":{"path_match":"events.attributes.*","match_mapping_type":"string","mapping":{"type":"keyword","ignore_above":256,"multi_value":true}}},{"long_links_attributes":{"path_match":"links.attributes.*","match_mapping_type":"long","mapping":{"type":"long","multi_value":true}}},{"double_links_attributes":{"path_match":"links.attributes.*","match_mapping_type":"double","mapping":{"type":"double","multi_value":true}}},{"boolean_links_attributes":{"path_match":"links.attributes.*","match_mapping_type":"boolean","mapping":{"type":"boolean","multi_value":true}}},{"string_links_attributes":{"path_match":"links.attributes.*","match_mapping_type":"string","mapping":{"type":"keyword","ignore_above":256,"multi_value":true}}},{"long_resource_attributes":{"mapping":{"type":"long"},"path_match":"resource.attributes.*","match_mapping_type":"long"}},{"double_resource_attributes":{"mapping":{"type":"double"},"path_match":"resource.attributes.*","match_mapping_type":"double"}},{"string_resource_attributes":{"mapping":{"type":"keyword","ignore_above":256},"path_match":"resource.attributes.*","match_mapping_type":"string"}},{"long_scope_attributes":{"mapping":{"type":"long"},"path_match":"instrumentationScope.attributes.*","match_mapping_type":"long"}},{"double_scope_attributes":{"mapping":{"type":"double"},"path_match":"instrumentationScope.attributes.*","match_mapping_type":"double"}},{"string_scope_attributes":{"mapping":{"type":"keyword","ignore_above":256},"path_match":"instrumentationScope.attributes.*","match_mapping_type":"string"}},{"long_attributes":{"mapping":{"type":"long"},"path_match":"attributes.*","match_mapping_type":"long"}},{"double_attributes":{"mapping":{"type":"double"},"path_match":"attributes.*","match_mapping_type":"double"}},{"string_attributes":{"mapping":{"type":"keyword","ignore_above":256},"path_match":"attributes.*","match_mapping_type":"string"}}],"properties":{"droppedAttributesCount":{"type":"integer"},"instrumentationScope":{"properties":{"droppedAttributesCount":{"type":"integer"},"schemaUrl":{"type":"keyword","ignore_above":256},"name":{"type":"keyword","ignore_above":128},"version":{"type":"keyword","ignore_above":64}}},"resource":{"properties":{"droppedAttributesCount":{"type":"integer"},"schemaUrl":{"type":"keyword","ignore_above":256}}},"traceId":{"type":"keyword","ignore_above":32},"spanId":{"type":"keyword","ignore_above":16},"parentSpanId":{"type":"keyword","ignore_above":16},"name":{"ignore_above":1024,"type":"keyword"},"traceState":{"ignore_above":1024,"type":"keyword"},"traceGroup":{"ignore_above":1024,"type":"keyword"},"traceGroupFields":{"properties":{"endTime":{"type":"date_nanos"},"durationInNanos":{"type":"long"},"statusCode":{"type":"integer"}}},"kind":{"type":"keyword","ignore_above":32},"serviceName":{"type":"keyword","ignore_above":256},"startTime":{"type":"date_nanos"},"endTime":{"type":"date_nanos"},"@timestamp":{"type":"date_nanos"},"time":{"type":"date_nanos"},"status":{"properties":{"code":{"type":"integer"},"message":{"type":"keyword","ignore_above":2048}}},"durationInNanos":{"type":"long"},"events":{"type":"object","properties":{"name":{"type":"keyword","ignore_above":256,"multi_value":true},"attributes":{"type":"object"},"droppedAttributesCount":{"type":"integer","multi_value":true},"time":{"type":"date_nanos","multi_value":true}}},"droppedEventsCount":{"type":"integer"},"links":{"type":"object","properties":{"traceId":{"type":"keyword","ignore_above":32,"multi_value":true},"spanId":{"type":"keyword","ignore_above":16,"multi_value":true},"traceState":{"ignore_above":1024,"type":"keyword","multi_value":true},"attributes":{"type":"object"},"droppedAttributesCount":{"type":"integer","multi_value":true}}},"droppedLinksCount":{"type":"integer"}}}}}'
+        template_type: index-template
+        component_templates: ["composite-index"]
+        # Composite (Mustang) indices are append-only: `index` with the forced
+        # spanId document id is rejected; `create` is allowed.
+        action: create
+
+# Service map generation pipeline (APM)
+# Builds service dependency maps and RED metrics from trace relationships.
+# Splits into two sub-pipelines so we can strip high-cardinality `randomKey`
+# labels from the Cortex branch without polluting the service-map branch.
+service-map-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "otel-traces-pipeline"
+  processor:
+    # APM service map processor - generates topology, service details, and RED metrics
+    - otel_apm_service_map:
+        group_by_attributes: [telemetry.sdk.language]
+        window_duration: 10s
+  route:
+    - otel_apm_service_map_route: 'getEventType() == "SERVICE_MAP"'
+    - service_processed_metrics: 'getEventType() == "METRIC"'
+  sink:
+    - opensearch:
+        hosts: ["MUSTANG_ENDPOINT"]
+        username: 'MUSTANG_USER'
+        password: 'MUSTANG_PASSWORD'
+        insecure: true
+        index_type: otel-v2-apm-service-map
+        template_type: index-template
+        component_templates: ["composite-index"]
+        routes: [otel_apm_service_map_route]
+    # Fan out service-derived RED metrics to a dedicated pipeline that strips
+    # the per-event randomKey UUID before Cortex rejects it for cardinality.
+    - pipeline:
+        name: "service-metrics-cortex-pipeline"
+        routes: [service_processed_metrics]
+
+# Strips the per-event `randomKey` UUID from span-derived RED metrics
+# before the Cortex remote-write sink. Without this, data-prepper tags
+# every latency bucket with a fresh UUID, blowing past Cortex's default
+# 50k series-per-metric limit in minutes.
+service-metrics-cortex-pipeline:
+  delay: 100
+  source:
+    pipeline:
+      name: "service-map-pipeline"
+  processor:
+    # Drop only the per-event randomKey. Do NOT strip telemetry.sdk.language:
+    # otel_apm_service_map is configured to group_by it and emits one sample
+    # per (service, operation, remoteService, sdk.language) per window, so
+    # removing the label collapses multi-language services onto the same
+    # series+timestamp and Cortex rejects them as duplicate samples.
+    # Note: data-prepper event keys use JSON-pointer-style paths; labels
+    # set by otel_apm_service_map land under /attributes/<key>, so both
+    # the top-level and attributes-scoped paths are listed to be safe.
+    - delete_entries:
+        with_keys:
+          - "/attributes/randomKey"
+          - "randomKey"
+  sink:
+    # Route RED metrics to local Cortex via remote write.
+    # Cortex's distributor push endpoint is /api/v1/push (not Prometheus's /api/v1/write).
+    - prometheus:
+        url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/push"
+        insecure: true
+        threshold:
+          max_events: 500
+          flush_interval: 5s

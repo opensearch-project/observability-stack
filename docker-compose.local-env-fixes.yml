@@ -1,0 +1,69 @@
+# Host-environment fixes for running this stack on an Amazon Cloud Desktop
+# alongside a local Mustang node. Nothing here is Mustang-specific wiring —
+# see docker-compose.dp-mustang.yml for that.
+#
+# 1. opensearch published on host 9201 instead of 9200
+#    The local Mustang / OPTIMIZED node (`./gradlew run` from the OpenSearch dev
+#    tree) owns host 9200. Only the *published* port moves; the in-network
+#    endpoint stays https://opensearch:9200, so OPENSEARCH_HOST/PORT in .env,
+#    Dashboards' OPENSEARCH_HOSTS, the exporter and the init containers are all
+#    untouched. `!override` (Compose v2.24+) is required because Compose
+#    *appends* ports lists by default, which would bring 9200 back and collide.
+#
+# 2. alertmanager clustering disabled
+#    This host's docker bridge is 240.10.0.0/24, which is not an RFC1918 range.
+#    Alertmanager's memberlist refuses to start without a "private IP":
+#      "couldn't deduce an advertise address: no private IP found"
+#      "unable to initialize gossip mesh ... No private IP address found"
+#    → crash-loop. HA gossip is pointless for a single replica, so
+#    --cluster.listen-address='' turns it off. The rest of the command is copied
+#    verbatim from docker-compose.yml; keep it in sync if that changes.
+#
+# 3. frontend-proxy (envoy) resolves upstreams via glibc, not c-ares
+#    Envoy's default c-ares resolver times out against Docker's embedded DNS on
+#    this host for every name that exists, so all 9 STRICT_DNS clusters sat at
+#    membership_total: 0 and every route through :8080 answered 503 — including
+#    /loadgen. The mounted template adds a bootstrap typed_dns_resolver_config
+#    pinning the getaddrinfo resolver; see the comment inside the file for the
+#    evidence. Only applies when the otel-demo overlay is enabled.
+#
+# 4. flagd-ui / llm memory limits raised
+#    Both were OOMKilled in a restart loop (exit 137, State.OOMKilled=true) at
+#    the demo's stock caps of 200M / 50M on this host.
+#
+# Pass this file on every compose command for this stack:
+#   docker compose -f docker-compose.yml -f docker-compose.local-env-fixes.yml <cmd>
+services:
+  opensearch:
+    ports: !override
+      - "9201:9200"
+      - "9600:9600"
+
+  alertmanager:
+    command: !override
+      - -c
+      - |
+        cp /tmp/alertmanager.template.yml /tmp/alertmanager.yml &&
+        sed -i 's|OPENSEARCH_USER|'$$OPENSEARCH_USER'|g' /tmp/alertmanager.yml &&
+        sed -i 's|OPENSEARCH_PASSWORD|'$$OPENSEARCH_PASSWORD'|g' /tmp/alertmanager.yml &&
+        exec /bin/alertmanager \
+          --config.file=/tmp/alertmanager.yml \
+          --storage.path=/alertmanager \
+          --web.listen-address=:9093 \
+          --cluster.listen-address=''
+
+  frontend-proxy:
+    volumes:
+      - ./docker-compose/frontend-proxy/envoy.tmpl.yaml:/home/envoy/envoy.tmpl.yaml:ro
+
+  flagd-ui:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  llm:
+    deploy:
+      resources:
+        limits:
+          memory: 256M

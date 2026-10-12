@@ -1,0 +1,45 @@
+# Data Prepper -> local Mustang node (composite indices via the `composite-index` component
+# template); metrics -> the bundled Cortex. Everything else in the stack is unchanged.
+# Layer after docker-compose.yml and docker-compose.local-env-fixes.yml; see AOS-MUSTANG-SETUP.md.
+#
+# Needs in the calling shell (aos-mustang-up.sh sets them):
+#   DP_OPENSEARCH_SINK_JAR  Data Prepper opensearch sink jar with `component_templates` (data-prepper#7161)
+# Optional: MUSTANG_ENDPOINT (default http://host.docker.internal:9200), MUSTANG_USER, MUSTANG_PASSWORD
+# (a dev-tree node runs without security, so the defaults are placeholders).
+services:
+  data-prepper:
+    # Bash substitution (not sed) so passwords with |, &, / survive.
+    command:
+      - /bin/bash
+      - -c
+      - |
+        t=$$(cat /tmp/pipelines.template.yaml) &&
+        t=$${t//MUSTANG_ENDPOINT/"$$MUSTANG_ENDPOINT"} &&
+        t=$${t//MUSTANG_USER/"$$MUSTANG_USER"} &&
+        t=$${t//MUSTANG_PASSWORD/"$$MUSTANG_PASSWORD"} &&
+        t=$${t//PROMETHEUS_HOST/"$$PROMETHEUS_HOST"} &&
+        t=$${t//PROMETHEUS_PORT/"$$PROMETHEUS_PORT"} &&
+        printf '%s\n' "$$t" > /usr/share/data-prepper/pipelines/pipelines.yaml &&
+        exec /usr/share/data-prepper/bin/data-prepper
+    environment:
+      MUSTANG_ENDPOINT: ${MUSTANG_ENDPOINT:-http://host.docker.internal:9200}
+      MUSTANG_USER: ${MUSTANG_USER:-admin}
+      MUSTANG_PASSWORD: ${MUSTANG_PASSWORD:-unused}
+      # Default heap (1/4 of the 1G limit = 256MB) GC-thrashes on the collector backlog.
+      JAVA_OPTS: -Xms1g -Xmx2g
+    # host.docker.internal = docker0 gateway, where mustang-bridge-fwd.py listens.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+    volumes:
+      - ./docker-compose/data-prepper/pipelines.aos-mustang.template.yaml:/tmp/pipelines.template.yaml:ro
+      # The image's opensearch sink predates `component_templates`; replace it with a main build.
+      - ${DP_OPENSEARCH_SINK_JAR:?set DP_OPENSEARCH_SINK_JAR}:/usr/share/data-prepper/lib/data-prepper-opensearch-2.16.0-SNAPSHOT.jar:ro
+
+  # OSD reaches the Mustang node (host :9200) as a data source.
+  opensearch-dashboards:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
