@@ -1,8 +1,10 @@
-# Data Prepper pipeline: OTel demo -> local Mustang node (composite parquet+lucene indices),
-# RED metrics -> the bundled Cortex. See AOS-MUSTANG-SETUP.md. Placeholders (MUSTANG_ENDPOINT,
-# MUSTANG_USER, MUSTANG_PASSWORD, PROMETHEUS_HOST, PROMETHEUS_PORT) are filled in by
-# docker-compose.aos-mustang.yml at container start. The `composite-index` component template
-# must exist on the node before Data Prepper starts (aos-mustang-up.sh creates it).
+# Data Prepper pipeline: OTel demo -> a Mustang target (composite parquet+lucene indices): a local
+# node or a managed Amazon OpenSearch Service domain. RED metrics -> Amazon Managed Prometheus when
+# AMP_REMOTE_WRITE_URL is set, else the bundled Cortex. See AOS-MUSTANG-SETUP.md.
+# The upper-case placeholders below are filled in by docker-compose.aos-mustang.yml at container
+# start (keep them out of comments: one is replaced by a multi-line block). The
+# `composite-index` component template must exist before Data Prepper starts (aos-mustang-up.sh
+# creates it).
 
 # Data Prepper Pipeline Configuration
 # Processes and transforms logs, traces, and metrics before writing to OpenSearch
@@ -155,11 +157,11 @@ service-metrics-cortex-pipeline:
           - "/attributes/randomKey"
           - "randomKey"
   sink:
-    # Route RED metrics to local Cortex via remote write.
-    # Cortex's distributor push endpoint is /api/v1/push (not Prometheus's /api/v1/write).
+    # Remote write to AMP (SigV4, `aws.region`) or the bundled Cortex (/api/v1/push, `insecure`);
+    # docker-compose.aos-mustang.yml fills in the URL and the auth line.
     - prometheus:
-        url: "http://PROMETHEUS_HOST:PROMETHEUS_PORT/api/v1/push"
-        insecure: true
+        url: "METRICS_REMOTE_WRITE_URL"
+        METRICS_AUTH
         threshold:
           max_events: 500
           flush_interval: 5s

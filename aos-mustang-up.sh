@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Run the observability stack with Data Prepper -> a local Mustang node. See AOS-MUSTANG-SETUP.md.
+# Run the observability stack with Data Prepper -> a Mustang target: a local node (default) or a
+# managed Amazon OpenSearch Service domain. See AOS-MUSTANG-SETUP.md.
 #   usage: ./aos-mustang-up.sh [compose args]     default: up -d
 #   e.g.   ./aos-mustang-up.sh up -d --force-recreate --no-deps data-prepper
 # Optional settings in ${AOS_MUSTANG_ENV:-~/.aos-mustang.env}:
 #   MUSTANG_URL             node as seen from this host        (default http://127.0.0.1:9200)
 #   MUSTANG_ENDPOINT        node as seen from the containers  (default http://host.docker.internal:9200)
-#   MUSTANG_USER / MUSTANG_PASSWORD                            (only if the node runs the security plugin)
+#   MUSTANG_USER / MUSTANG_PASSWORD                            (security plugin / FGAC basic auth on a domain)
+#   AMP_REMOTE_WRITE_URL, AWS_REGION, AWS_PROFILE              (metrics -> AMP instead of the bundled Cortex)
 #   DP_OPENSEARCH_SINK_JAR  default: ../data-prepper/data-prepper-plugins/opensearch/build/libs/data-prepper-opensearch-*-SNAPSHOT.jar
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -21,14 +23,26 @@ fi
 export DP_OPENSEARCH_SINK_JAR=$(cd "$(dirname "$DP_OPENSEARCH_SINK_JAR")" && pwd)/$(basename "$DP_OPENSEARCH_SINK_JAR")
 
 if [ "${1:-up}" = up ]; then
-  curl -sf -m5 "${AUTH[@]}" "$MUSTANG_URL" >/dev/null || { echo "Mustang node not reachable at $MUSTANG_URL"; exit 1; }
-  GW=$(ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
-  if [ -n "$GW" ] && ! curl -s -m3 -o /dev/null "http://$GW:9200"; then
-    echo "Containers can't reach the node: run  python3 mustang-bridge-fwd.py $GW  (keep it running)"; exit 1
+  curl -sf -m5 "${AUTH[@]}" "$MUSTANG_URL" >/dev/null || { echo "Mustang target not reachable at $MUSTANG_URL"; exit 1; }
+  # Local node only: containers reach it through mustang-bridge-fwd.py on the docker0 gateway.
+  if [[ ${MUSTANG_ENDPOINT:-http://host.docker.internal:9200} == *host.docker.internal* ]]; then
+    GW=$(ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
+    if [ -n "$GW" ] && ! curl -s -m3 -o /dev/null "http://$GW:9200"; then
+      echo "Containers can't reach the node: run  python3 mustang-bridge-fwd.py $GW  (keep it running)"; exit 1
+    fi
   fi
   # Data Prepper only references the component template; it must exist before DP starts.
   curl -sf "${AUTH[@]}" -XPUT "$MUSTANG_URL/_component_template/composite-index" -H 'content-type: application/json' \
        -d @docker-compose/data-prepper/composite-index-component-template.json >/dev/null && echo "component template composite-index: ok"
+fi
+
+# Metrics -> AMP: SigV4 needs AWS creds in the container (exported, or from AWS_PROFILE).
+if [ -n "${AMP_REMOTE_WRITE_URL:-}" ]; then
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] && [ -n "${AWS_PROFILE:-}" ]; then
+    eval "$(aws configure export-credentials --profile "$AWS_PROFILE" --format env)"
+  fi
+  : "${AWS_ACCESS_KEY_ID:?AMP_REMOTE_WRITE_URL is set but there are no AWS creds: export them or set AWS_PROFILE}"
+  export AMP_REMOTE_WRITE_URL AWS_REGION=${AWS_REGION:-us-east-1} AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
 fi
 
 export INCLUDE_COMPOSE_OTEL_DEMO=${INCLUDE_COMPOSE_OTEL_DEMO:-docker-compose.otel-demo.yml}

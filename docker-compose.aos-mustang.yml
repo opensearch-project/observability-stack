@@ -1,11 +1,15 @@
-# Data Prepper -> local Mustang node (composite indices via the `composite-index` component
-# template); metrics -> the bundled Cortex. Everything else in the stack is unchanged.
+# Data Prepper -> a Mustang target: a local node (default) or a managed Amazon OpenSearch Service
+# domain (composite indices via the `composite-index` component template). Metrics -> Amazon
+# Managed Prometheus when AMP_REMOTE_WRITE_URL is set, else the bundled Cortex.
+# Everything else in the stack is unchanged.
 # Layer after docker-compose.yml and docker-compose.local-env-fixes.yml; see AOS-MUSTANG-SETUP.md.
 #
 # Needs in the calling shell (aos-mustang-up.sh sets them):
 #   DP_OPENSEARCH_SINK_JAR  Data Prepper opensearch sink jar with `component_templates` (data-prepper#7161)
 # Optional: MUSTANG_ENDPOINT (default http://host.docker.internal:9200), MUSTANG_USER, MUSTANG_PASSWORD
-# (a dev-tree node runs without security, so the defaults are placeholders).
+# (a dev-tree node runs without security, so the defaults are placeholders; a managed domain needs
+# FGAC basic auth). For AMP: AMP_REMOTE_WRITE_URL, AWS_REGION, AWS_ACCESS_KEY_ID /
+# AWS_SECRET_ACCESS_KEY [/ AWS_SESSION_TOKEN].
 services:
   data-prepper:
     # Bash substitution (not sed) so passwords with |, &, / survive.
@@ -17,17 +21,28 @@ services:
         t=$${t//MUSTANG_ENDPOINT/"$$MUSTANG_ENDPOINT"} &&
         t=$${t//MUSTANG_USER/"$$MUSTANG_USER"} &&
         t=$${t//MUSTANG_PASSWORD/"$$MUSTANG_PASSWORD"} &&
-        t=$${t//PROMETHEUS_HOST/"$$PROMETHEUS_HOST"} &&
-        t=$${t//PROMETHEUS_PORT/"$$PROMETHEUS_PORT"} &&
+        if [ -n "$$AMP_REMOTE_WRITE_URL" ]; then
+          url=$$AMP_REMOTE_WRITE_URL; auth=$$'aws:\n          region: '"$$AWS_REGION"
+        else
+          url="http://$$PROMETHEUS_HOST:$$PROMETHEUS_PORT/api/v1/push"; auth='insecure: true'
+        fi &&
+        t=$${t//METRICS_REMOTE_WRITE_URL/"$$url"} &&
+        t=$${t//METRICS_AUTH/"$$auth"} &&
         printf '%s\n' "$$t" > /usr/share/data-prepper/pipelines/pipelines.yaml &&
         exec /usr/share/data-prepper/bin/data-prepper
     environment:
       MUSTANG_ENDPOINT: ${MUSTANG_ENDPOINT:-http://host.docker.internal:9200}
       MUSTANG_USER: ${MUSTANG_USER:-admin}
       MUSTANG_PASSWORD: ${MUSTANG_PASSWORD:-unused}
+      # Set AMP_REMOTE_WRITE_URL to send RED metrics to Amazon Managed Prometheus instead of Cortex.
+      AMP_REMOTE_WRITE_URL: ${AMP_REMOTE_WRITE_URL:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
       # Default heap (1/4 of the 1G limit = 256MB) GC-thrashes on the collector backlog.
       JAVA_OPTS: -Xms1g -Xmx2g
-    # host.docker.internal = docker0 gateway, where mustang-bridge-fwd.py listens.
+    # host.docker.internal = docker0 gateway, where mustang-bridge-fwd.py listens (local node only).
     extra_hosts:
       - "host.docker.internal:host-gateway"
     deploy:
@@ -39,7 +54,7 @@ services:
       # The image's opensearch sink predates `component_templates`; replace it with a main build.
       - ${DP_OPENSEARCH_SINK_JAR:?set DP_OPENSEARCH_SINK_JAR}:/usr/share/data-prepper/lib/data-prepper-opensearch-2.16.0-SNAPSHOT.jar:ro
 
-  # OSD reaches the Mustang node (host :9200) as a data source.
+  # OSD reaches a local Mustang node (host :9200) as a data source.
   opensearch-dashboards:
     extra_hosts:
       - "host.docker.internal:host-gateway"

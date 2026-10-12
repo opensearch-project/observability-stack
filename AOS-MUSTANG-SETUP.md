@@ -1,16 +1,26 @@
-# Observability stack against a local Mustang node (AOS-style indices)
+# Observability stack against Mustang: local node or managed domain (AOS-style indices)
 
 Run this observability stack (OTel demo + collector + Data Prepper) with **Data Prepper
-writing logs, spans and the service map to a locally running Mustang node**: composite
-indices, parquet primary + lucene secondary. The index layout is the one an Amazon
-OpenSearch Service Mustang domain gets: the standard DP index names, ISM rollover and
-aliases. **RED metrics go to the bundled Cortex.** The UI is the bundled OpenSearch
-Dashboards, with the Mustang node added as a data source and queried with PPL.
+writing logs, spans and the service map to Mustang** (composite indices: parquet primary +
+lucene secondary). The target is either:
+
+- **a locally running Mustang node** (the default, Steps 1–5), or
+- **a managed Amazon OpenSearch Service domain on the Mustang engine** (see
+  [Managed domain instead of a local node](#managed-domain-instead-of-a-local-node)).
+
+The index layout is the one an AOS Mustang domain gets: the standard DP index names, ISM
+rollover and aliases. **RED metrics** go to the bundled Cortex, or to Amazon Managed Prometheus
+when `AMP_REMOTE_WRITE_URL` is set. For a local node, the UI is the bundled OpenSearch
+Dashboards with the node as a data source (PPL). For a domain, it's an OpenSearch UI app.
 
 ```
-OTel demo ─► otel-collector ─► Data Prepper ─┬─► local Mustang node (127.0.0.1:9200, via mustang-bridge-fwd.py)
-                                             └─► Cortex (bundled)
-OpenSearch Dashboards (bundled) ── data source ──► Mustang node (PPL)
+local:    OTel demo ─► otel-collector ─► Data Prepper ─┬─► Mustang node (127.0.0.1:9200, via mustang-bridge-fwd.py)
+                                                       └─► Cortex (bundled)
+          OpenSearch Dashboards (bundled) ── data source ──► Mustang node (PPL)
+
+managed:  OTel demo ─► otel-collector ─► Data Prepper ─┬─► AOS domain on Mustang (FGAC basic auth)
+                                                       └─► AMP (SigV4) or Cortex (bundled)
+          OpenSearch UI app ── data source ──► AOS domain (PPL)
 ```
 
 How it differs from `MUSTANG-SETUP.md` (branch `mustang-local-datasource`):
@@ -22,10 +32,10 @@ How it differs from `MUSTANG-SETUP.md` (branch `mustang-local-datasource`):
 | Composite settings from | custom index templates DP installs | `composite-index` component template layered onto DP's built-in templates |
 | UI reads | Lucene by default | Mustang (PPL) |
 
-> Status: built from the setup that ran against the local node on 2026-09-25 (component
-> template, `action: create`, DP opensearch sink built from source). It adds the span-template fix from the AOS
-> domain run (2026-09-29 to 2026-10-08) and moves everything into the repo. These exact files
-> have not been run end to end yet.
+> Status: built from two setups that ran. Against a local node on 2026-09-25: the component
+> template, `action: create`, a DP opensearch sink built from source. Against the AOS domain
+> `test-observability-pudyodu` from 2026-09-29 to 2026-10-08: FGAC basic auth, AMP, and the
+> span-template fix. These exact files have not been run end to end yet.
 
 ## What this setup adds
 
@@ -44,11 +54,11 @@ How the pipeline differs from `docker-compose/data-prepper/pipelines.template.ya
 
 | Change | Why |
 |---|---|
-| Sinks → `MUSTANG_ENDPOINT` (`http://host.docker.internal:9200`) | The node on the host, through the forwarder |
+| Sinks → `MUSTANG_ENDPOINT` (default `http://host.docker.internal:9200`) | The node on the host, through the forwarder; or a domain endpoint |
 | `template_type: index-template` + `component_templates: ["composite-index"]` on all 3 sinks | A dev-tree node creates plain Lucene indices by default (`cluster.pluggable.dataformat.enabled=false`). The component template makes only DP's indices composite. Changing the cluster default instead would also make system indices (ISM, job scheduler, …) composite. |
 | Span sink `action: create` | Composite indices are append-only. DP writes spans with `_id = spanId`, and `index` with a custom id is rejected (`index.append_only.enabled`). |
 | Span sink `template_content` (events/links as `object` + `multi_value: true`) | Spans with more than one event were rejected (`Field [events.name] cannot accept multiple values`), about 30% of spans |
-| Metrics sink unchanged (bundled Cortex) | |
+| Metrics sink → bundled Cortex, or AMP (`aws.region`, SigV4) when `AMP_REMOTE_WRITE_URL` is set | Filled in at container start, since a pipeline can't branch on its own |
 
 ## Prerequisites
 
@@ -213,6 +223,51 @@ template when the version is higher.
 ```
 
 Then run `./aos-mustang-up.sh up -d --force-recreate --no-deps data-prepper`. It applies from the next rollover.
+
+## Managed domain instead of a local node
+
+The same files write to an Amazon OpenSearch Service domain on the Mustang engine.
+
+**Prerequisites:**
+- **Mustang engine:** a domain running Mustang.
+- **Basic auth:** an FGAC internal user (basic auth), and a domain access policy that lets
+  requests from this host reach FGAC. SigV4-only (IAM) access isn't supported by these sinks.
+- **AMP (optional):** an AMP workspace in the region, and AWS credentials with `aps:RemoteWrite`.
+- **Data Prepper:** the sink jar from Prerequisite 2. Prerequisite 1 (a local node) and Step 1
+  (the forwarder) don't apply.
+
+**Settings** (`~/.aos-mustang.env`, `chmod 600`):
+
+```bash
+MUSTANG_URL=https://search-<domain>-<id>.<region>.es.amazonaws.com:443        # host-side checks + component template
+MUSTANG_ENDPOINT=https://search-<domain>-<id>.<region>.es.amazonaws.com:443   # what Data Prepper writes to
+MUSTANG_USER=<fgac user>
+MUSTANG_PASSWORD=<fgac password>          # no single quote (') - it's put inside '…' in the YAML
+# metrics -> AMP instead of the bundled Cortex (optional)
+AMP_REMOTE_WRITE_URL=https://aps-workspaces.<region>.amazonaws.com/workspaces/ws-<id>/api/v1/remote_write
+AWS_REGION=<region>                        # set it here; a different AWS_REGION in your shell would win otherwise
+AWS_PROFILE=<profile with aps:RemoteWrite> # or export AWS_ACCESS_KEY_ID/… before running
+```
+
+Then run `./aos-mustang-up.sh` as in Step 2. With a non-local `MUSTANG_ENDPOINT`, the script
+skips the forwarder check. It still PUTs the `composite-index` component template on the
+domain; that's harmless when the domain already defaults to composite.
+
+With Isengard, export the credentials yourself, for example from
+`ada credentials print --account <acct> --role <role> --provider isengard`. Session
+credentials expire after a few hours. When Data Prepper logs `PrometheusHttpSender … 403`,
+refresh them with `./aos-mustang-up.sh up -d --force-recreate --no-deps data-prepper`.
+
+**Verify** as in Step 3, but use the domain endpoint with `-u "$MUSTANG_USER:$MUSTANG_PASSWORD"`.
+
+**UI:** an OpenSearch UI app with the domain as a data source (engine type
+**AnalyticEngine**), with the same three datasets as Step 4:
+- `logs-otel-v1*` with time field `time`, signal type logs
+- `otel-v1-apm-span*` with time field `endTime`, signal type traces
+- `otel-v2-apm-service-map*` with time field `timestamp`
+
+Add a trace-to-logs correlation. The APM config should use the AMP workspace as its Prometheus
+connection.
 
 ## Tear down
 
