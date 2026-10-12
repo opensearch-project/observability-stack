@@ -7,7 +7,7 @@
 #   MUSTANG_URL             node as seen from this host        (default http://127.0.0.1:9200)
 #   MUSTANG_ENDPOINT        node as seen from the containers  (default http://host.docker.internal:9200)
 #   MUSTANG_USER / MUSTANG_PASSWORD                            (security plugin / FGAC basic auth on a domain)
-#   AMP_REMOTE_WRITE_URL, AWS_REGION, AWS_PROFILE              (metrics -> AMP instead of the bundled Cortex)
+#   AMP_REMOTE_WRITE_URL, AWS_REGION, AWS_PROFILE              (metrics -> AMP; required for a managed domain)
 #   DP_OPENSEARCH_SINK_JAR  default: ../data-prepper/data-prepper-plugins/opensearch/build/libs/data-prepper-opensearch-*-SNAPSHOT.jar
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -22,17 +22,24 @@ fi
 [ -f "${DP_OPENSEARCH_SINK_JAR:-}" ] || { echo "DP_OPENSEARCH_SINK_JAR not found (build data-prepper main: ./gradlew :data-prepper-plugins:opensearch:jar)"; exit 1; }
 export DP_OPENSEARCH_SINK_JAR=$(cd "$(dirname "$DP_OPENSEARCH_SINK_JAR")" && pwd)/$(basename "$DP_OPENSEARCH_SINK_JAR")
 
+# Option A (local node) is the default; any other MUSTANG_ENDPOINT is Option B (managed domain).
+LOCAL=0; [[ ${MUSTANG_ENDPOINT:-http://host.docker.internal:9200} == *host.docker.internal* ]] && LOCAL=1
+
 if [ "${1:-up}" = up ]; then
-  curl -sf -m5 "${AUTH[@]}" "$MUSTANG_URL" >/dev/null || { echo "Mustang target not reachable at $MUSTANG_URL"; exit 1; }
+  if [ $LOCAL = 0 ] && [ -z "${AMP_REMOTE_WRITE_URL:-}" ]; then
+    echo "Managed domain: set AMP_REMOTE_WRITE_URL (the AMP workspace's remote-write endpoint) in $ENV_FILE."
+    echo "See AOS-MUSTANG-SETUP.md, Option B, step B1."; exit 1
+  fi
+  curl -sf -m5 ${AUTH[@]+"${AUTH[@]}"} "$MUSTANG_URL" >/dev/null || { echo "Mustang target not reachable at $MUSTANG_URL"; exit 1; }
   # Local node only: containers reach it through mustang-bridge-fwd.py on the docker0 gateway.
-  if [[ ${MUSTANG_ENDPOINT:-http://host.docker.internal:9200} == *host.docker.internal* ]]; then
+  if [ $LOCAL = 1 ]; then
     GW=$(ip -4 -o addr show docker0 2>/dev/null | awk '{print $4}' | cut -d/ -f1)
     if [ -n "$GW" ] && ! curl -s -m3 -o /dev/null "http://$GW:9200"; then
       echo "Containers can't reach the node: run  python3 mustang-bridge-fwd.py $GW  (keep it running)"; exit 1
     fi
   fi
   # Data Prepper only references the component template; it must exist before DP starts.
-  curl -sf "${AUTH[@]}" -XPUT "$MUSTANG_URL/_component_template/composite-index" -H 'content-type: application/json' \
+  curl -sf ${AUTH[@]+"${AUTH[@]}"} -XPUT "$MUSTANG_URL/_component_template/composite-index" -H 'content-type: application/json' \
        -d @docker-compose/data-prepper/composite-index-component-template.json >/dev/null && echo "component template composite-index: ok"
 fi
 
