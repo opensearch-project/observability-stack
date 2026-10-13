@@ -15,6 +15,7 @@ import json
 import os
 import random
 import time
+import uuid
 import requests
 from datetime import datetime
 
@@ -24,6 +25,19 @@ WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
 FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
 CANARY_INTERVAL = int(os.getenv("CANARY_INTERVAL", "30"))
+# Probability that an invocation is a multi-turn session (several /plan turns sharing one
+# gen_ai.conversation.id). Kept separate from the fault panel's trace_shape_weights so the
+# panel config can't disable it.
+SESSION_PROBABILITY = float(os.getenv("SESSION_PROBABILITY", "0.3"))
+
+# Follow-up turns for multi-turn sessions; {dest} is filled with the session's destination.
+SESSION_FOLLOW_UPS = [
+    "What's the weather going to be like in {dest} this weekend?",
+    "Any good events or concerts in {dest}?",
+    "Can you find a cheaper flight option to {dest}?",
+    "What should I pack for {dest}?",
+    "Suggest a budget-friendly itinerary for {dest}.",
+]
 
 DESTINATIONS = ["Paris", "Tokyo", "London", "Berlin", "Sydney", "New York", "Mumbai", "Seattle"]
 ORIGINS = ["Portland", "Seattle", "San Francisco", "New York", "Chicago", "Denver", "Austin", "Boston"]
@@ -173,6 +187,28 @@ def invoke_deep(destinations):
     return results > 0
 
 
+def invoke_session(destination):
+    """Multi-turn session: 2-4 /plan turns sharing one conversation id (one trace per turn)."""
+    conversation_id = f"sess_{uuid.uuid4().hex[:16]}"
+    origin = random.choice(ORIGINS)
+    turns = [f"Plan a trip to {destination} from {origin}"]
+    turns += [t.format(dest=destination) for t in random.sample(SESSION_FOLLOW_UPS, k=random.randint(1, 3))]
+    print(f"  [session] {conversation_id}: {len(turns)} turns about {destination}")
+    results = 0
+    for turn in turns:
+        payload = {"destination": destination, "origin": origin,
+                   "conversation_id": conversation_id, "message": turn}
+        try:
+            response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
+            if response.status_code == 200:
+                results += 1
+        except Exception:
+            pass
+        time.sleep(random.uniform(1, 3))  # think time between user turns
+    print(f"             → {results}/{len(turns)} turns succeeded")
+    return results > 0
+
+
 def main():
     print("=" * 50)
     print("Canary - Travel Planner with Fault Injection")
@@ -209,7 +245,9 @@ def main():
 
             print(f"[{timestamp}] invocation #{count}")
 
-            if shape == "shallow":
+            if random.random() < SESSION_PROBABILITY:
+                ok = invoke_session(destination)
+            elif shape == "shallow":
                 ok = invoke_shallow(destination)
             elif shape == "deep":
                 dests = random.sample(DESTINATIONS, k=random.randint(2, 4))

@@ -91,7 +91,10 @@ def setup_telemetry():
 
 
 tracer = setup_telemetry()
-inner_app = FastAPI(title="MCP Server", version="1.0.0")
+# FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
+# This service instruments itself, and enrich()/get_current_span() must reach the request span,
+# so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
+inner_app = FastAPI(title="MCP Server", version="1.0.0", telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False})
 
 
 class ToolCallRequest(BaseModel):

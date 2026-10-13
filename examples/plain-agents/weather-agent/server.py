@@ -38,7 +38,7 @@ class InvokeRequest(BaseModel):
 
 class InvokeResponse(BaseModel):
     response: str
-    conversation_id: str
+    conversation_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -59,7 +59,10 @@ meter, logger = setup_telemetry(
 agent = WeatherAgent(meter, logger)
 
 # Create inner FastAPI app
-inner_app = FastAPI(title="Weather Agent API", version="1.0.0")
+# FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
+# This service instruments itself, and enrich()/get_current_span() must reach the request span,
+# so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
+inner_app = FastAPI(title="Weather Agent API", version="1.0.0", telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False})
 
 logger.info("Weather Agent API server started", extra={"otlp_endpoint": otlp_endpoint})
 
@@ -76,7 +79,9 @@ async def health():
 
 @inner_app.post("/invoke", response_model=InvokeResponse)
 async def invoke(request: InvokeRequest):
-    conversation_id = request.conversation_id or f"conv_{uuid.uuid4().hex[:12]}"
+    # Per OTel GenAI semconv, only set gen_ai.conversation.id when the caller provides one;
+    # never fabricate a fallback (UUID, trace id, content hash).
+    conversation_id = request.conversation_id
 
     fault_config = None
     if request.fault:
