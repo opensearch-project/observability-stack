@@ -258,7 +258,7 @@ resource "helm_release" "observability_stack" {
     }
   }
   dynamic "set_sensitive" {
-    for_each = var.opensearch_password != "" ? [1] : []
+    for_each = nonsensitive(var.opensearch_password != "") ? [1] : []
     content {
       name  = "opensearchPassword"
       value = var.opensearch_password
