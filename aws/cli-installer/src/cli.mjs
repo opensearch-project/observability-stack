@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
 import { DEFAULTS } from './config.mjs';
+import { environmentAwsProfile } from './aws-profile.mjs';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../package.json');
@@ -32,7 +33,8 @@ export function parseCli(argv) {
   // Core
   program
     .option('--pipeline-name <name>', 'Pipeline name and resource prefix', DEFAULTS.pipelineName)
-    .option('--region <region>', 'AWS region (e.g. us-east-1)');
+    .option('--region <region>', 'AWS region (e.g. us-east-1)')
+    .option('--profile <profile>', 'AWS shared configuration profile', environmentAwsProfile() || undefined);
 
   // OpenSearch backend type
   program
@@ -103,6 +105,7 @@ function parseDestroyArgs(argv) {
     .description('Tear down all AWS resources created by the CLI for a given pipeline name')
     .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
     .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION)
+    .option('--profile <profile>', 'AWS shared configuration profile', environmentAwsProfile() || undefined)
     .option('--opensearch-password <password>', 'Master password (if domain was not created by CLI)')
     .option('--aoss-collection-name <name>', 'Collection name if it differs from the pipeline name');
 
@@ -147,6 +150,7 @@ function optsToConfig(opts) {
     mode,
     pipelineName: opts.pipelineName,
     region: opts.region || '',
+    profile: opts.profile?.trim() || '',
     opensearchType,
     osAction,
     aossCollectionName: opts.aossCollectionName || '',

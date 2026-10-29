@@ -385,6 +385,7 @@ export function printBanner(session) {
     const sessionLines = [
       `${theme.muted('Account')}  ${session.account}`,
       `${theme.muted('Region')}   ${session.region}`,
+      `${theme.muted('Profile')}  ${session.profile || 'default credential chain'}`,
       `${theme.muted('Identity')} ${theme.muted(session.arn)}`,
     ];
     printBox(sessionLines, { title: 'Session', color: 'primary', padding: 2 });

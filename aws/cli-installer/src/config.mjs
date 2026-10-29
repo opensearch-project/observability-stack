@@ -23,6 +23,7 @@ export function createDefaultConfig() {
     mode: '',
     pipelineName: DEFAULTS.pipelineName,
     region: '',
+    profile: '',
     opensearchType: DEFAULTS.opensearchType,
     osAction: '',
     aossCollectionName: '',

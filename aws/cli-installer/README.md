@@ -39,6 +39,18 @@ node bin/cli-installer.mjs --managed \
   --region us-east-1
 ```
 
+**Use a named AWS profile:**
+```bash
+node bin/cli-installer.mjs --managed \
+  --pipeline-name obs-stack-<your-alias> \
+  --region us-east-1 \
+  --profile my-sandbox
+```
+
+The selected profile is used for credential resolution throughout creation,
+interactive resource discovery, SigV4 requests, and teardown. `AWS_PROFILE` and
+`AWS_DEFAULT_PROFILE` remain supported when `--profile` is omitted.
+
 **Create a serverless (AOSS) deployment from scratch:**
 ```bash
 node bin/cli-installer.mjs --serverless \
@@ -118,7 +130,8 @@ VPC, then select subnets and security groups from your account.
 ```bash
 node bin/cli-installer.mjs destroy \
   --pipeline-name obs-stack-<your-alias> \
-  --region us-east-1
+  --region us-east-1 \
+  --profile my-sandbox
 ```
 
 Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipeline, IAM roles. OpenSearch domain and AMP workspace are preserved (shared resources).
