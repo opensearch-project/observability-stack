@@ -12,6 +12,11 @@ export const DEFAULTS = {
   osEngineVersion: 'OpenSearch_3.5',
   minOcu: 1,
   maxOcu: 4,
+  // OpenSearch Serverless NextGen collection group compute limits (indexing and search OCU).
+  // 0 lets the group scale to zero when idle; the OTel demo plus agent examples settle at about
+  // 2 indexing and 2 search OCU, so 16 leaves headroom for bursts.
+  aossMinOcu: 0,
+  aossMaxOcu: 16,
   serviceMapWindow: '30s',
 };
 
@@ -26,6 +31,9 @@ export function createDefaultConfig() {
     opensearchType: DEFAULTS.opensearchType,
     osAction: '',
     aossCollectionName: '',
+    aossCollectionGroupName: '',
+    aossMinOcu: DEFAULTS.aossMinOcu,
+    aossMaxOcu: DEFAULTS.aossMaxOcu,
     opensearchEndpoint: '',
     opensearchUser: 'admin',
     opensearchPassword: '',
@@ -68,4 +76,13 @@ export function createDefaultConfig() {
     skipDemo: false,
     accountId: '',
   };
+}
+
+// Collection group names are limited to 32 characters.
+const AOSS_GROUP_NAME_MAX = 32;
+
+/** Default collection group name for a collection: `<collection>-cg`, truncated to 32 chars. */
+export function defaultCollectionGroupName(collectionName) {
+  const suffix = '-cg';
+  return `${collectionName.slice(0, AOSS_GROUP_NAME_MAX - suffix.length)}${suffix}`;
 }

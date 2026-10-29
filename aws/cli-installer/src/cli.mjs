@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
-import { DEFAULTS } from './config.mjs';
+import { DEFAULTS, defaultCollectionGroupName } from './config.mjs';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../package.json');
@@ -36,8 +36,11 @@ export function parseCli(argv) {
 
   // OpenSearch backend type
   program
-    .option('--serverless', 'Use OpenSearch Serverless (AOSS) instead of a managed domain')
-    .option('--aoss-collection-name <name>', 'Collection name for OpenSearch Serverless');
+    .option('--serverless', 'Use an OpenSearch Serverless (AOSS) NextGen time series collection instead of a managed domain')
+    .option('--aoss-collection-name <name>', 'Collection name for OpenSearch Serverless')
+    .option('--aoss-collection-group-name <name>', 'NextGen collection group name (default: <collection>-cg)')
+    .option('--aoss-min-ocu <n>', 'Collection group minimum indexing and search OCU', DEFAULTS.aossMinOcu)
+    .option('--aoss-max-ocu <n>', 'Collection group maximum indexing and search OCU', DEFAULTS.aossMaxOcu);
 
   // OpenSearch — reuse
   program
@@ -104,7 +107,8 @@ function parseDestroyArgs(argv) {
     .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
     .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION)
     .option('--opensearch-password <password>', 'Master password (if domain was not created by CLI)')
-    .option('--aoss-collection-name <name>', 'Collection name if it differs from the pipeline name');
+    .option('--aoss-collection-name <name>', 'Collection name if it differs from the pipeline name')
+    .option('--aoss-collection-group-name <name>', 'Collection group name if it differs from <collection>-cg');
 
   program.parse(argv.slice(1));
   return { _command: 'destroy', ...program.opts() };
@@ -150,6 +154,9 @@ function optsToConfig(opts) {
     opensearchType,
     osAction,
     aossCollectionName: opts.aossCollectionName || '',
+    aossCollectionGroupName: opts.aossCollectionGroupName || '',
+    aossMinOcu: Number(opts.aossMinOcu),
+    aossMaxOcu: Number(opts.aossMaxOcu),
     opensearchEndpoint: opts.opensearchEndpoint || '',
     opensearchUser: opts.opensearchUser || 'admin',
     opensearchPassword: opts.opensearchPassword || '',
@@ -194,6 +201,7 @@ export function applyQuickDefaults(cfg) {
   if (!cfg.osAction) cfg.osAction = 'create';
   if (cfg.opensearchType === 'serverless') {
     if (!cfg.aossCollectionName) cfg.aossCollectionName = cfg.pipelineName;
+    if (!cfg.aossCollectionGroupName) cfg.aossCollectionGroupName = defaultCollectionGroupName(cfg.aossCollectionName);
   } else {
     if (!cfg.osDomainName) cfg.osDomainName = cfg.pipelineName;
   }
@@ -213,7 +221,7 @@ export function applyQuickDefaults(cfg) {
 export function fillDryRunPlaceholders(cfg) {
   if (cfg.osAction === 'create' && !cfg.opensearchEndpoint) {
     if (cfg.opensearchType === 'serverless') {
-      cfg.opensearchEndpoint = `https://${cfg.aossCollectionName}.${cfg.region}.aoss.amazonaws.com`;
+      cfg.opensearchEndpoint = `https://${cfg.aossCollectionName}.aoss.${cfg.region}.on.aws`;
     } else {
       cfg.opensearchEndpoint = `https://search-${cfg.osDomainName}.${cfg.region}.es.amazonaws.com`;
     }
@@ -293,6 +301,17 @@ export function validateConfig(cfg) {
   }
   if (cfg.apsAction === 'reuse' && cfg.prometheusUrl && !/^https?:\/\//.test(cfg.prometheusUrl)) {
     errors.push('Prometheus URL must start with http:// or https://');
+  }
+
+  if (cfg.opensearchType === 'serverless') {
+    const min = Number(cfg.aossMinOcu);
+    const max = Number(cfg.aossMaxOcu);
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < 1 || min > max) {
+      errors.push(`--aoss-min-ocu/--aoss-max-ocu must satisfy 0 <= min <= max and max >= 1 (got ${cfg.aossMinOcu}/${cfg.aossMaxOcu})`);
+    }
+    if (cfg.aossCollectionGroupName && cfg.aossCollectionGroupName.length > 32) {
+      errors.push(`--aoss-collection-group-name must be at most 32 characters (got ${cfg.aossCollectionGroupName.length})`);
+    }
   }
 
   // VPC deployment: all three (vpc/subnets/SGs) must be present together and well-formed.

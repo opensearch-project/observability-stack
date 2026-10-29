@@ -4,11 +4,11 @@
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
 import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
-import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand } from '@aws-sdk/client-opensearchserverless';
+import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand, BatchGetCollectionCommand, BatchGetCollectionGroupCommand, DeleteCollectionGroupCommand } from '@aws-sdk/client-opensearchserverless';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
-import { FGAC_ROLES } from './aws.mjs';
+import { FGAC_ROLES, defaultCollectionGroupName } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
   try {
@@ -241,9 +241,11 @@ export async function destroy(cfg) {
     }
   } catch (e) { printWarning(`AMP cleanup: ${e.message}`); }
 
-  // 10. AOSS collection + policies (if serverless was used).
-  // Collection name defaults to pipelineName but can be overridden via --aoss-collection-name.
+  // 10. AOSS collection, collection group + policies (if serverless was used).
+  // Collection name defaults to pipelineName but can be overridden via --aoss-collection-name;
+  // the group defaults to <collection>-cg (override with --aoss-collection-group-name).
   const collectionName = cfg.aossCollectionName || pipelineName;
+  const groupName = cfg.aossCollectionGroupName || defaultCollectionGroupName(collectionName);
   try {
     const aoss = new OpenSearchServerlessClient({ region });
     const { collectionSummaries } = await aoss.send(new ListCollectionsCommand({
@@ -253,19 +255,52 @@ export async function destroy(cfg) {
     if (collection) {
       await aoss.send(new DeleteCollectionCommand({ id: collection.id }));
       printSuccess(`AOSS collection '${collectionName}' deletion initiated`);
-
-      // Clean up policies
-      for (const [type, name] of [['encryption', `${collectionName}-enc`], ['network', `${collectionName}-net`]]) {
-        try { await aoss.send(new DeleteSecurityPolicyCommand({ name, type })); printSuccess(`${type} policy '${name}' deleted`); }
-        catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`${type} policy: ${e.message}`); }
-      }
-      try { await aoss.send(new DeleteAccessPolicyCommand({ name: `${collectionName}-access`, type: 'data' })); printSuccess(`Data access policy deleted`); }
-      catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
+      await waitForCollectionDeleted(aoss, collection.id);
     }
+
+    // The collection group can only be deleted once it has no collections. A group shared with
+    // other collections is left in place.
+    try {
+      const { collectionGroupDetails } = await aoss.send(new BatchGetCollectionGroupCommand({ names: [groupName] }));
+      const group = collectionGroupDetails?.[0];
+      if (group) {
+        if (group.numberOfCollections > 0) {
+          printWarning(`Collection group '${groupName}' still has ${group.numberOfCollections} collection(s); leaving it in place`);
+        } else {
+          await aoss.send(new DeleteCollectionGroupCommand({ id: group.id }));
+          printSuccess(`AOSS collection group '${groupName}' deleted`);
+        }
+      }
+    } catch (e) {
+      if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Collection group: ${e.message}`);
+    }
+
+    // Clean up policies, even if the collection was never created (e.g. a failed create).
+    for (const [type, name] of [['encryption', `${collectionName}-enc`], ['network', `${collectionName}-net`]]) {
+      try { await aoss.send(new DeleteSecurityPolicyCommand({ name, type })); printSuccess(`${type} policy '${name}' deleted`); }
+      catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`${type} policy: ${e.message}`); }
+    }
+    try { await aoss.send(new DeleteAccessPolicyCommand({ name: `${collectionName}-access`, type: 'data' })); printSuccess(`Data access policy deleted`); }
+    catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
   } catch (e) {
     if (!/ResourceNotFoundException/i.test(e.message)) printWarning(`AOSS cleanup: ${e.message}`);
   }
 
   console.error();
   printSuccess('Destroy complete');
+}
+
+/** Poll until a deleted AOSS collection is gone (needed before its collection group can be deleted). */
+async function waitForCollectionDeleted(aoss, id) {
+  const spinner = createSpinner('Waiting for AOSS collection deletion...');
+  spinner.start();
+  const start = Date.now();
+  while (Date.now() - start < 600_000) {
+    try {
+      const { collectionDetails } = await aoss.send(new BatchGetCollectionCommand({ ids: [id] }));
+      if (!collectionDetails?.length) { spinner.succeed('AOSS collection deleted'); return; }
+    } catch { /* treat lookup errors as gone */ spinner.succeed('AOSS collection deleted'); return; }
+    await new Promise((r) => setTimeout(r, 10_000));
+  }
+  spinner.fail('Timed out waiting for AOSS collection deletion');
 }

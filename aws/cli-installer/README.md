@@ -1,6 +1,6 @@
 # Observability Stack AWS CLI
 
-Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain (or serverless collection), OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
+Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain (or an OpenSearch Serverless NextGen time series collection), OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
 
 ## Quick Start
 
@@ -9,7 +9,7 @@ Deploy the [Observability Stack](https://github.com/opensearch-project/observabi
 npx @opensearch-project/observability-stack
 ```
 
-**Serverless collection (AOSS):**
+**Serverless time series collection (AOSS NextGen):**
 ```bash
 npx @opensearch-project/observability-stack --serverless
 ```
@@ -20,7 +20,7 @@ Takes ~15 minutes for managed, ~5 minutes for serverless. When complete, the CLI
 
 | Resource | Description |
 |---|---|
-| OpenSearch domain **or** serverless collection | Stores logs, traces, and service map data |
+| OpenSearch domain **or** serverless time series collection | Stores logs, traces, and service map data. Serverless creates a NextGen collection group (default 0 to 16 indexing and search OCU) and a TIMESERIES collection in it |
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
 | Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
@@ -39,12 +39,23 @@ node bin/cli-installer.mjs --managed \
   --region us-east-1
 ```
 
-**Create a serverless (AOSS) deployment from scratch:**
+**Create a serverless (AOSS NextGen time series) deployment from scratch:**
 ```bash
 node bin/cli-installer.mjs --serverless \
   --pipeline-name obs-stack-<your-alias> \
   --region us-east-1
 ```
+
+Serverless options:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--aoss-collection-name` | pipeline name | Time series collection name |
+| `--aoss-collection-group-name` | `<collection>-cg` | NextGen collection group (max 32 characters) |
+| `--aoss-min-ocu` | `0` | Minimum indexing and search OCU for the group. `0` scales to zero when idle |
+| `--aoss-max-ocu` | `16` | Maximum indexing and search OCU for the group |
+
+Time series collections require every document to carry the index timestamp field. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), so no extra copy step is needed.
 
 **Reuse existing OpenSearch domain / AMP workspace:**
 ```bash
@@ -131,6 +142,8 @@ Deletes: EC2 instance, OpenSearch Application, Connected Data Source, OSIS pipel
 
 ## Known Limitations
 
+- **Serverless cold start** — With `--aoss-min-ocu 0` the collection group scales search compute to zero when idle. The first queries after an idle period can take 15 to 30 seconds while capacity comes back; later queries are sub-second. Use `--aoss-min-ocu 1` or higher to keep capacity warm.
+- **Serverless reuse requires a NextGen time series collection** — classic (SEARCH or classic TIMESERIES) collections are not supported.
 - **Index pattern fields need manual refresh** — After data starts flowing, go to Management → Index Patterns → select pattern → click 🔄 to pick up new fields.
 - **Demo data takes 10-15 minutes** — The EC2 instance needs time to bootstrap Docker, pull images, and start sending telemetry.
 - **Idempotent but not updateable** — Running twice safely no-ops, but won't update existing resources with new config.
