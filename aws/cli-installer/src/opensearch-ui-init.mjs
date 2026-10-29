@@ -169,7 +169,6 @@ export async function initOpenSearchUI(cfg) {
     { title: 'otel-v1-apm-span*', timeFieldName: 'endTime', signalType: 'traces' },
     { title: svcMapPattern, timeFieldName: 'timestamp' },
   ];
-  if (isServerless) patterns.forEach((p) => { p.type = 'INDEXES'; });
 
   const patternIds = {};
   for (const p of patterns) {
@@ -290,7 +289,8 @@ export async function initOpenSearchUI(cfg) {
   console.error();
   printSuccess(`OpenSearch UI initialized`);
   printInfo(`URL: ${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`);
-  cfg.dashboardsUrl = `${base}/w/${wsId}/app/home`;
+  // app/home is not a workspace app and redirects to the workspace picker; open the overview dashboard instead.
+  cfg.dashboardsUrl = `${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`;
 }
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
