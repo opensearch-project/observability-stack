@@ -101,24 +101,19 @@ function buildUserData(cfg) {
   const osiEndpoint = `https://${cfg.ingestEndpoints[0]}`;
   const region = cfg.region;
 
+  // Overlay on the stack's own collector config (docker-compose/otel-collector/config.yaml at
+  // the pinned ref), passed as a second --config. The collector merges the files and replaces
+  // lists, so this swaps the exporters and pipelines for OSIS while keeping the base config's
+  // processors -- notably gen_ai_normalizer and the transform that de-dots attribute keys and
+  // stringifies map log bodies. Without them OpenSearch rejects spans with colliding dotted keys
+  // (db.system vs db.system.name, user_agent vs user_agent.original) and logs whose body is a map.
   const collectorConfig = `
 extensions:
   sigv4auth:
     region: "${region}"
     service: osis
 
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-        cors: { allowed_origins: ["http://*", "https://*"] }
-
 processors:
-  batch: { timeout: 10s, send_batch_size: 1024 }
-  memory_limiter: { check_interval: 5s, limit_percentage: 80, spike_limit_percentage: 25 }
   resourcedetection: { detectors: [env, ec2, system] }
 
 exporters:
@@ -136,13 +131,10 @@ exporters:
     compression: none
 
 service:
-  telemetry:
-    logs:
-      level: info
   extensions: [sigv4auth]
   pipelines:
-    logs:    { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-logs] }
-    traces:  { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-traces] }
+    logs:    { receivers: [otlp], processors: [resourcedetection, memory_limiter, transform, batch], exporters: [otlphttp/osis-logs] }
+    traces:  { receivers: [otlp], processors: [resourcedetection, memory_limiter, gen_ai_normalizer, transform, batch], exporters: [otlphttp/osis-traces] }
     metrics: { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-metrics] }
 `.trim();
 
@@ -172,7 +164,7 @@ if ! git clone --depth 1 --branch "\$OBS_STACK_REF" https://github.com/opensearc
 fi
 cd /opt/obs-stack
 
-cat > docker-compose/otel-collector/config.yaml << 'COLLECTOREOF'
+cat > docker-compose/otel-collector/managed.yaml << 'COLLECTOREOF'
 ${collectorConfig}
 COLLECTOREOF
 
@@ -208,9 +200,10 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:\${OTEL_COLLECTOR_VERSION}
     container_name: otel-collector
-    command: ["--config=/etc/otelcol-config.yml"]
+    command: ["--config=/etc/otelcol-config.yml", "--config=/etc/otelcol-managed.yml"]
     volumes:
       - ./docker-compose/otel-collector/config.yaml:/etc/otelcol-config.yml
+      - ./docker-compose/otel-collector/managed.yaml:/etc/otelcol-managed.yml
     ports:
       - "\${OTEL_COLLECTOR_PORT_GRPC:-4317}:4317"
       - "\${OTEL_COLLECTOR_PORT_HTTP:-4318}:4318"

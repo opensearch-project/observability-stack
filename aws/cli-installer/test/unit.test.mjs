@@ -167,6 +167,23 @@ describe('EC2 demo buildUserData', () => {
     assert.ok(/OBS_STACK_REF="v\d/.test(decoded));
   });
 
+  it('layers the OSIS overlay on the stack collector config instead of replacing it', () => {
+    // The stack's config.yaml carries gen_ai_normalizer and the transform that de-dots attribute
+    // keys and stringifies map log bodies. Overwriting it drops both, and OpenSearch then rejects
+    // spans with colliding dotted keys.
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes("cat > docker-compose/otel-collector/managed.yaml << 'COLLECTOREOF'"));
+    assert.ok(!decoded.includes('cat > docker-compose/otel-collector/config.yaml'));
+    assert.ok(decoded.includes('"--config=/etc/otelcol-config.yml", "--config=/etc/otelcol-managed.yml"'));
+    assert.ok(decoded.includes('./docker-compose/otel-collector/managed.yaml:/etc/otelcol-managed.yml'));
+  });
+
+  it('runs the stack transform and GenAI normalizer in the OSIS pipelines', () => {
+    const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
+    assert.ok(decoded.includes('processors: [resourcedetection, memory_limiter, gen_ai_normalizer, transform, batch], exporters: [otlphttp/osis-traces]'));
+    assert.ok(decoded.includes('processors: [resourcedetection, memory_limiter, transform, batch], exporters: [otlphttp/osis-logs]'));
+  });
+
   it('clears COMPOSE_PROFILES so local-backend services are pruned in managed mode', () => {
     const decoded = Buffer.from(_buildUserData(cfg), 'base64').toString();
     assert.ok(decoded.includes('export COMPOSE_PROFILES='));
