@@ -47,6 +47,22 @@ The [demo workload](#demo-workload) is deployed by default. To skip it:
 cdk deploy --all -c enableDemo=false
 ```
 
+### OpenSearch Serverless
+
+To store data in an OpenSearch Serverless time series collection instead of a managed domain:
+
+```bash
+cdk deploy --all -c opensearchType=serverless
+```
+
+This creates a NextGen collection group (`<collection>-cg`, standby replicas enabled) and a `TIMESERIES` collection in it. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), which time series collections require on every document.
+
+The group's indexing and search capacity defaults to 0 to 16 OCU. The demo workloads settle at about 2 and 2. With a minimum of 0 the group scales to zero when idle, and the first queries after an idle period take longer while search capacity comes back. To change the limits:
+
+```bash
+cdk deploy --all -c opensearchType=serverless -c aossMinOcu=1 -c aossMaxOcu=8
+```
+
 ## Architecture
 
 ```

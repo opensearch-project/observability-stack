@@ -9,6 +9,10 @@ export interface InfraStackProps extends cdk.StackProps {
   osInstanceType?: string;
   osInstanceCount?: number;
   osVolumeSize?: number;
+  /** Serverless collection group minimum indexing and search OCU (default 0). */
+  aossMinOcu?: number;
+  /** Serverless collection group maximum indexing and search OCU (default 16). */
+  aossMaxOcu?: number;
 }
 
 export class InfraStack extends cdk.Stack {
@@ -33,6 +37,8 @@ export class InfraStack extends cdk.Stack {
       const collectionName = `obs-${this.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
+        minOcu: props.aossMinOcu,
+        maxOcu: props.aossMaxOcu,
       });
 
       this.domainEndpoint = serverless.collectionEndpoint;

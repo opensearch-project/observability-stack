@@ -13,11 +13,19 @@ const env = {
 
 const opensearchType = (app.node.tryGetContext('opensearchType') as 'managed' | 'serverless') || 'managed';
 const enableDemo = String(app.node.tryGetContext('enableDemo') ?? true) !== 'false';
+const optionalNumber = (key: string): number | undefined => {
+  const value = app.node.tryGetContext(key);
+  return value === undefined ? undefined : Number(value);
+};
 
 // Slow-changing infra: OpenSearch domain/collection, AMP workspace, DQS data source
 const infra = new InfraStack(app, 'ObsInfra', {
   env,
   opensearchType,
+  ...(opensearchType === 'serverless' && {
+    aossMinOcu: optionalNumber('aossMinOcu'),
+    aossMaxOcu: optionalNumber('aossMaxOcu'),
+  }),
   ...(opensearchType !== 'serverless' && {
     osInstanceType: 'r6g.large.search',
     osInstanceCount: 1,
