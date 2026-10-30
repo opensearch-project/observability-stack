@@ -146,9 +146,11 @@ export async function destroy(cfg) {
     const { ApplicationSummaries } = await os.send(new ListApplicationsCommand({}));
     const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
     if (app) {
-      const spinner = createSpinner('Deleting OpenSearch Application...');
-      await os.send(new DeleteApplicationCommand({ id: app.id }));
-      spinner.stop(`Application ${app.id} deleted`);
+      const spinner = createSpinner('Deleting OpenSearch Application...').start();
+      try {
+        await os.send(new DeleteApplicationCommand({ id: app.id }));
+      } catch (e) { spinner.fail(); throw e; }
+      spinner.succeed(`Application ${app.id} deleted`);
     } else {
       printInfo('No OpenSearch Application found');
     }
@@ -168,14 +170,19 @@ export async function destroy(cfg) {
   const osis = new OSISClient({ region });
   try {
     await osis.send(new GetPipelineCommand({ PipelineName: pipelineName }));
-    const spinner = createSpinner('Deleting OSIS pipeline (takes ~5 min)...');
-    await osis.send(new DeletePipelineCommand({ PipelineName: pipelineName }));
+    const spinner = createSpinner('Deleting OSIS pipeline (takes ~5 min)...').start();
+    try {
+      await osis.send(new DeletePipelineCommand({ PipelineName: pipelineName }));
+    } catch (e) { spinner.fail(); throw e; }
     // Poll until deleted
-    for (let i = 0; i < 40; i++) {
+    let deleted = false;
+    for (let i = 0; i < 40 && !deleted; i++) {
       await new Promise(r => setTimeout(r, 15000));
       try { await osis.send(new GetPipelineCommand({ PipelineName: pipelineName })); }
-      catch { spinner.stop('OSIS pipeline deleted'); break; }
+      catch { deleted = true; }
     }
+    if (deleted) spinner.succeed('OSIS pipeline deleted');
+    else spinner.warn('OSIS pipeline is still deleting after 10 min; check the console');
   } catch (e) {
     if (e.name === 'ResourceNotFoundException') printInfo('No OSIS pipeline found');
     else printWarning(`OSIS: ${e.message}`);
