@@ -188,7 +188,9 @@ async def fetch_weather(location: str) -> dict:
     with tracer.start_as_current_span(
         "open-meteo forecast",
         kind=SpanKind.CLIENT,
-        attributes={"http.url.path": "/v1/forecast", "weather.location": resolved_name},
+        # url.path is the semantic-convention name. "http.url.path" collided with the http.url
+        # string other HTTP spans set: OpenSearch maps one as an object and rejects the other.
+        attributes={"url.path": "/v1/forecast", "weather.location": resolved_name},
     ):
         async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             resp = await client.get(
