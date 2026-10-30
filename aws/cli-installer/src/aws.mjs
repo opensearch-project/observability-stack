@@ -46,6 +46,8 @@ import {
   CreateSecurityPolicyCommand,
   CreateAccessPolicyCommand,
   ListCollectionsCommand,
+  CreateCollectionGroupCommand,
+  BatchGetCollectionGroupCommand,
 } from '@aws-sdk/client-opensearchserverless';
 import {
   printStep,
@@ -62,6 +64,7 @@ import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import chalk from 'chalk';
 import { randomBytes, createHash } from 'node:crypto';
+import { defaultCollectionGroupName } from './config.mjs';
 import {
   SecretsManagerClient,
   CreateSecretCommand,
@@ -408,11 +411,60 @@ async function createManagedDomain(cfg) {
   throw new Error('Timed out waiting for OpenSearch domain');
 }
 
-// ── OpenSearch Serverless (AOSS) collection ────────────────────────────────
+// ── OpenSearch Serverless (AOSS) NextGen time series collection ───────────
+
+export { defaultCollectionGroupName };
+
+/**
+ * Create (or reuse) the NEXTGEN collection group that hosts the time series collection.
+ * The group owns the compute limits: OCUs scale between min and max for indexing and search.
+ */
+async function ensureCollectionGroup(client, cfg) {
+  const groupName = cfg.aossCollectionGroupName;
+  try {
+    const existing = await client.send(new BatchGetCollectionGroupCommand({ names: [groupName] }));
+    const group = existing.collectionGroupDetails?.[0];
+    if (group) {
+      if (group.generation && group.generation !== 'NEXTGEN') {
+        throw new Error(`Collection group '${groupName}' exists but is not a NEXTGEN group (generation: ${group.generation})`);
+      }
+      printSuccess(`Collection group '${groupName}' already exists`);
+      return;
+    }
+  } catch (e) {
+    if (/not a NEXTGEN group/.test(e.message)) throw e;
+    /* not found: create it */
+  }
+
+  try {
+    await client.send(new CreateCollectionGroupCommand({
+      name: groupName,
+      generation: 'NEXTGEN',
+      standbyReplicas: 'ENABLED',
+      capacityLimits: {
+        minIndexingCapacityInOCU: cfg.aossMinOcu,
+        maxIndexingCapacityInOCU: cfg.aossMaxOcu,
+        minSearchCapacityInOCU: cfg.aossMinOcu,
+        maxSearchCapacityInOCU: cfg.aossMaxOcu,
+      },
+      tags: [{ key: TAG_KEY, value: cfg.pipelineName }],
+    }));
+    printSuccess(`Collection group '${groupName}' created (NEXTGEN, ${cfg.aossMinOcu}-${cfg.aossMaxOcu} OCU)`);
+  } catch (e) {
+    if (/ConflictException|already exists/i.test(e.message)) {
+      printSuccess(`Collection group '${groupName}' already exists`);
+    } else {
+      printError('Failed to create AOSS collection group');
+      console.error(`  ${chalk.dim(e.message)}`);
+      throw new Error('Failed to create AOSS collection group');
+    }
+  }
+}
 
 async function createServerlessCollection(cfg) {
   const collectionName = cfg.aossCollectionName;
-  printStep(`Creating AOSS collection '${collectionName}'...`);
+  if (!cfg.aossCollectionGroupName) cfg.aossCollectionGroupName = defaultCollectionGroupName(collectionName);
+  printStep(`Creating AOSS time series collection '${collectionName}'...`);
   console.error();
 
   const client = new OpenSearchServerlessClient({ region: cfg.region });
@@ -424,9 +476,16 @@ async function createServerlessCollection(cfg) {
     }));
     const existing = list.collectionSummaries?.find((c) => c.name === collectionName);
     if (existing) {
+      const [detail] = (await client.send(new BatchGetCollectionCommand({ ids: [existing.id] }))).collectionDetails ?? [];
+      if (detail && (detail.type !== 'TIMESERIES' || !detail.collectionGroupName)) {
+        throw new Error(
+          `Collection '${collectionName}' exists but is not a NextGen time series collection ` +
+          `(type: ${detail.type}). Use a different collection name.`
+        );
+      }
       if (existing.status === 'ACTIVE') {
         cfg.collectionId = existing.id;
-        cfg.opensearchEndpoint = `https://${existing.id}.${cfg.region}.aoss.amazonaws.com`;
+        cfg.opensearchEndpoint = detail?.collectionEndpoint || `https://${existing.id}.aoss.${cfg.region}.on.aws`;
         printSuccess(`Collection '${collectionName}' already exists: ${cfg.opensearchEndpoint}`);
         return;
       }
@@ -435,7 +494,10 @@ async function createServerlessCollection(cfg) {
         printInfo(`Collection '${collectionName}' is being created — waiting...`);
       }
     }
-  } catch { /* proceed to create */ }
+  } catch (e) {
+    if (/not a NextGen time series collection/.test(e.message)) throw e;
+    /* proceed to create */
+  }
 
   if (!cfg.collectionId) {
     // Encryption policy (required before collection creation)
@@ -477,11 +539,14 @@ async function createServerlessCollection(cfg) {
       } else throw e;
     }
 
+    await ensureCollectionGroup(client, cfg);
+
     // Create collection
     try {
       const result = await client.send(new CreateAossCollectionCommand({
         name: collectionName,
-        type: 'SEARCH',
+        type: 'TIMESERIES',
+        collectionGroupName: cfg.aossCollectionGroupName,
         tags: [{ key: TAG_KEY, value: cfg.pipelineName }],
       }));
       cfg.collectionId = result.createCollectionDetail?.id;
@@ -1488,13 +1553,35 @@ export async function listCollections(region) {
   try {
     const client = new OpenSearchServerlessClient({ region });
     const { collectionSummaries } = await client.send(new ListCollectionsCommand({}));
-    return (collectionSummaries || []).map((c) => ({
-      name: c.name,
-      id: c.id,
-      endpoint: `https://${c.id}.${region}.aoss.amazonaws.com`,
-      status: c.status,
-    }));
+    const summaries = collectionSummaries || [];
+    // Summaries carry no type or endpoint; read them in batches of 100.
+    const details = new Map();
+    for (let i = 0; i < summaries.length; i += 100) {
+      const ids = summaries.slice(i, i + 100).map((c) => c.id);
+      try {
+        const { collectionDetails } = await client.send(new BatchGetCollectionCommand({ ids }));
+        for (const d of collectionDetails || []) details.set(d.id, d);
+      } catch { /* fall back to summary data */ }
+    }
+    return summaries.map((c) => {
+      const d = details.get(c.id);
+      return {
+        name: c.name,
+        id: c.id,
+        endpoint: d?.collectionEndpoint || '',
+        status: c.status,
+        type: d?.type || '',
+        collectionGroupName: d?.collectionGroupName || '',
+        // NextGen time series collections are TIMESERIES collections inside a collection group.
+        nextgenTimeseries: d?.type === 'TIMESERIES' && !!d?.collectionGroupName,
+      };
+    });
   } catch { return []; }
+}
+
+/** Collection id from a collection endpoint (`https://<id>.aoss.<region>.on.aws`). */
+export function collectionIdFromEndpoint(endpoint) {
+  try { return new URL(endpoint).hostname.split('.')[0]; } catch { return ''; }
 }
 
 /**
@@ -2001,6 +2088,7 @@ export async function getStackResources(region, stackName) {
  */
 function arnToType(arn) {
   if (/^arn:aws:osis:/.test(arn)) return 'OSI Pipeline';
+  if (/^arn:aws:aoss:[^:]*:[^:]*:collection-group\//.test(arn)) return 'AOSS Collection Group';
   if (/^arn:aws:aoss:/.test(arn)) return 'AOSS Collection';
   if (/^arn:aws:es:.*:domain\//.test(arn)) return 'OpenSearch Domain';
   if (/^arn:aws:iam:.*:role\//.test(arn)) return 'IAM Role';
