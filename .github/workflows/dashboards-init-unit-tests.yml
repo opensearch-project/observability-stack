@@ -1,0 +1,28 @@
+name: Dashboards Init Unit Tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py'
+      - 'charts/observability-stack/files/init-opensearch-dashboards.py'
+      - 'test/test_init_opensearch_dashboards.py'
+      - '.github/workflows/dashboards-init-unit-tests.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py'
+      - 'charts/observability-stack/files/init-opensearch-dashboards.py'
+      - 'test/test_init_opensearch_dashboards.py'
+      - '.github/workflows/dashboards-init-unit-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Test OpenSearch Dashboards initializers
+        run: python3 -m unittest test/test_init_opensearch_dashboards.py
