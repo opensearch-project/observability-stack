@@ -324,13 +324,13 @@ export async function launchDemoInstance(cfg) {
   // back to the account's default VPC subnet (current behavior).
   const inVpc = Boolean(cfg.vpcId);
 
-  const spinner = createSpinner('Looking up AMI and subnet...');
+  const spinner = createSpinner('Looking up AMI and subnet...').start();
   const amiPromise = getLatestAL2023Ami(ssm);
   const subnetId = inVpc
     ? await getVpcSubnetForInstance(ec2, cfg.subnetIds, INSTANCE_TYPE)
     : (await getDefaultVpcSubnet(ec2, INSTANCE_TYPE)).SubnetId;
   const ami = await amiPromise;
-  spinner.stop(`AMI: ${ami}`);
+  spinner.succeed(`AMI: ${ami}`);
 
   // In VPC mode, reuse the caller-provided security groups (they should already
   // allow the intra-VPC traffic the domain/pipeline need). Otherwise create a
@@ -339,16 +339,16 @@ export async function launchDemoInstance(cfg) {
   if (inVpc) {
     sgIds = cfg.securityGroupIds;
   } else {
-    const sgSpinner = createSpinner('Creating security group...');
+    const sgSpinner = createSpinner('Creating security group...').start();
     sgIds = [await createDemoSecurityGroup(ec2, cfg)];
-    sgSpinner.stop(`Security group: ${sgIds[0]}`);
+    sgSpinner.succeed(`Security group: ${sgIds[0]}`);
   }
 
-  const profileSpinner = createSpinner('Creating instance profile...');
+  const profileSpinner = createSpinner('Creating instance profile...').start();
   const profileName = await createDemoInstanceProfile(iam, cfg);
-  profileSpinner.stop(`Instance profile: ${profileName}`);
+  profileSpinner.succeed(`Instance profile: ${profileName}`);
 
-  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`);
+  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`).start();
   const { Instances } = await ec2.send(new RunInstancesCommand({
     ImageId: ami,
     InstanceType: INSTANCE_TYPE,
@@ -363,11 +363,11 @@ export async function launchDemoInstance(cfg) {
     MetadataOptions: { HttpTokens: 'required', HttpPutResponseHopLimit: 2 },
   }));
   const instanceId = Instances[0].InstanceId;
-  launchSpinner.stop(`Instance launched: ${instanceId}`);
+  launchSpinner.succeed(`Instance launched: ${instanceId}`);
 
-  const waitSpinner = createSpinner('Waiting for instance to be running...');
+  const waitSpinner = createSpinner('Waiting for instance to be running...').start();
   await waitUntilInstanceRunning({ client: ec2, maxWaitTime: 300 }, { InstanceIds: [instanceId] });
-  waitSpinner.stop('Instance running');
+  waitSpinner.succeed('Instance running');
 
   printSuccess(`Demo workloads deploying on ${instanceId}`);
   printInfo('Services will be ready in ~3-5 minutes (docker pull + start)');
@@ -392,10 +392,10 @@ export async function teardownDemoInstance(cfg) {
   const instanceIds = (Reservations || []).flatMap(r => r.Instances.map(i => i.InstanceId));
 
   if (instanceIds.length) {
-    const spinner = createSpinner(`Terminating ${instanceIds.length} instance(s)...`);
+    const spinner = createSpinner(`Terminating ${instanceIds.length} instance(s)...`).start();
     await ec2.send(new TerminateInstancesCommand({ InstanceIds: instanceIds }));
     await waitUntilInstanceTerminated({ client: ec2, maxWaitTime: 300 }, { InstanceIds: instanceIds });
-    spinner.stop('Instances terminated');
+    spinner.succeed('Instances terminated');
   } else {
     printInfo('No demo instances found');
   }

@@ -116,6 +116,10 @@ processors:
           - delete_key(attributes, "user_agent") where attributes["user_agent_string"] != nil
           - set(attributes["db_system"], attributes["db.system"]) where attributes["db.system"] != nil
           - delete_key(attributes, "db.system")
+          # http.url.path collides with the http.url string HTTP client spans set; url.path is the
+          # semantic-convention name for the value.
+          - set(attributes["url.path"], attributes["http.url.path"]) where attributes["http.url.path"] != nil and attributes["url.path"] == nil
+          - delete_key(attributes, "http.url.path")
       - context: spanevent
         statements:
           # De-dot gRPC message.* event attributes to prevent mapping conflict with
