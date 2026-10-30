@@ -128,9 +128,13 @@ async function pushSynthetic({ scenario, ingestEndpoint, pipelineName, region })
         log(scenario.name, `  ${signal} push error: ${e.message}`);
       }
     }
-    if (accepted === 2) { log(scenario.name, 'synthetic push accepted'); }
+    if (accepted === 2) {
+      log(scenario.name, 'synthetic push accepted');
+      return;
+    }
     await new Promise((r) => setTimeout(r, 30_000));
   }
+  log(scenario.name, 'synthetic push was never accepted; the data check will likely time out');
 }
 
 async function main() {
