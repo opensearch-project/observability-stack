@@ -12,6 +12,10 @@ export interface InfraStackProps extends cdk.StackProps {
   osVolumeSize?: number;
   /** IAM role ARNs given data access on serverless collections. */
   adminRoleArns?: string[];
+  /** Serverless collection group minimum indexing and search OCU (default 0). */
+  aossMinOcu?: number;
+  /** Serverless collection group maximum indexing and search OCU (default 16). */
+  aossMaxOcu?: number;
 }
 
 export class InfraStack extends cdk.Stack {
@@ -50,6 +54,8 @@ export class InfraStack extends cdk.Stack {
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
         dataAccessRoleArns: [uiInitRole.roleArn, ...(props.adminRoleArns ?? [])],
+        minOcu: props.aossMinOcu,
+        maxOcu: props.aossMaxOcu,
       });
 
       this.domainEndpoint = serverless.collectionEndpoint;
