@@ -69,6 +69,7 @@ export class ObservabilityStack extends cdk.Stack {
       domainArn: infra.domainArn,
       domainEndpoint: infra.domainEndpoint,
       dqsDataSourceArn: infra.dqsDataSourceArn,
+      uiInitDependsOn: [pipeline],
     });
     if (fgacMapping) {
       app.node.addDependency(fgacMapping);

@@ -10,6 +10,11 @@ export interface OpenSearchAppConstructProps {
   domainArn: string;
   domainEndpoint: string;
   dqsDataSourceArn: string;
+  /**
+   * Resources UI init must wait for. The ingestion pipeline creates the indices from its templates
+   * when it starts, and UI init stores each index pattern's fields from them.
+   */
+  uiInitDependsOn?: Construct[];
 }
 
 export class OpenSearchAppConstruct extends Construct {
@@ -76,10 +81,12 @@ export class OpenSearchAppConstruct extends Construct {
       },
     });
     uiInit.node.addDependency(app);
+    for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
 
     new cdk.CfnOutput(stack, 'OpenSearchAppEndpoint', { value: this.appEndpoint });
     new cdk.CfnOutput(stack, 'DashboardUrl', {
-      value: `${this.appEndpoint}/w/${uiInit.getAttString('WorkspaceId')}/app/home`,
+      // app/home is not a workspace app and redirects to the workspace picker.
+      value: `${this.appEndpoint}/w/${uiInit.getAttString('WorkspaceId')}/app/dashboards#/view/observability-overview-dashboard`,
     });
   }
 }
