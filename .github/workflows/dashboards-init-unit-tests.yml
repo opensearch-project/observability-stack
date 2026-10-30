@@ -25,4 +25,4 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Test OpenSearch Dashboards initializers
-        run: python3 -m unittest test/test_init_opensearch_dashboards.py
+        run: python3 -m unittest discover -s test -p 'test_init_opensearch_dashboards.py'
