@@ -21,7 +21,7 @@ These must be updated in the Helm chart whenever they change in Docker Compose:
 - **Cortex config** — `docker-compose/cortex/cortex.yaml` ↔ `charts/observability-stack/files/cortex.yaml` (server, storage, ruler, limits, alertmanager_url)
 - **Cortex ruler rule files** — `docker-compose/prometheus/rules-stack/*.yml` ↔ `charts/observability-stack/files/rules-stack/*.yml`; same for `rules-otel-demo/`
 - **Alertmanager config** — `docker-compose/alertmanager/alertmanager.yml` ↔ `charts/observability-stack/files/alertmanager.yml`
-- **Init scripts** — `init-cortex-rules.py`, `init-stack-monitors.py`, `init-otel-demo-monitors.py`, `init-opensearch-dashboards.py` are bit-for-bit identical between compose and chart
+- **Init scripts** — `init-cortex-rules.py`, `init-stack-monitors.py`, `init-otel-demo-monitors.py`, `init-anomaly-detectors.py`, `init-opensearch-dashboards.py` are bit-for-bit identical between compose and chart
 - **OpenSearch Dashboards** — all feature flags and settings in `opensearch_dashboards.template.yml`
 
 ## What Is Intentionally Different (Do NOT Sync)

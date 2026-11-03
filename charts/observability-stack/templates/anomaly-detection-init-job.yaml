@@ -1,0 +1,78 @@
+{{- $examples := .Values.examples.enabled }}
+{{- $otelDemo := index .Values "opentelemetry-demo" "enabled" }}
+{{- if and .Values.opensearch.enabled (or $examples $otelDemo) }}
+# Anomaly Detection Init — one-shot Jobs that create anomaly detectors,
+# forecasters and anomaly alerting monitors for the demos:
+#   - examples:  the example agents' spans (agent and tool latency/errors,
+#                LLM token usage, request volume)
+#   - otel-demo: the OpenTelemetry Demo services (flagd faults drive them)
+# Mirrors the `example-anomaly-detection-init` (docker-compose.examples.yml)
+# and `otel-demo-anomaly-detection-init` (docker-compose.otel-demo.yml)
+# containers. Idempotent by name.
+#
+# These are regular Jobs, not Helm hooks: on a fresh install the script stays
+# up ~40 minutes to re-initialize models once enough data exists (see the
+# script), which would exceed Helm's hook timeout. The script waits for
+# OpenSearch itself. The Job name carries the release revision because a
+# Job's pod template is immutable; each upgrade runs a new (fast, idempotent)
+# Job and Helm removes the previous one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "observability-stack.fullname" . }}-anomaly-detection-init-script
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: init
+data:
+  init-anomaly-detectors.py: |
+{{ .Files.Get "files/init-anomaly-detectors.py" | indent 4 }}
+{{- range $demo := list "examples" "otel-demo" }}
+{{- if or (and (eq $demo "examples") $examples) (and (eq $demo "otel-demo") $otelDemo) }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "observability-stack.fullname" $ }}-{{ $demo }}-anomaly-detection-init-{{ $.Release.Revision }}
+  labels:
+    {{- include "observability-stack.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: init
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $demo }}-anomaly-detection-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: anomaly-detection-init
+          image: python:3.11-alpine
+          command:
+            - /bin/sh
+            - -c
+            - |
+              pip install -q requests || exit 1
+              python /scripts/init-anomaly-detectors.py {{ $demo }}
+          env:
+            - name: OPENSEARCH_URL
+              value: "https://{{ $.Values.opensearchServiceName | default "opensearch-cluster-master" }}:9200"
+            - name: OPENSEARCH_USER
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: username
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-credentials
+                  key: password
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: {{ include "observability-stack.fullname" $ }}-anomaly-detection-init-script
+{{- end }}
+{{- end }}
+{{- end }}

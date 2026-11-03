@@ -132,6 +132,8 @@ A web UI at **http://localhost:8085** for controlling the demo in real time.
 | Deep Traces | No faults | 60s | 100+ span trace waterfalls |
 | Custom | Adjustable | Adjustable | Editable sliders for fine-tuning |
 
+With a local OpenSearch, the stack also creates anomaly detectors and forecasters over these agents (agent and tool latency, LLM token usage, request volume). After about an hour of traffic, switching to **Chaos** shows up as a token-usage anomaly and as traffic above the forecast band. See [Anomaly Detection](https://observability.opensearch.org/docs/anomaly-detection/#demo-detectors).
+
 ### Controls
 
 - **Enable/Disable** — pause/resume canary traffic

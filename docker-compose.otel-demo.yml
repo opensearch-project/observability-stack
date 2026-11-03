@@ -807,3 +807,32 @@ services:
     restart: "no"
     logging: *logging
 
+  # Demo-only one-shot loader for OTel Demo anomaly detection: anomaly
+  # detectors, forecasters and anomaly alerting monitors over the demo
+  # services' spans (flagd faults drive them). Separate from the
+  # alerting init above because it stays up ~40 minutes on a fresh stack to
+  # re-initialize models once enough data exists (see the script). Idempotent
+  # by name. Requires a local OpenSearch; gated behind the local-backends
+  # profile.
+  otel-demo-anomaly-detection-init:
+    profiles: ["local-backends"]
+    image: python:3.11-alpine
+    container_name: otel-demo-anomaly-detection-init
+    command:
+      - sh
+      - -c
+      - |
+        pip install requests || exit 1
+        python /init-anomaly-detectors.py otel-demo
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/init/init-anomaly-detectors.py:/init-anomaly-detectors.py:ro
+    <<: *network
+    restart: "no"
+    logging: *logging
+

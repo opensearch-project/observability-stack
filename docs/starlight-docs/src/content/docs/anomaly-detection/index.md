@@ -25,6 +25,27 @@ Anomaly detection works on any time-series data indexed in OpenSearch. Common ob
 | Traffic anomalies | Request rate from service metrics |
 | Resource exhaustion | CPU or memory usage from infrastructure metrics |
 
+## Demo detectors
+
+When the example agents or the OpenTelemetry Demo run against the local OpenSearch, an init container creates and starts a set of detectors over the demo's spans, the same way the demo alerting monitors are created. Each detector also gets an alerting monitor (named `... Anomaly`) that fires when the anomaly grade is above 0.7 and the confidence is above 0.5. The monitor uses the same query as the **Set up alerts** button in Anomaly Detection, so Alerting shows it as an anomaly detector monitor and links it to the detector.
+
+| Detector | Demo | Watches (one model per entity) | What fires it |
+|---|---|---|---|
+| `agent-invocation-latency-errors` | Example agents | Average latency and error count of agent runs (`invoke_agent` spans), per agent | Control panel preset **Latency Spike** (weather agent), when the spike stands out from the default preset's background faults |
+| `agent-tool-errors-latency` | Example agents | Average latency and error count of tool calls (`execute_tool` spans), per tool | **Latency Spike** (weather tool), same caveat |
+| `agent-llm-token-usage` | Example agents | LLM tokens and call count (`chat` spans), per agent service | **Chaos** (more agent runs, more tokens) |
+| `otel-demo-service-latency-errors` | OpenTelemetry Demo | Average latency and error count of server and consumer spans, per service | Feature flags `paymentFailure` (payment, checkout, frontend), `cartFailure` (cart, checkout), `kafkaQueueProblems` (fraud-detection), `loadGeneratorFloodHomepage` |
+
+To see them work:
+
+1. Wait for the detectors to train. They run every minute, and a model needs about 35 minutes of data, so on a fresh stack the detectors show **Initializing** for roughly the first 40 minutes. The init container waits for that much data and then restarts any detector that hasn't trained yet.
+2. Wait for confidence to build. Confidence starts near 0 right after training and passes 0.5 about 25 minutes later, so the monitors can fire about 65 minutes after a fresh bring-up.
+3. Toggle a fault in the travel agent control panel (`http://localhost:8085`) or the OpenTelemetry Demo feature flag UI (`http://localhost:8080/feature`), and open the detector's **Anomaly overview**.
+
+A detector flags the change, so a fault that stays on is marked when it starts (and sometimes when it stops), not for every minute it runs. The OpenTelemetry Demo gives the clearest results: its services are quiet until a flag is turned on. The example agents' default control panel preset already injects faults into half the requests, and the agents absorb most of them (few spans end in error status), so their detectors respond mainly to large changes such as **Chaos**.
+
+The demo detectors are high-cardinality (one model per entity). OpenSearch allows 10 such detectors per cluster by default (`plugins.anomaly_detection.max_multi_entity_anomaly_detectors`), and the demos use 4 of them.
+
 ## Getting started
 
 1. Open OpenSearch Dashboards and navigate to **Anomaly Detection** (under the main menu).
