@@ -1042,3 +1042,84 @@ describe('validateConfig — serverless capacity', () => {
     assert.ok(validateConfig(sls({ aossCollectionGroupName: 'g'.repeat(33) })).some((e) => e.includes('at most 32')));
   });
 });
+
+// ── Log-optimized backend ───────────────────────────────────────────────────
+
+import { parseCli, applyQuickDefaults } from '../src/cli.mjs';
+import { DEFAULTS, isManagedDomain } from '../src/config.mjs';
+
+describe('log-optimized backend', () => {
+  const argv = (...flags) => ['node', 'cli', '--quick', '--region', 'us-east-1', '--pipeline-name', 'lo-test', ...flags];
+  const quickCfg = (...flags) => {
+    const cfg = parseCli(argv(...flags));
+    applyQuickDefaults(cfg);
+    return cfg;
+  };
+
+  it('--log-optimized selects the log-optimized type and creates a domain', () => {
+    const cfg = quickCfg('--log-optimized');
+    assert.equal(cfg.opensearchType, 'log-optimized');
+    assert.equal(cfg.osDomainName, 'lo-test');
+    assert.ok(isManagedDomain(cfg));
+  });
+
+  it('defaults to an OpenSearch Optimized instance and the log-optimized engine version', () => {
+    const cfg = quickCfg('--log-optimized');
+    assert.equal(cfg.osInstanceType, DEFAULTS.logOptimizedInstanceType);
+    assert.equal(cfg.osEngineVersion, DEFAULTS.logOptimizedEngineVersion);
+  });
+
+  it('keeps explicit instance type and engine version', () => {
+    const cfg = quickCfg('--log-optimized', '--os-instance-type', 'or2.xlarge.search', '--os-engine-version', 'OpenSearch_3.5');
+    assert.equal(cfg.osInstanceType, 'or2.xlarge.search');
+    assert.equal(cfg.osEngineVersion, 'OpenSearch_3.5');
+    assert.deepEqual(validateConfig(cfg), []);
+  });
+
+  it('rejects instance types that are not OpenSearch Optimized', () => {
+    const cfg = quickCfg('--log-optimized', '--os-instance-type', 'r6g.large.search');
+    assert.ok(validateConfig(cfg).some((e) => e.includes('OpenSearch Optimized instance type')));
+  });
+
+  it('rejects combining --log-optimized with --serverless', () => {
+    const cfg = quickCfg('--log-optimized', '--serverless');
+    assert.ok(validateConfig(cfg).some((e) => e.includes('cannot be combined')));
+  });
+
+  it('plain managed mode keeps the general defaults', () => {
+    const cfg = quickCfg();
+    assert.equal(cfg.opensearchType, 'managed');
+    assert.equal(cfg.osInstanceType, DEFAULTS.osInstanceType);
+    assert.equal(cfg.osEngineVersion, DEFAULTS.osEngineVersion);
+  });
+
+  it('renders the v2 trace template for log-optimized domains only', () => {
+    const base = {
+      pipelineName: 'lo-test',
+      opensearchEndpoint: 'https://search-lo-test-abc.us-east-1.es.amazonaws.com',
+      region: 'us-east-1',
+      iamRoleArn: 'arn:aws:iam::123456789012:role/lo-test-osi-role',
+      prometheusUrl: 'https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-1/api/v1/remote_write',
+      serviceMapWindow: '30s',
+    };
+    const lo = renderPipeline({ ...base, opensearchType: 'log-optimized' });
+    assert.match(lo, /index_type: trace-analytics-plain-raw-v2\n/);
+    assert.match(lo, /index_type: log-analytics-plain\n/);
+    assert.match(lo, /index_type: otel-v2-apm-service-map\n/);
+    const managed = renderPipeline({ ...base, opensearchType: 'managed' });
+    assert.match(managed, /index_type: trace-analytics-plain-raw\n/);
+    assert.doesNotMatch(managed, /plain-raw-v2/);
+  });
+});
+
+import { spanIndexPattern } from '../src/config.mjs';
+
+describe('spanIndexPattern', () => {
+  it('uses the v2 span alias for log-optimized domains', () => {
+    assert.equal(spanIndexPattern({ opensearchType: 'log-optimized' }), 'otel-v2-apm-span*');
+  });
+  it('keeps the v1 span alias for managed and serverless backends', () => {
+    assert.equal(spanIndexPattern({ opensearchType: 'managed' }), 'otel-v1-apm-span*');
+    assert.equal(spanIndexPattern({ opensearchType: 'serverless' }), 'otel-v1-apm-span*');
+  });
+});

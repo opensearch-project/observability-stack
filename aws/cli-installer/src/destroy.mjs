@@ -3,16 +3,16 @@
  * Deletes in reverse dependency order: EC2 → Application → Connected Data Source → OSIS → IAM → (preserves AOS/AMP).
  */
 import { OSISClient, DeletePipelineCommand, GetPipelineCommand } from '@aws-sdk/client-osis';
-import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchClient, DeleteApplicationCommand, DeleteDirectQueryDataSourceCommand, GetApplicationCommand, DescribeDomainCommand, DeleteDomainCommand } from '@aws-sdk/client-opensearch';
 import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand, BatchGetCollectionCommand, BatchGetCollectionGroupCommand, DeleteCollectionGroupCommand } from '@aws-sdk/client-opensearchserverless';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
-import { FGAC_ROLES, defaultCollectionGroupName } from './aws.mjs';
+import { FGAC_ROLES, defaultCollectionGroupName, listAllApplications } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
   try {
-    const { ApplicationSummaries } = await os.send(new ListApplicationsCommand({}));
+    const { ApplicationSummaries } = await listAllApplications(os);
     const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
     if (!app) return;
 
@@ -143,7 +143,7 @@ export async function destroy(cfg) {
 
   // 3. OpenSearch Application
   try {
-    const { ApplicationSummaries } = await os.send(new ListApplicationsCommand({}));
+    const { ApplicationSummaries } = await listAllApplications(os);
     const app = (ApplicationSummaries || []).find(a => a.name === pipelineName);
     if (app) {
       const spinner = createSpinner('Deleting OpenSearch Application...').start();

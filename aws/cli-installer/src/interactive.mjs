@@ -3,7 +3,7 @@ import {
   createSpinner, theme, GoBack, eSelect, eInput, eCheckbox,
   saveCursor, clearFromCursor,
 } from './ui.mjs';
-import { createDefaultConfig, DEFAULTS, DEFAULT_REGION } from './config.mjs';
+import { createDefaultConfig, DEFAULTS, DEFAULT_REGION, LOG_OPTIMIZED_INSTANCE_FAMILIES } from './config.mjs';
 import { listDomains, listCollections, collectionIdFromEndpoint, listWorkspaces, listApplications, listVpcs, listSubnets, listSecurityGroups } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
@@ -74,12 +74,18 @@ async function stepCore(cfg, session) {
     message: 'OpenSearch backend',
     choices: [
       { name: `Managed domain    ${theme.muted('— provisioned cluster with FGAC')}`, value: 'managed' },
+      { name: `Log-optimized     ${theme.muted('— managed domain on the OpenSearch Optimized engine (OR1/OR2/OM2/OI2)')}`, value: 'log-optimized' },
       { name: `Serverless (AOSS) ${theme.muted('— NextGen time series, auto-scaling, IAM-only auth')}`, value: 'serverless' },
     ],
     default: cfg.opensearchType || 'managed',
   });
   if (osType === GoBack) return GoBack;
   cfg.opensearchType = osType;
+  if (osType === 'log-optimized') {
+    // Switch to log-optimized defaults unless the user already picked other values.
+    if (cfg.osInstanceType === DEFAULTS.osInstanceType) cfg.osInstanceType = DEFAULTS.logOptimizedInstanceType;
+    if (cfg.osEngineVersion === DEFAULTS.osEngineVersion) cfg.osEngineVersion = DEFAULTS.logOptimizedEngineVersion;
+  }
 
   // Quick mode: auto-derive all resources from pipeline name
   if (cfg.mode === 'quick') {
@@ -254,7 +260,13 @@ async function stepOpenSearch(cfg) {
       if (domainName === GoBack) { clearFromCursor(); continue; }
       cfg.osDomainName = domainName;
 
-      const instType = await eInput({ message: 'Instance type', default: cfg.osInstanceType || DEFAULTS.osInstanceType });
+      const instType = await eInput({
+        message: 'Instance type',
+        default: cfg.osInstanceType || DEFAULTS.osInstanceType,
+        validate: (v) => cfg.opensearchType !== 'log-optimized'
+          || LOG_OPTIMIZED_INSTANCE_FAMILIES.includes(v.split('.')[0])
+          || `Log-optimized domains need an OpenSearch Optimized instance (${LOG_OPTIMIZED_INSTANCE_FAMILIES.map((f) => `${f}.*`).join(', ')})`,
+      });
       if (instType === GoBack) { clearFromCursor(); continue; }
       cfg.osInstanceType = instType;
 

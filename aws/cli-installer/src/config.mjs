@@ -10,6 +10,10 @@ export const DEFAULTS = {
   osInstanceCount: 1,
   osVolumeSize: 100,
   osEngineVersion: 'OpenSearch_3.5',
+  // Log-optimized domains run the OpenSearch Optimized engine (EngineMode OPTIMIZED,
+  // UseCase OBSERVABILITY). They require OpenSearch Optimized instances for data nodes.
+  logOptimizedInstanceType: 'om2.large.search',
+  logOptimizedEngineVersion: 'OpenSearch_3.7',
   minOcu: 1,
   maxOcu: 4,
   // OpenSearch Serverless NextGen collection group compute limits (indexing and search OCU).
@@ -85,4 +89,20 @@ const AOSS_GROUP_NAME_MAX = 32;
 export function defaultCollectionGroupName(collectionName) {
   const suffix = '-cg';
   return `${collectionName.slice(0, AOSS_GROUP_NAME_MAX - suffix.length)}${suffix}`;
+}
+
+/** Instance families accepted for data nodes of a log-optimized domain. */
+export const LOG_OPTIMIZED_INSTANCE_FAMILIES = ['or1', 'or2', 'om2', 'oi2'];
+
+/** True when the backend is a provisioned (managed) domain, including log-optimized domains. */
+export function isManagedDomain(cfg) {
+  return cfg.opensearchType === 'managed' || cfg.opensearchType === 'log-optimized';
+}
+
+/**
+ * Span index pattern for the backend. The v2 span template that log-optimized domains use
+ * (`trace-analytics-plain-raw-v2`) writes to the `otel-v2-apm-span` alias.
+ */
+export function spanIndexPattern(cfg) {
+  return cfg.opensearchType === 'log-optimized' ? 'otel-v2-apm-span*' : 'otel-v1-apm-span*';
 }

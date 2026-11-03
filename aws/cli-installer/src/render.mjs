@@ -15,9 +15,13 @@ function logsSinkConfig() {
         index_type: log-analytics-plain`;
 }
 
-function tracesSinkConfig() {
+// Log-optimized domains reject `text` fields inside nested objects, which the default span
+// template creates for string attributes under events and links. The v2 template maps those
+// to keyword, so spans with exception or evaluation events still index.
+function tracesSinkConfig(cfg) {
+  const indexType = cfg.opensearchType === 'log-optimized' ? 'trace-analytics-plain-raw-v2' : 'trace-analytics-plain-raw';
   return `\
-        index_type: trace-analytics-plain-raw`;
+        index_type: ${indexType}`;
 }
 
 function serviceMapSinkConfig() {
@@ -106,7 +110,7 @@ traces-raw-pipeline:
     - opensearch:
         hosts:
           - '${cfg.opensearchEndpoint}'
-${tracesSinkConfig()}
+${tracesSinkConfig(cfg)}
         aws:
           region: '${cfg.region}'
           sts_role_arn: "${cfg.iamRoleArn}"

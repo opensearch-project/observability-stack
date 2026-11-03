@@ -238,7 +238,8 @@ async function authorizeOpenSearchUiVpcAccess(cfg, client) {
 
 async function createManagedDomain(cfg) {
   const inVpc = Boolean(cfg.vpcId);
-  printStep(`Creating OpenSearch domain '${cfg.osDomainName}'${inVpc ? ' (VPC)' : ''}...`);
+  const kind = cfg.opensearchType === 'log-optimized' ? 'log-optimized OpenSearch domain' : 'OpenSearch domain';
+  printStep(`Creating ${kind} '${cfg.osDomainName}'${inVpc ? ' (VPC)' : ''}...`);
   console.error();
 
   const client = new OpenSearchClient({ region: cfg.region });
@@ -251,6 +252,11 @@ async function createManagedDomain(cfg) {
     // Only short-circuit if the pre-existing domain is fully active. A domain
     // still Processing (e.g. a prior interrupted run) must fall through to the
     // wait loop, or downstream security-API calls race an unready cluster.
+    if (cfg.opensearchType === 'log-optimized' && status.EngineMode !== 'OPTIMIZED') {
+      printError(`Domain '${cfg.osDomainName}' already exists but is not log-optimized (engine mode ${status.EngineMode || 'GENERAL'})`);
+      console.error(`  ${chalk.dim('The engine mode is fixed at creation. Pick a different --os-domain-name, or drop --log-optimized to use this domain as-is.')}`);
+      throw new Error('Existing domain is not log-optimized');
+    }
     if (endpoint && !status.Processing && !status.UpgradeProcessing) {
       cfg.opensearchEndpoint = `https://${endpoint}`;
       printSuccess(`Domain '${cfg.osDomainName}' already exists: ${cfg.opensearchEndpoint}`);
@@ -320,6 +326,9 @@ async function createManagedDomain(cfg) {
       await client.send(new CreateDomainCommand({
         DomainName: cfg.osDomainName,
         EngineVersion: cfg.osEngineVersion,
+        // Log-optimized: the OpenSearch Optimized engine, tuned for observability data.
+        // Fixed at creation; needs OpenSearch Optimized instances (validated in cli.mjs).
+        ...(cfg.opensearchType === 'log-optimized' ? { EngineMode: 'OPTIMIZED', UseCase: 'OBSERVABILITY' } : {}),
         ClusterConfig: clusterConfig,
         EBSOptions: {
           EBSEnabled: true,
@@ -1367,6 +1376,22 @@ export async function createConnectedDataSource(cfg) {
  * Create an OpenSearch Application (the new OpenSearch UI) and associate
  * the OpenSearch domain/collection and the Connected Data Source with it.
  */
+/**
+ * List every OpenSearch UI application in the region. ListApplications returns at most
+ * 10 per page, so follow nextToken or apps past the first page are never found.
+ * Returns the same shape as a single ListApplications response.
+ */
+export async function listAllApplications(client) {
+  const ApplicationSummaries = [];
+  let nextToken;
+  do {
+    const resp = await client.send(new ListApplicationsCommand({ nextToken }));
+    ApplicationSummaries.push(...(resp.ApplicationSummaries || []));
+    nextToken = resp.nextToken;
+  } while (nextToken);
+  return { ApplicationSummaries };
+}
+
 export async function createOpenSearchApplication(cfg) {
   const appName = cfg.appName;
   printStep(`Creating OpenSearch Application '${appName}'...`);
@@ -1375,7 +1400,7 @@ export async function createOpenSearchApplication(cfg) {
 
   // Check if app already exists
   try {
-    const list = await client.send(new ListApplicationsCommand({}));
+    const list = await listAllApplications(client);
     const existing = (list.ApplicationSummaries || []).find((a) => a.name === appName);
     if (existing) {
       cfg.appId = existing.id;
@@ -1419,7 +1444,7 @@ export async function createOpenSearchApplication(cfg) {
       printSuccess(`Application '${appName}' already exists`);
       // Try to find and update it
       try {
-        const list = await client.send(new ListApplicationsCommand({}));
+        const list = await listAllApplications(client);
         const existing = (list.ApplicationSummaries || []).find((a) => a.name === appName);
         if (existing) {
           cfg.appId = existing.id;
@@ -1630,7 +1655,7 @@ export async function listWorkspaces(region) {
  */
 export async function listApplications(region) {
   const client = new OpenSearchClient({ region });
-  const resp = await client.send(new ListApplicationsCommand({}));
+  const resp = await listAllApplications(client);
   return (resp.ApplicationSummaries || []).map((a) => ({
     name: a.name,
     id: a.id,
@@ -2135,7 +2160,7 @@ export async function enrichResourceNames(region, resources) {
   if (appResources.length) {
     try {
       const client = new OpenSearchClient({ region });
-      const list = await client.send(new ListApplicationsCommand({}));
+      const list = await listAllApplications(client);
       for (const r of appResources) {
         const appId = arnToName(r.arn);
         const app = (list.ApplicationSummaries || []).find((a) => a.id === appId);
@@ -2153,7 +2178,7 @@ async function supplementApplications(region, stacks) {
   if (stacks.size === 0) return;
   try {
     const client = new OpenSearchClient({ region });
-    const list = await client.send(new ListApplicationsCommand({}));
+    const list = await listAllApplications(client);
     for (const app of list.ApplicationSummaries || []) {
       if (!app.name || !app.arn) continue;
       const resources = stacks.get(app.name);
@@ -2197,6 +2222,8 @@ export async function describeResource(region, resource) {
       const resp = await client.send(new DescribeDomainCommand({ DomainName: name }));
       const d = resp.DomainStatus || {};
       if (d.EngineVersion) entries.push(['Engine Version', d.EngineVersion]);
+      if (d.EngineMode) entries.push(['Engine Mode', d.EngineMode]);
+      if (d.UseCase) entries.push(['Use Case', d.UseCase]);
       if (d.Endpoint) entries.push(['Endpoint', `https://${d.Endpoint}`]);
       if (d.ClusterConfig) {
         const cc = d.ClusterConfig;
