@@ -11,6 +11,7 @@ import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { spanIndexPattern } from './config.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -205,13 +206,14 @@ export async function initOpenSearchUI(cfg) {
 
   // f. Create index patterns with dataSource reference
   const svcMapPattern = 'otel-v2-apm-service-map*';
+  const spanPattern = spanIndexPattern(cfg);
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
   const isServerless = cfg.opensearchType === 'serverless';
   const dsRefType = isServerless ? 'OpenSearch Serverless' : 'data-source';
 
   const patterns = [
     { title: 'logs-otel-v1*', timeFieldName: 'time', signalType: 'logs', schemaMappings: logsSchema },
-    { title: 'otel-v1-apm-span*', timeFieldName: 'endTime', signalType: 'traces' },
+    { title: spanPattern, timeFieldName: 'endTime', signalType: 'traces' },
     { title: svcMapPattern, timeFieldName: 'timestamp' },
   ];
 
@@ -240,7 +242,7 @@ export async function initOpenSearchUI(cfg) {
   await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, region);
 
   const logsId = patternIds['logs-otel-v1*'];
-  const tracesId = patternIds['otel-v1-apm-span*'];
+  const tracesId = patternIds[spanPattern];
   const svcMapId = patternIds[svcMapPattern];
 
   // g. Set default index pattern
@@ -259,8 +261,8 @@ export async function initOpenSearchUI(cfg) {
     } else {
       await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
       attributes: {
-        correlationType: 'trace-to-logs-otel-v1-apm-span*',
-        title: 'trace-to-logs_otel-v1-apm-span*',
+        correlationType: `trace-to-logs-${spanPattern}`,
+        title: `trace-to-logs_${spanPattern}`,
         version: '1.0.0',
         entities: [
           { tracesDataset: { id: 'references[0].id' } },
@@ -308,10 +310,10 @@ export async function initOpenSearchUI(cfg) {
   // j. Saved queries
   const queries = [
     { id: 'error-logs', title: 'Error Logs', query: 'source = logs-otel-v1* | where severityNumber >= 17 | sort - time | head 100' },
-    { id: 'agent-invocations', title: 'Agent Invocations', query: 'source = otel-v1-apm-span* | where attributes.gen_ai.operation.name = "invoke_agent" | sort - endTime | head 50' },
-    { id: 'tool-executions', title: 'Tool Executions', query: 'source = otel-v1-apm-span* | where attributes.gen_ai.operation.name = "execute_tool" | sort - endTime | head 50' },
-    { id: 'slow-spans', title: 'Slow Spans (>5s)', query: 'source = otel-v1-apm-span* | where durationInNanos > 5000000000 | sort - durationInNanos | head 50' },
-    { id: 'token-usage', title: 'Token Usage by Model', query: 'source = otel-v1-apm-span* | where isnotnull(attributes.gen_ai.usage.input_tokens) | stats sum(attributes.gen_ai.usage.input_tokens) as input_tokens, sum(attributes.gen_ai.usage.output_tokens) as output_tokens by attributes.gen_ai.request.model' },
+    { id: 'agent-invocations', title: 'Agent Invocations', query: `source = ${spanPattern} | where attributes.gen_ai.operation.name = "invoke_agent" | sort - endTime | head 50` },
+    { id: 'tool-executions', title: 'Tool Executions', query: `source = ${spanPattern} | where attributes.gen_ai.operation.name = "execute_tool" | sort - endTime | head 50` },
+    { id: 'slow-spans', title: 'Slow Spans (>5s)', query: `source = ${spanPattern} | where durationInNanos > 5000000000 | sort - durationInNanos | head 50` },
+    { id: 'token-usage', title: 'Token Usage by Model', query: `source = ${spanPattern} | where isnotnull(attributes.gen_ai.usage.input_tokens) | stats sum(attributes.gen_ai.usage.input_tokens) as input_tokens, sum(attributes.gen_ai.usage.output_tokens) as output_tokens by attributes.gen_ai.request.model` },
   ];
   for (const q of queries) {
     await osuiPost(base, `/w/${wsId}/api/saved_objects/query/${q.id}`, {

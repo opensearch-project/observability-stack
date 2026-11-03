@@ -47,7 +47,8 @@ function connector(width, specs) {
 }
 
 export function renderArchitectureDiagram(cfg) {
-  const osLabel = cfg.opensearchType === 'serverless' ? 'AOSS Collection' : 'OpenSearch';
+  const osLabel = cfg.opensearchType === 'serverless' ? 'AOSS Collection'
+    : cfg.opensearchType === 'log-optimized' ? 'OpenSearch (log-opt)' : 'OpenSearch';
   const pathLabel = `/${cfg.pipelineName}/v1/*`;
   const m = theme.muted;
   const a = theme.accent;

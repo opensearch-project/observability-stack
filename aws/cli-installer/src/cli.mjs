@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { createRequire } from 'node:module';
-import { DEFAULTS, defaultCollectionGroupName } from './config.mjs';
+import { DEFAULTS, LOG_OPTIMIZED_INSTANCE_FAMILIES, defaultCollectionGroupName } from './config.mjs';
 
 const require = createRequire(import.meta.url);
 const { version: PKG_VERSION } = require('../package.json');
@@ -37,6 +37,7 @@ export function parseCli(argv) {
   // OpenSearch backend type
   program
     .option('--serverless', 'Use an OpenSearch Serverless (AOSS) NextGen time series collection instead of a managed domain')
+    .option('--log-optimized', 'Use a log-optimized managed domain (OpenSearch Optimized engine, observability use case; OR1/OR2/OM2/OI2 instances)')
     .option('--aoss-collection-name <name>', 'Collection name for OpenSearch Serverless')
     .option('--aoss-collection-group-name <name>', 'NextGen collection group name (default: <collection>-cg)')
     .option('--aoss-min-ocu <n>', 'Collection group minimum indexing and search OCU', DEFAULTS.aossMinOcu)
@@ -97,7 +98,11 @@ export function parseCli(argv) {
 
   program.parse(argv);
 
-  return optsToConfig(program.opts());
+  // Commander fills unset options with their defaults; record which ones the user set so
+  // backend-specific defaults (log-optimized instance type and engine version) apply only
+  // when the user did not choose a value.
+  const explicit = new Set(Object.keys(program.opts()).filter((k) => program.getOptionValueSource(k) === 'cli'));
+  return optsToConfig(program.opts(), explicit);
 }
 
 function parseDestroyArgs(argv) {
@@ -126,9 +131,18 @@ function parseIdList(value) {
 /**
  * Convert commander opts to our normalized config shape.
  */
-function optsToConfig(opts) {
+function optsToConfig(opts, explicit = new Set()) {
   const mode = opts.advanced ? 'advanced' : 'quick';
-  const opensearchType = opts.serverless ? 'serverless' : 'managed';
+  let opensearchType = 'managed';
+  if (opts.serverless) opensearchType = 'serverless';
+  else if (opts.logOptimized) opensearchType = 'log-optimized';
+
+  let osInstanceType = opts.osInstanceType;
+  let osEngineVersion = opts.osEngineVersion;
+  if (opensearchType === 'log-optimized') {
+    if (!explicit.has('osInstanceType')) osInstanceType = DEFAULTS.logOptimizedInstanceType;
+    if (!explicit.has('osEngineVersion')) osEngineVersion = DEFAULTS.logOptimizedEngineVersion;
+  }
 
   // Determine actions based on which flags were provided
   let osAction = '';
@@ -161,10 +175,11 @@ function optsToConfig(opts) {
     opensearchUser: opts.opensearchUser || 'admin',
     opensearchPassword: opts.opensearchPassword || '',
     osDomainName: opts.osDomainName || '',
-    osInstanceType: opts.osInstanceType,
+    osInstanceType,
     osInstanceCount: Number(opts.osInstanceCount),
     osVolumeSize: Number(opts.osVolumeSize),
-    osEngineVersion: opts.osEngineVersion,
+    osEngineVersion,
+    bothBackendFlags: Boolean(opts.serverless && opts.logOptimized),
     vpcId: opts.vpcId || '',
     subnetIds: parseIdList(opts.subnetIds),
     securityGroupIds: parseIdList(opts.securityGroupIds),
@@ -301,6 +316,16 @@ export function validateConfig(cfg) {
   }
   if (cfg.apsAction === 'reuse' && cfg.prometheusUrl && !/^https?:\/\//.test(cfg.prometheusUrl)) {
     errors.push('Prometheus URL must start with http:// or https://');
+  }
+
+  if (cfg.bothBackendFlags) {
+    errors.push('--serverless and --log-optimized cannot be combined; pick one OpenSearch backend');
+  }
+  if (cfg.opensearchType === 'log-optimized' && cfg.osAction === 'create') {
+    const family = String(cfg.osInstanceType || '').split('.')[0];
+    if (!LOG_OPTIMIZED_INSTANCE_FAMILIES.includes(family)) {
+      errors.push(`--log-optimized requires an OpenSearch Optimized instance type (${LOG_OPTIMIZED_INSTANCE_FAMILIES.map((f) => `${f}.*`).join(', ')}); got ${cfg.osInstanceType}`);
+    }
   }
 
   if (cfg.opensearchType === 'serverless') {

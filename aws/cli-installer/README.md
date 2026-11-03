@@ -1,12 +1,17 @@
 # Observability Stack AWS CLI
 
-Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain (or an OpenSearch Serverless NextGen time series collection), OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
+Deploy the [Observability Stack](https://github.com/opensearch-project/observability-stack) on AWS managed services with a single command. Creates an OpenSearch domain (a general-purpose domain, a log-optimized domain, or an OpenSearch Serverless NextGen time series collection), OSIS ingestion pipeline, Amazon Managed Prometheus workspace, and a fully configured OpenSearch UI with dashboards — plus an EC2 instance running demo workloads that generate telemetry out of the box.
 
 ## Quick Start
 
 **Managed domain (default):**
 ```bash
 npx @opensearch-project/observability-stack
+```
+
+**Log-optimized managed domain (OpenSearch Optimized engine):**
+```bash
+npx @opensearch-project/observability-stack --log-optimized
 ```
 
 **Serverless time series collection (AOSS NextGen):**
@@ -20,7 +25,7 @@ Takes ~15 minutes for managed, ~5 minutes for serverless. When complete, the CLI
 
 | Resource | Description |
 |---|---|
-| OpenSearch domain **or** serverless time series collection | Stores logs, traces, and service map data. Serverless creates a NextGen collection group (default 0 to 16 indexing and search OCU) and a TIMESERIES collection in it |
+| OpenSearch domain (general-purpose or log-optimized) **or** serverless time series collection | Stores logs, traces, and service map data. Serverless creates a NextGen collection group (default 0 to 16 indexing and search OCU) and a TIMESERIES collection in it |
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
 | Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
@@ -56,6 +61,21 @@ Serverless options:
 | `--aoss-max-ocu` | `16` | Maximum indexing and search OCU for the group |
 
 Time series collections require every document to carry the index timestamp field. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), so no extra copy step is needed.
+
+**Create a log-optimized domain deployment from scratch:**
+```bash
+node bin/cli-installer.mjs --log-optimized \
+  --pipeline-name obs-stack-<your-alias> \
+  --region us-east-1
+```
+
+A log-optimized domain runs the OpenSearch Optimized engine (`EngineMode: OPTIMIZED`, `UseCase: OBSERVABILITY`), which is set at creation and can't be changed later. The CLI then:
+
+- defaults data nodes to `om2.large.search` and the engine to `OpenSearch_3.7`. Data nodes must be OpenSearch Optimized instances (`or1`, `or2`, `om2`, `oi2`); pass `--os-instance-type` and `--os-engine-version` to choose others.
+- writes spans with `index_type: trace-analytics-plain-raw-v2`, which maps string attributes under nested `events` and `links` to `keyword`. The default span template maps them to `text`, which log-optimized domains reject inside nested objects, so spans with exception or evaluation events would be dropped.
+- points the traces index pattern, saved queries, and dashboards at `otel-v2-apm-span*`, the alias the v2 template writes to.
+
+Log-optimized domains are queried with PPL, so Discover (logs, traces, metrics), APM, Agent Traces, Notebooks, PPL visualizations, and PPL alerting monitors work. Features that issue query DSL don't work: classic (aggregation-based) visualizations, including the prebuilt Agent Observability dashboard; query-, bucket-, and document-level alerting monitors; Anomaly Detection; and Forecasting. When you configure APM, select the `otel-v2-apm-span*` traces dataset, because APM auto-detection currently looks for `otel-v1-apm-span*`.
 
 **Reuse existing OpenSearch domain / AMP workspace:**
 ```bash
