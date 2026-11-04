@@ -254,27 +254,60 @@ def create_index_pattern(
     workspace_id, title, time_field=None, signal_type=None, schema_mappings=None,
     display_name=None
 ):
-    """Create index pattern in workspace and return its ID"""
+    """Create or reconcile an index pattern and return its ID."""
+    metadata = {}
+    if time_field is not None:
+        metadata["timeFieldName"] = time_field
+    if signal_type is not None:
+        metadata["signalType"] = signal_type
+    if schema_mappings is not None:
+        metadata["schemaMappings"] = schema_mappings
+    if display_name is not None:
+        metadata["displayName"] = display_name
+
     # Check if index pattern already exists
     existing_id = get_existing_index_pattern(workspace_id, title)
     if existing_id:
         print(f"✅ Index pattern already exists: {title}")
+        if not metadata:
+            return existing_id
+
+        if workspace_id and workspace_id != "default":
+            update_url = (
+                f"{BASE_URL}/w/{workspace_id}/api/saved_objects/"
+                f"index-pattern/{existing_id}"
+            )
+        else:
+            update_url = (
+                f"{BASE_URL}/api/saved_objects/index-pattern/{existing_id}"
+            )
+
+        try:
+            response = requests.put(
+                update_url,
+                auth=(USERNAME, PASSWORD),
+                headers={"Content-Type": "application/json", "osd-xsrf": "true"},
+                json={"attributes": metadata},
+                verify=False,
+                timeout=10,
+            )
+            if response.status_code == 200:
+                print(f"✅ Updated index pattern metadata: {title}")
+            else:
+                print(
+                    f"⚠️  Failed to update index pattern metadata for {title}: "
+                    f"{response.status_code}"
+                )
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️  Error updating index pattern {title}: {e}")
         return existing_id
 
     payload = {
         "attributes": {
-            "title": title
+            "title": title,
+            **metadata,
         }
     }
-
-    if time_field:
-        payload["attributes"]["timeFieldName"] = time_field
-    if signal_type:
-        payload["attributes"]["signalType"] = signal_type
-    if schema_mappings:
-        payload["attributes"]["schemaMappings"] = schema_mappings
-    if display_name:
-        payload["attributes"]["displayName"] = display_name
 
     # Use workspace-specific URL if workspace exists, otherwise use default
     if workspace_id and workspace_id != "default":
