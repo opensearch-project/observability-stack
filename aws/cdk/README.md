@@ -47,6 +47,27 @@ The [demo workload](#demo-workload) is deployed by default. To skip it:
 cdk deploy --all -c enableDemo=false
 ```
 
+### Dashboards access
+
+The stack maps the OSIS pipeline role and the UI init role to the FGAC `all_access` and `security_manager` roles, and makes the UI init role an OpenSearch UI application admin. To open Dashboards with your own IAM role, pass its ARN (comma-separate multiple roles). Each role is mapped in FGAC (managed domains) and added as an application admin:
+
+```bash
+cdk deploy --all -c adminRoleArns=arn:aws:iam::123456789012:role/Admin
+```
+
+`cdk synth` warns when `adminRoleArns` is empty.
+
+Each role in `adminRoleArns` also needs data-plane permissions in its own IAM policy: `es:ESHttp*` on the domain (managed) or `aoss:APIAccessAll` on the collection (serverless). The domain access policy and the serverless data access policy admit the role, but don't grant those IAM actions.
+
+On serverless, the collection's data access policy lists the OSIS pipeline role, the UI init role and `adminRoleArns`. Removing a role from `adminRoleArns` and redeploying removes its FGAC mappings, application admin entry and data access.
+
+On managed domains, the FGAC master user is an IAM role the stack creates (`FgacAdminRole`), and the domain access policy admits signed requests from the deploying account. Sign requests with SigV4; HTTP basic authentication isn't accepted.
+
+On upgrade:
+
+- The FGAC role mappings, application admins and serverless data access policy are set to the roles above. To keep access for other roles, list them in `adminRoleArns`. Explicit FGAC mappings and application admins you added yourself are kept.
+- The master user changes from the internal `admin` user to `FgacAdminRole`, which turns off basic authentication. Internal users aren't deleted. The `OpenSearchMasterPassword` secret is kept but no longer used.
+
 ## Architecture
 
 ```
@@ -129,7 +150,8 @@ Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running t
 # Deploy both stacks
 cdk deploy --all
 
-# Deploy only the fast-iteration stack (after infra is up)
+# Deploy only the fast-iteration stack (after infra is up). On serverless, changes to
+# adminRoleArns also update the data access policy in ObsInfra, so use --all for those.
 cdk deploy ObservabilityStack --exclusively
 
 # View diff before deploying

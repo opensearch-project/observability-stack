@@ -7,6 +7,29 @@ import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
+// https://docs.aws.amazon.com/opensearch-service/latest/developerguide/direct-query-prometheus-creating.html#direct-query-prometheus-manual-role-permissions
+export const DQS_APS_ACTIONS = [
+  'aps:QueryMetrics',
+  'aps:GetLabels',
+  'aps:GetSeries',
+  'aps:GetMetricMetadata',
+  'aps:ListAlerts',
+  'aps:DescribeAlertManagerDefinition',
+  'aps:GetAlertManagerStatus',
+  'aps:ListAlertManagerAlerts',
+  'aps:ListAlertManagerAlertGroups',
+  'aps:ListAlertManagerReceivers',
+  'aps:ListAlertManagerSilences',
+  'aps:GetAlertManagerSilence',
+  'aps:PutAlertManagerSilences',
+  'aps:DeleteAlertManagerSilence',
+  'aps:ListRuleGroupsNamespaces',
+  'aps:DescribeRuleGroupsNamespace',
+  'aps:CreateRuleGroupsNamespace',
+  'aps:PutRuleGroupsNamespace',
+  'aps:DeleteRuleGroupsNamespace',
+];
+
 export interface PrometheusConstructProps {
   domainArn: string;
 }
@@ -25,24 +48,32 @@ export class PrometheusConstruct extends Construct {
       alias: `observability-stack-${stack.stackName}`,
     });
 
+    const dqsDataSourceName = `prometheus_${stack.stackName}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+
     this.dqsRole = new iam.Role(this, 'DqsRole', {
-      assumedBy: new iam.ServicePrincipal('directquery.opensearchservice.amazonaws.com'),
+      assumedBy: new iam.ServicePrincipal('directquery.opensearchservice.amazonaws.com', {
+        conditions: {
+          StringEquals: { 'aws:SourceAccount': stack.account },
+          ArnEquals: {
+            'aws:SourceArn': `arn:${stack.partition}:opensearch:${stack.region}:${stack.account}:datasource/${dqsDataSourceName}`,
+          },
+        },
+      }),
     });
-    // The data source queries metrics AND manages alerting resources (alerting
-    // rule groups and alert-manager silences) in the workspace. AMP authorizes
-    // rule-groups-namespace CRUD (Put/Delete/DescribeRuleGroupsNamespace) against
-    // the rulegroupsnamespace ARN, NOT the workspace ARN, so granting aps:* only
-    // on the workspace ARN silently denies rule-group create/update/delete.
-    // Alert-manager definitions and silences resolve against the workspace ARN.
+    // Actions from the OpenSearch direct query Prometheus least-privilege sample policy.
+    // AMP authorizes rule-groups-namespace CRUD against the rulegroupsnamespace ARN,
+    // not the workspace ARN, so both resources are listed.
     this.dqsRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['aps:*'],
+      actions: DQS_APS_ACTIONS,
       resources: [
         this.workspace.attrArn,
         `arn:${stack.partition}:aps:${stack.region}:${stack.account}:rulegroupsnamespace/${this.workspace.attrWorkspaceId}/*`,
       ],
     }));
-
-    const dqsDataSourceName = `prometheus_${stack.stackName}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    this.dqsRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['aps:ListWorkspaces'],
+      resources: ['*'],
+    }));
 
     const dqsFn = new NodejsFunction(this, 'DqsFn', {
       runtime: Runtime.NODEJS_22_X,

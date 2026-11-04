@@ -467,6 +467,11 @@ describe('validateConfig — OSI pipeline role', () => {
 
 import {
   fgacPrincipals,
+  appAdminConfigs,
+  isIamRoleOrUserArn,
+  mergeAossPolicyPrincipals,
+  connectedDataSourceRolePolicies,
+  pipelineRoleTrustPolicy,
   validateVpcTopology,
   pipelineRoleArnError,
   permissionsAllowPort,
@@ -1040,5 +1045,110 @@ describe('validateConfig — serverless capacity', () => {
 
   it('rejects a group name longer than 32 characters', () => {
     assert.ok(validateConfig(sls({ aossCollectionGroupName: 'g'.repeat(33) })).some((e) => e.includes('at most 32')));
+  });
+});
+
+describe('appAdminConfigs', () => {
+  const osiRole = 'arn:aws:iam::123456789012:role/obs-stack-test-osi-role';
+  const USERS = 'opensearchDashboards.dashboardAdmin.users';
+  const GROUPS = 'opensearchDashboards.dashboardAdmin.groups';
+  const asMap = (configs) => Object.fromEntries(configs.map((c) => [c.key, JSON.parse(c.value)]));
+
+  it('maps the OSI role and a role caller as groups, with no users entry', () => {
+    const caller = { arn: 'arn:aws:iam::123456789012:role/Admin', type: 'role' };
+    assert.deepEqual(asMap(appAdminConfigs({ iamRoleArn: osiRole, callerPrincipal: caller })), {
+      [GROUPS]: [osiRole, caller.arn],
+    });
+  });
+
+  it('maps an IAM user caller as a user', () => {
+    const caller = { arn: 'arn:aws:iam::123456789012:user/kyle', type: 'user' };
+    assert.deepEqual(asMap(appAdminConfigs({ iamRoleArn: osiRole, callerPrincipal: caller })), {
+      [GROUPS]: [osiRole],
+      [USERS]: [caller.arn],
+    });
+  });
+
+  it('leaves root and federated callers out of users', () => {
+    for (const arn of ['arn:aws:iam::123456789012:root', 'arn:aws:sts::123456789012:federated-user/kyle']) {
+      const configs = asMap(appAdminConfigs({ iamRoleArn: osiRole, callerPrincipal: { arn, type: 'user' } }));
+      assert.equal(configs[USERS], undefined);
+    }
+  });
+
+  it('drops "*" from existing users and keeps other existing admins', () => {
+    const existing = [
+      { key: USERS, value: JSON.stringify(['*', 'arn:aws:iam::123456789012:user/other']) },
+      { key: GROUPS, value: JSON.stringify(['*', 'arn:aws:iam::123456789012:role/Ops']) },
+    ];
+    const configs = asMap(appAdminConfigs({ iamRoleArn: osiRole }, existing));
+    assert.deepEqual(configs, {
+      [GROUPS]: ['arn:aws:iam::123456789012:role/Ops', osiRole],
+      [USERS]: ['arn:aws:iam::123456789012:user/other'],
+    });
+  });
+
+  it('treats missing or malformed config values as empty', () => {
+    assert.deepEqual(asMap(appAdminConfigs({ iamRoleArn: osiRole }, [{ key: USERS, value: 'not json' }])), { [GROUPS]: [osiRole] });
+  });
+
+  it('keeps the IAM path of a role caller', () => {
+    const caller = { arn: 'arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_Admin_abc', type: 'role' };
+    assert.deepEqual(asMap(appAdminConfigs({ iamRoleArn: osiRole, callerPrincipal: caller })), { [GROUPS]: [osiRole, caller.arn] });
+  });
+});
+
+describe('connectedDataSourceRolePolicies', () => {
+  const cfg = { region: 'us-west-2', accountId: '123456789012', apsWorkspaceId: 'ws-abc', connectedDataSourceName: 'obs_prometheus' };
+  const { trustPolicy, permissionsPolicy } = connectedDataSourceRolePolicies(cfg);
+
+  it('limits the trust policy to this account and data source', () => {
+    assert.deepEqual(trustPolicy.Statement[0].Condition, {
+      StringEquals: { 'aws:SourceAccount': '123456789012' },
+      ArnEquals: { 'aws:SourceArn': 'arn:aws:opensearch:us-west-2:123456789012:datasource/obs_prometheus' },
+    });
+  });
+
+  it('grants explicit aps actions on the workspace and its rule groups namespaces', () => {
+    const [scoped, list] = permissionsPolicy.Statement;
+    assert.ok(!scoped.Action.includes('aps:*'));
+    assert.ok(scoped.Action.includes('aps:QueryMetrics'));
+    assert.ok(scoped.Action.includes('aps:PutRuleGroupsNamespace'));
+    assert.deepEqual(scoped.Resource, [
+      'arn:aws:aps:us-west-2:123456789012:workspace/ws-abc',
+      'arn:aws:aps:us-west-2:123456789012:rulegroupsnamespace/ws-abc/*',
+    ]);
+    assert.deepEqual(list, { Effect: 'Allow', Action: 'aps:ListWorkspaces', Resource: '*' });
+  });
+});
+
+describe('pipelineRoleTrustPolicy', () => {
+  it('limits the OSIS trust policy to this account', () => {
+    const [st] = pipelineRoleTrustPolicy({ region: 'us-west-2', accountId: '123456789012' }).Statement;
+    assert.equal(st.Principal.Service, 'osis-pipelines.amazonaws.com');
+    assert.deepEqual(st.Condition, { StringEquals: { 'aws:SourceAccount': '123456789012' } });
+  });
+});
+
+describe('isIamRoleOrUserArn', () => {
+  it('accepts IAM role and user ARNs, including paths', () => {
+    assert.ok(isIamRoleOrUserArn('arn:aws:iam::123456789012:role/Admin'));
+    assert.ok(isIamRoleOrUserArn('arn:aws:iam::123456789012:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_x'));
+    assert.ok(isIamRoleOrUserArn('arn:aws:iam::123456789012:user/kyle'));
+  });
+  it('rejects root, federated users and empty values', () => {
+    assert.ok(!isIamRoleOrUserArn('arn:aws:iam::123456789012:root'));
+    assert.ok(!isIamRoleOrUserArn('arn:aws:sts::123456789012:federated-user/kyle'));
+    assert.ok(!isIamRoleOrUserArn(undefined));
+  });
+});
+
+describe('mergeAossPolicyPrincipals', () => {
+  it('adds missing principals to every rule set and keeps existing ones', () => {
+    const policy = [{ Rules: [], Principal: ['arn:aws:iam::1:role/osi'] }, { Rules: [] }];
+    assert.deepEqual(mergeAossPolicyPrincipals(policy, ['arn:aws:iam::1:role/osi', 'arn:aws:iam::1:role/b']), [
+      { Rules: [], Principal: ['arn:aws:iam::1:role/osi', 'arn:aws:iam::1:role/b'] },
+      { Rules: [], Principal: ['arn:aws:iam::1:role/osi', 'arn:aws:iam::1:role/b'] },
+    ]);
   });
 });

@@ -1,4 +1,4 @@
-import { OpenSearchClient, CreateApplicationCommand, UpdateApplicationCommand, DeleteApplicationCommand, GetApplicationCommand, ListApplicationsCommand } from '@aws-sdk/client-opensearch';
+import { OpenSearchClient, CreateApplicationCommand, UpdateApplicationCommand, DeleteApplicationCommand, GetApplicationCommand, ListApplicationsCommand, AppConfig } from '@aws-sdk/client-opensearch';
 
 const client = new OpenSearchClient();
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -24,9 +24,36 @@ async function findExistingApp(name: string) {
   return list.ApplicationSummaries?.find(a => a.name === name);
 }
 
+const ADMIN_USERS = 'opensearchDashboards.dashboardAdmin.users';
+const ADMIN_GROUPS = 'opensearchDashboards.dashboardAdmin.groups';
+
+function readList(configs: AppConfig[] | undefined, key: string): string[] {
+  const c = configs?.find((x) => x.key === key);
+  try { return c?.value ? JSON.parse(c.value) : []; } catch { return []; }
+}
+
+/**
+ * Admin appConfigs: existing explicit admins minus `revoked`, plus adminRoleArns as `groups`
+ * (IAM role ARNs).
+ */
+export function adminConfigs(adminRoleArns: string[], existing: AppConfig[] = [], revoked: string[] = []): AppConfig[] {
+  const kept = readList(existing, ADMIN_GROUPS).filter((g) => g !== '*' && !revoked.includes(g));
+  const groups = [...new Set([...kept, ...adminRoleArns])];
+  const users = readList(existing, ADMIN_USERS).filter((u) => u !== '*');
+  const configs: AppConfig[] = [{ key: ADMIN_GROUPS, value: JSON.stringify(groups) }];
+  if (users.length) configs.push({ key: ADMIN_USERS, value: JSON.stringify(users) });
+  return configs;
+}
+
 export async function handler(event: any): Promise<any> {
   const requestType = event.RequestType;
   const { AppName, DomainDataSource, DqsDataSource } = event.ResourceProperties;
+  const adminRoleArns: string[] = JSON.parse(event.ResourceProperties.AdminRoleArns || '[]');
+  // On Update, roles this resource added before but no longer lists are removed.
+  const oldAdminRoleArns: string[] = requestType === 'Update'
+    ? JSON.parse(event.OldResourceProperties?.AdminRoleArns || '[]')
+    : [];
+  const revoked = oldAdminRoleArns.filter((r) => !adminRoleArns.includes(r));
 
   if (requestType === 'Create' || requestType === 'Update') {
     // Clean up any leftover app
@@ -34,6 +61,11 @@ export async function handler(event: any): Promise<any> {
     if (existing) {
       const detail = await client.send(new GetApplicationCommand({ id: existing.id }));
       if (detail.status === 'ACTIVE' && detail.endpoint) {
+        // UpdateApplication replaces the whole appConfigs list, so pass the merged set.
+        await client.send(new UpdateApplicationCommand({
+          id: existing.id,
+          appConfigs: adminConfigs(adminRoleArns, detail.appConfigs, revoked),
+        }));
         return { PhysicalResourceId: existing.id, Data: { AppId: existing.id, AppEndpoint: detail.endpoint } };
       }
       console.log(`Deleting existing app ${existing.id} (status: ${detail.status})`);
@@ -51,10 +83,7 @@ export async function handler(event: any): Promise<any> {
         const resp = await client.send(new CreateApplicationCommand({
           name: AppName,
           dataSources: [{ dataSourceArn: DomainDataSource }],
-          appConfigs: [
-            { key: 'opensearchDashboards.dashboardAdmin.users', value: JSON.stringify(['*']) },
-            { key: 'opensearchDashboards.dashboardAdmin.groups', value: JSON.stringify(['*']) },
-          ],
+          appConfigs: adminConfigs(adminRoleArns),
           iamIdentityCenterOptions: { enabled: false },
         }));
         console.log('CreateApplication response:', JSON.stringify(resp));

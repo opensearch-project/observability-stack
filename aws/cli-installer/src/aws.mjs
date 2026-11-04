@@ -45,6 +45,8 @@ import {
   BatchGetCollectionCommand,
   CreateSecurityPolicyCommand,
   CreateAccessPolicyCommand,
+  GetAccessPolicyCommand,
+  UpdateAccessPolicyCommand,
   ListCollectionsCommand,
   CreateCollectionGroupCommand,
   BatchGetCollectionGroupCommand,
@@ -63,11 +65,10 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import chalk from 'chalk';
-import { randomBytes, createHash } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { defaultCollectionGroupName } from './config.mjs';
 import {
   SecretsManagerClient,
-  CreateSecretCommand,
   GetSecretValueCommand,
   DeleteSecretCommand,
 } from '@aws-sdk/client-secrets-manager';
@@ -76,27 +77,24 @@ import {
 
 const SECRET_PREFIX = 'observability-stack';
 
-function generatePassword() {
-  return randomBytes(16).toString('base64url') + '!A1';
+/**
+ * Full ARN of a role, including its IAM path (e.g. IAM Identity Center roles under
+ * aws-reserved/sso.amazonaws.com/). Assumed-role session ARNs omit the path, and
+ * FGAC, OpenSearch UI and AOSS match on the full ARN.
+ */
+async function resolveRoleArn(cfg, roleName) {
+  try {
+    const { Role } = await new IAMClient({ region: cfg.region }).send(new GetRoleCommand({ RoleName: roleName }));
+    return Role.Arn;
+  } catch (e) {
+    printWarning(`Could not read role ${roleName} (${e.name}); using its ARN without an IAM path. Admin grants won't match if the role has a path.`);
+    return `arn:aws:iam::${cfg.accountId}:role/${roleName}`;
+  }
 }
 
-async function storeMasterPassword(region, pipelineName, password) {
-  const sm = new SecretsManagerClient({ region });
-  const secretName = `${SECRET_PREFIX}/${pipelineName}/master-password`;
-  try {
-    await sm.send(new CreateSecretCommand({
-      Name: secretName,
-      SecretString: password,
-      Description: `OpenSearch master password for ${pipelineName}`,
-    }));
-    printSuccess(`Master password stored in Secrets Manager (${secretName})`);
-  } catch (e) {
-    if (e.name === 'ResourceExistsException') {
-      const { PutSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
-      await sm.send(new PutSecretValueCommand({ SecretId: secretName, SecretString: password }));
-      printSuccess(`Master password updated in Secrets Manager (${secretName})`);
-    } else throw e;
-  }
+/** True when an ARN can be an FGAC master user or OpenSearch UI admin (an IAM role or IAM user). */
+export function isIamRoleOrUserArn(arn) {
+  return /^arn:aws[a-z-]*:iam::\d{12}:(role|user)\//.test(arn || '');
 }
 
 async function getMasterPassword(region, pipelineName) {
@@ -171,7 +169,7 @@ export async function checkRequirements(cfg) {
   const userMatch = arn.match(/:user\/(.+)$/);
   const fedMatch = arn.match(/:federated-user\/(.+)$/);
   if (assumedMatch) {
-    cfg.callerPrincipal = { arn: `arn:aws:iam::${cfg.accountId}:role/${assumedMatch[1]}`, type: 'role' };
+    cfg.callerPrincipal = { arn: await resolveRoleArn(cfg, assumedMatch[1]), type: 'role' };
   } else if (userMatch) {
     cfg.callerPrincipal = { arn, type: 'user' };
   } else if (fedMatch) {
@@ -261,15 +259,17 @@ async function createManagedDomain(cfg) {
   } catch (err) {
     if (err.name !== 'ResourceNotFoundException') throw err;
 
-    // Open access policy — FGAC (fine-grained access control) handles authorization.
-    // A scoped Principal (e.g. account root) blocks basic auth requests, which
-    // prevents the Security API from working for FGAC role mapping.
+    // The caller's IAM principal is the FGAC master user, so every request is signed;
+    // FGAC authorizes each caller, and this policy limits callers to this account.
+    if (!isIamRoleOrUserArn(cfg.callerPrincipal?.arn)) {
+      throw new Error('Creating a managed domain requires running the installer as an IAM role or IAM user (it becomes the domain\'s FGAC master user).');
+    }
     const accessPolicy = JSON.stringify({
       Version: '2012-10-17',
       Statement: [{
         Effect: 'Allow',
-        Principal: { AWS: '*' },
-        Action: 'es:*',
+        Principal: { AWS: `arn:aws:iam::${cfg.accountId}:root` },
+        Action: 'es:ESHttp*',
         Resource: `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName}/*`,
       }],
     });
@@ -293,28 +293,11 @@ async function createManagedDomain(cfg) {
       clusterConfig.ZoneAwarenessConfig = { AvailabilityZoneCount: azCount };
     }
 
-    // Master user: for VPC-private domains the domain's Security API is only
-    // reachable from inside the VPC, so an internal (username/password) master
-    // user can't be used to bootstrap role mappings from outside. Instead, make
-    // the caller's IAM principal the master user — it can then drive role mapping
-    // through the reachable managed OpenSearch UI (which proxies to the domain over
-    // the AWS-internal path) via SigV4, no in-VPC network access required. Public
-    // domains keep the internal-database master user (username/password).
-    const iamMaster = inVpc && Boolean(cfg.callerPrincipal?.arn);
-    const advancedSecurity = iamMaster
-      ? {
-          Enabled: true,
-          InternalUserDatabaseEnabled: false,
-          MasterUserOptions: { MasterUserARN: cfg.callerPrincipal.arn },
-        }
-      : {
-          Enabled: true,
-          InternalUserDatabaseEnabled: true,
-          MasterUserOptions: {
-            MasterUserName: cfg.opensearchUser || 'admin',
-            MasterUserPassword: (cfg._masterPassword = generatePassword()),
-          },
-        };
+    const advancedSecurity = {
+      Enabled: true,
+      InternalUserDatabaseEnabled: false,
+      MasterUserOptions: { MasterUserARN: cfg.callerPrincipal.arn },
+    };
 
     try {
       await client.send(new CreateDomainCommand({
@@ -342,12 +325,8 @@ async function createManagedDomain(cfg) {
         TagList: stackTags(cfg.pipelineName),
       }));
       printSuccess(`Domain creation initiated${inVpc ? ` in VPC ${cfg.vpcId}` : ''} — waiting for endpoint`);
-      if (iamMaster) {
-        cfg.iamMasterArn = cfg.callerPrincipal.arn;
-        printInfo(`Master user: IAM principal ${cfg.iamMasterArn} (role mapping via OpenSearch UI)`);
-      } else {
-        await storeMasterPassword(cfg.region, cfg.pipelineName, cfg._masterPassword);
-      }
+      cfg.iamMasterArn = cfg.callerPrincipal.arn;
+      printInfo(`FGAC master user: IAM principal ${cfg.iamMasterArn}${inVpc ? ' (role mapping via OpenSearch UI)' : ''}`);
     } catch (createErr) {
       printError('Failed to create OpenSearch domain');
       console.error();
@@ -647,10 +626,33 @@ export async function createAossDataAccessPolicy(cfg) {
     printSuccess(`Data access policy created`);
   } catch (e) {
     if (/ConflictException|already exists/i.test(e.message)) {
-      printSuccess(`Data access policy '${policyName}' already exists`);
+      await addAossDataAccessPrincipals(client, policyName, principals);
     } else {
       printWarning(`Could not create data access policy: ${e.message}`);
     }
+  }
+}
+
+// Adds principals to every rule set in an existing data access policy.
+export function mergeAossPolicyPrincipals(policy, principals) {
+  return policy.map((stmt) => ({ ...stmt, Principal: [...new Set([...(stmt.Principal || []), ...principals])] }));
+}
+
+async function addAossDataAccessPrincipals(client, policyName, principals) {
+  try {
+    const { accessPolicyDetail: d } = await client.send(new GetAccessPolicyCommand({ name: policyName, type: 'data' }));
+    const current = typeof d.policy === 'string' ? JSON.parse(d.policy) : d.policy;
+    const merged = mergeAossPolicyPrincipals(current, principals);
+    if (JSON.stringify(merged) === JSON.stringify(current)) {
+      printSuccess(`Data access policy '${policyName}' already includes this stack's principals`);
+      return;
+    }
+    await client.send(new UpdateAccessPolicyCommand({
+      name: policyName, type: 'data', policyVersion: d.policyVersion, policy: JSON.stringify(merged),
+    }));
+    printSuccess(`Data access policy '${policyName}' updated with this stack's principals`);
+  } catch (e) {
+    printWarning(`Could not update data access policy '${policyName}': ${e.message}`);
   }
 }
 
@@ -677,6 +679,54 @@ export function fgacPrincipals(cfg) {
   return { backendRoles, users };
 }
 
+const APP_ADMIN_USERS = 'opensearchDashboards.dashboardAdmin.users';
+const APP_ADMIN_GROUPS = 'opensearchDashboards.dashboardAdmin.groups';
+
+function readAppConfigList(appConfigs, key) {
+  const c = (appConfigs || []).find((x) => x.key === key);
+  try { return c ? JSON.parse(c.value) : []; } catch { return []; }
+}
+
+
+/**
+ * OpenSearch UI admin appConfigs for the fgacPrincipals set, merged with the
+ * explicit admins in existingConfigs. `groups` takes IAM role ARNs and `users`
+ * takes IAM user ARNs.
+ */
+export function appAdminConfigs(cfg, existingConfigs = []) {
+  const { backendRoles, users } = fgacPrincipals(cfg);
+  const groups = [...new Set([...readAppConfigList(existingConfigs, APP_ADMIN_GROUPS), ...backendRoles])]
+    .filter((g) => g !== '*');
+  const iamUsers = [...new Set([
+    ...readAppConfigList(existingConfigs, APP_ADMIN_USERS),
+    ...users.filter((a) => a.includes(':user/')),
+  ])].filter((u) => u !== '*');
+  const configs = [{ key: APP_ADMIN_GROUPS, value: JSON.stringify(groups) }];
+  if (iamUsers.length) configs.push({ key: APP_ADMIN_USERS, value: JSON.stringify(iamUsers) });
+  return configs;
+}
+
+function basicAuthFetch(user, password) {
+  const authorization = `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+  return (url, method, body) => fetch(url, { method, body, headers: { 'Content-Type': 'application/json', Authorization: authorization } });
+}
+
+/** fetch() that signs requests with SigV4 using the default credential chain. */
+export function sigv4Fetch(region, service) {
+  const signer = new SignatureV4({ credentials: defaultProvider(), region, service, sha256: Sha256 });
+  return async (url, method, body) => {
+    const parsed = new URL(url);
+    const query = {}; parsed.searchParams.forEach((v, k) => { query[k] = v; });
+    const request = new HttpRequest({
+      method, protocol: parsed.protocol, hostname: parsed.hostname, path: parsed.pathname, query,
+      headers: { host: parsed.hostname, 'Content-Type': 'application/json' },
+      body,
+    });
+    const signed = await signer.sign(request);
+    return fetch(url, { method, headers: signed.headers, body });
+  };
+}
+
 export async function mapOsiRoleInDomain(cfg) {
   if (cfg.opensearchType === 'serverless') return;
   if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
@@ -694,23 +744,19 @@ export async function mapOsiRoleInDomain(cfg) {
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
-  // Retrieve master password — from flag (reuse) or Secrets Manager (created by CLI)
+  // Basic auth when a master password is supplied or stored (domains with an internal
+  // master user); otherwise sign with the caller's credentials (IAM master user, or a
+  // role mapped to security_manager).
   let masterPass = cfg.opensearchPassword || '';
   if (!masterPass) {
-    try {
-      masterPass = await getMasterPassword(cfg.region, cfg.pipelineName);
-    } catch (e) {
-      printError('No master password available.');
-      printInfo('Provide --opensearch-password to supply the domain master password.');
-      throw new Error('FGAC mapping requires a master password. Cannot continue.');
-    }
+    try { masterPass = await getMasterPassword(cfg.region, cfg.pipelineName); } catch { /* none stored */ }
   }
+  const domainFetch = masterPass
+    ? basicAuthFetch(cfg.opensearchUser || 'admin', masterPass)
+    : sigv4Fetch(cfg.region, 'es');
 
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping`;
-  const auth = Buffer.from(`${cfg.opensearchUser || 'admin'}:${masterPass}`).toString('base64');
-
   const { backendRoles: newBackendRoles, users: newUsers } = fgacPrincipals(cfg);
-  const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
 
   // Map one role, retrying transient failures. The security plugin can briefly
   // return 5xx/connection errors right after the cluster becomes active, and a
@@ -719,7 +765,7 @@ export async function mapOsiRoleInDomain(cfg) {
   async function mapRole(role) {
     const roleUrl = `${url}/${role}`;
     await withRetry(async () => {
-      const getResp = await fetch(roleUrl, { headers });
+      const getResp = await domainFetch(roleUrl, 'GET');
       let existingBackendRoles = [];
       let existingUsers = [];
       if (getResp.ok) {
@@ -735,7 +781,7 @@ export async function mapOsiRoleInDomain(cfg) {
       const ops = [{ op: 'add', path: '/backend_roles', value: mergedBackendRoles }];
       if (newUsers.length) ops.push({ op: 'add', path: '/users', value: mergedUsers });
 
-      const resp = await fetch(roleUrl, { method: 'PATCH', headers, body: JSON.stringify(ops) });
+      const resp = await domainFetch(roleUrl, 'PATCH', JSON.stringify(ops));
       if (!resp.ok) {
         const body = await resp.text();
         // 5xx and 401/403 right after provisioning are transient; retry. A stable
@@ -754,6 +800,7 @@ export async function mapOsiRoleInDomain(cfg) {
   } catch (err) {
     printError(`Could not map the OSI role in OpenSearch FGAC: ${err.message}`);
     printInfo('The pipeline cannot write to OpenSearch until this role is mapped.');
+    if (!masterPass) printInfo('Requests were signed with your AWS credentials; your role must be the domain\'s master user or mapped to security_manager (for a CDK-deployed domain, list it in adminRoleArns).');
     printInfo('Map it manually in OpenSearch UI → Security → Roles, or re-run the installer.');
     throw new Error('FGAC role mapping failed — pipeline would not be able to write to OpenSearch');
   }
@@ -888,6 +935,23 @@ export async function mapOsiRoleViaOpenSearchUI(cfg) {
 
 // ── IAM role ────────────────────────────────────────────────────────────────
 
+/**
+ * Trust policy for the OSIS pipeline role, limited to this account. Pipelines created by the
+ * installer go ACTIVE but don't serve requests when this role also requires aws:SourceArn,
+ * so only aws:SourceAccount is checked.
+ */
+export function pipelineRoleTrustPolicy(cfg) {
+  return {
+    Version: '2012-10-17',
+    Statement: [{
+      Effect: 'Allow',
+      Principal: { Service: 'osis-pipelines.amazonaws.com' },
+      Action: 'sts:AssumeRole',
+      Condition: { StringEquals: { 'aws:SourceAccount': cfg.accountId } },
+    }],
+  };
+}
+
 export async function createIamRole(cfg) {
   printStep(`Creating IAM role '${cfg.iamRoleName}'...`);
 
@@ -903,15 +967,7 @@ export async function createIamRole(cfg) {
     if (err.name !== 'NoSuchEntityException') throw err;
   }
 
-  // Trust policy
-  const trustPolicy = JSON.stringify({
-    Version: '2012-10-17',
-    Statement: [{
-      Effect: 'Allow',
-      Principal: { Service: 'osis-pipelines.amazonaws.com' },
-      Action: 'sts:AssumeRole',
-    }],
-  });
+  const trustPolicy = JSON.stringify(pipelineRoleTrustPolicy(cfg));
 
   try {
     const result = await client.send(new CreateRoleCommand({
@@ -1237,7 +1293,67 @@ export async function setupDashboards(cfg) {
  * Create an IAM role for the Connected Data Source to access AMP.
  * Trust policy allows directquery.opensearchservice.amazonaws.com to assume it.
  */
+// https://docs.aws.amazon.com/opensearch-service/latest/developerguide/direct-query-prometheus-creating.html#direct-query-prometheus-manual-role-permissions
+export const DQS_APS_ACTIONS = [
+  'aps:QueryMetrics',
+  'aps:GetLabels',
+  'aps:GetSeries',
+  'aps:GetMetricMetadata',
+  'aps:ListAlerts',
+  'aps:DescribeAlertManagerDefinition',
+  'aps:GetAlertManagerStatus',
+  'aps:ListAlertManagerAlerts',
+  'aps:ListAlertManagerAlertGroups',
+  'aps:ListAlertManagerReceivers',
+  'aps:ListAlertManagerSilences',
+  'aps:GetAlertManagerSilence',
+  'aps:PutAlertManagerSilences',
+  'aps:DeleteAlertManagerSilence',
+  'aps:ListRuleGroupsNamespaces',
+  'aps:DescribeRuleGroupsNamespace',
+  'aps:CreateRuleGroupsNamespace',
+  'aps:PutRuleGroupsNamespace',
+  'aps:DeleteRuleGroupsNamespace',
+];
+
+/**
+ * Trust and permissions policies for the Prometheus direct query data source role.
+ * AMP authorizes rule-groups-namespace CRUD against the rulegroupsnamespace ARN,
+ * not the workspace ARN, so both resources are listed.
+ */
+export function connectedDataSourceRolePolicies(cfg) {
+  const apsWorkspaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/${cfg.apsWorkspaceId}`;
+  const apsRuleGroupsNamespaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:rulegroupsnamespace/${cfg.apsWorkspaceId}/*`;
+  return {
+    trustPolicy: {
+      Version: '2012-10-17',
+      Statement: [{
+        Effect: 'Allow',
+        Principal: { Service: 'directquery.opensearchservice.amazonaws.com' },
+        Action: 'sts:AssumeRole',
+        Condition: {
+          StringEquals: { 'aws:SourceAccount': cfg.accountId },
+          ArnEquals: {
+            'aws:SourceArn': `arn:aws:opensearch:${cfg.region}:${cfg.accountId}:datasource/${cfg.connectedDataSourceName}`,
+          },
+        },
+      }],
+    },
+    permissionsPolicy: {
+      Version: '2012-10-17',
+      Statement: [
+        { Effect: 'Allow', Action: DQS_APS_ACTIONS, Resource: [apsWorkspaceArn, apsRuleGroupsNamespaceArn] },
+        { Effect: 'Allow', Action: 'aps:ListWorkspaces', Resource: '*' },
+      ],
+    },
+  };
+}
+
 export async function createConnectedDataSourceRole(cfg) {
+  // The trust policy names the data source, so the name must be known first.
+  if (!cfg.connectedDataSourceName) {
+    throw new Error('--connected-data-source-name is required to create the Connected Data Source role');
+  }
   const roleName = cfg.connectedDataSourceRoleName;
   printStep(`Creating Connected Data Source Prometheus role '${roleName}'...`);
 
@@ -1253,19 +1369,12 @@ export async function createConnectedDataSourceRole(cfg) {
     if (err.name !== 'NoSuchEntityException') throw err;
   }
 
-  const trustPolicy = JSON.stringify({
-    Version: '2012-10-17',
-    Statement: [{
-      Effect: 'Allow',
-      Principal: { Service: 'directquery.opensearchservice.amazonaws.com' },
-      Action: 'sts:AssumeRole',
-    }],
-  });
+  const { trustPolicy, permissionsPolicy } = connectedDataSourceRolePolicies(cfg);
 
   try {
     const result = await client.send(new CreateRoleCommand({
       RoleName: roleName,
-      AssumeRolePolicyDocument: trustPolicy,
+      AssumeRolePolicyDocument: JSON.stringify(trustPolicy),
       Tags: stackTags(cfg.pipelineName),
     }));
     cfg.connectedDataSourceRoleArn = result.Role.Arn;
@@ -1277,33 +1386,11 @@ export async function createConnectedDataSourceRole(cfg) {
     throw new Error('Failed to create Connected Data Source Prometheus role');
   }
 
-  // Attach APS access policy.
-  //
-  // The data source needs to query metrics AND manage alerting resources
-  // (alerting rule groups and alert-manager silences) in the workspace.
-  // AMP authorizes these against two different resource ARNs:
-  //   - Workspace-scoped actions (queries, remote write, alert-manager
-  //     definition + silences) resolve against the workspace ARN.
-  //   - Rule-groups-namespace CRUD (Put/Delete/DescribeRuleGroupsNamespace)
-  //     resolve against the rulegroupsnamespace ARN, NOT the workspace ARN.
-  // Granting aps:* only on the workspace ARN silently denies rule-group
-  // create/update/delete, so we list both resources.
-  const apsWorkspaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:workspace/${cfg.apsWorkspaceId}`;
-  const apsRuleGroupsNamespaceArn = `arn:aws:aps:${cfg.region}:${cfg.accountId}:rulegroupsnamespace/${cfg.apsWorkspaceId}/*`;
-  const permissionsPolicy = JSON.stringify({
-    Version: '2012-10-17',
-    Statement: [{
-      Effect: 'Allow',
-      Action: 'aps:*',
-      Resource: [apsWorkspaceArn, apsRuleGroupsNamespaceArn],
-    }],
-  });
-
   try {
     await client.send(new PutRolePolicyCommand({
       RoleName: roleName,
       PolicyName: 'APSAccess',
-      PolicyDocument: permissionsPolicy,
+      PolicyDocument: JSON.stringify(permissionsPolicy),
     }));
     printSuccess('APS access policy attached to Connected Data Source role');
   } catch (err) {
@@ -1370,6 +1457,9 @@ export async function createConnectedDataSource(cfg) {
 export async function createOpenSearchApplication(cfg) {
   const appName = cfg.appName;
   printStep(`Creating OpenSearch Application '${appName}'...`);
+  if (cfg.callerPrincipal?.arn && !isIamRoleOrUserArn(cfg.callerPrincipal.arn)) {
+    printWarning(`${cfg.callerPrincipal.arn} can't be an OpenSearch UI admin. Rerun as an IAM role or user to be added as an admin.`);
+  }
 
   const client = new OpenSearchClient({ region: cfg.region });
 
@@ -1381,6 +1471,7 @@ export async function createOpenSearchApplication(cfg) {
       cfg.appId = existing.id;
       printSuccess(`Application '${appName}' already exists (id: ${cfg.appId})`);
       await fetchAppEndpoint(client, cfg);
+      await updateAppAdmins(cfg, client);
       // Update data sources on existing app
       await associateDataSourcesWithApp(cfg, client);
       return;
@@ -1394,16 +1485,7 @@ export async function createOpenSearchApplication(cfg) {
     const result = await client.send(new CreateApplicationCommand({
       name: appName,
       dataSources,
-      appConfigs: [
-        {
-          key: 'opensearchDashboards.dashboardAdmin.users',
-          value: JSON.stringify(['*']),
-        },
-        {
-          key: 'opensearchDashboards.dashboardAdmin.groups',
-          value: JSON.stringify([cfg.iamRoleArn]),
-        },
-      ],
+      appConfigs: appAdminConfigs(cfg),
       iamIdentityCenterOptions: {
         enabled: false,
       },
@@ -1424,6 +1506,7 @@ export async function createOpenSearchApplication(cfg) {
         if (existing) {
           cfg.appId = existing.id;
           await fetchAppEndpoint(client, cfg);
+          await updateAppAdmins(cfg, client);
           await associateDataSourcesWithApp(cfg, client);
         }
       } catch { /* best effort */ }
@@ -1496,6 +1579,20 @@ function buildAppDataSources(cfg) {
 /**
  * Associate the OpenSearch domain and Connected Data Source with the application.
  */
+// UpdateApplication replaces the whole appConfigs list, so pass the merged set.
+async function updateAppAdmins(cfg, client) {
+  try {
+    const app = await client.send(new GetApplicationCommand({ id: cfg.appId }));
+    await client.send(new UpdateApplicationCommand({
+      id: cfg.appId,
+      appConfigs: appAdminConfigs(cfg, app.appConfigs),
+    }));
+    printSuccess('Application admins include the stack roles and caller');
+  } catch (err) {
+    printWarning(`Could not update application admins: ${err.message}`);
+  }
+}
+
 async function associateDataSourcesWithApp(cfg, client) {
   if (!cfg.appId) return;
 
