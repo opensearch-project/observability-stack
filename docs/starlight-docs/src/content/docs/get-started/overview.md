@@ -17,6 +17,33 @@ The OpenSearch Observability Stack is built on open standards with OpenTelemetry
 4. **Storage**: OpenSearch indexes traces and logs. Prometheus stores time-series metrics.
 5. **Visualization**: OpenSearch Dashboards provides trace exploration, agent trace views, PromQL-based metric charts, and service maps.
 
+## How an APM request appears in the stack
+
+For a distributed application, a request normally follows this path:
+
+```text
+service A → service B
+   │            │
+   └─ trace context (traceparent) ─┘
+                ↓
+         OTel Collector
+                ↓
+          Data Prepper
+          ┌─────┴─────┐
+          ↓           ↓
+      OpenSearch   Prometheus
+          └─────┬─────┘
+                ↓
+       OpenSearch Dashboards
+```
+
+The trace spans stored in OpenSearch provide the detail for a request and its
+individual operations. Data Prepper also uses the propagated trace context to
+derive service-to-service relationships and RED metrics. OpenSearch Dashboards
+combines those results in the Services catalog and Application Map. If one of
+these views is empty, use [Troubleshooting APM](/docs/apm/troubleshooting/) to
+identify which boundary needs attention.
+
 ## Key design decisions
 
 - **OpenTelemetry-native**: All data ingestion uses OTel protocols and semantic conventions. No proprietary agents.

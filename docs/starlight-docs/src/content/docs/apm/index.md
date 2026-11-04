@@ -37,6 +37,14 @@ Drill into any service to see three tabs:
 
 From any service or operation, open correlation flyouts to jump directly to related spans and logs. Correlation icons appear throughout the Services and Operations tables, linking APM data to the traces and logs in the Investigate section.
 
+## Getting started
+
+If the stack is already running, follow the [Explore Application Monitoring](/docs/get-started/quickstart/application-monitoring/)
+quickstart. It walks through the path from a live trace to the service map,
+RED metrics, and related logs.
+
+If you cannot see a trace, service, or metric, use the [APM troubleshooting guide](/docs/apm/troubleshooting/).
+
 ## How it works
 
 ![Architecture diagram showing microservices and infrastructure sending OTLP to the OTel Collector, which exports to Data Prepper. Data Prepper writes to OpenSearch and Prometheus, both queried by OpenSearch Dashboards.](/docs/images/apm/architecture.png)
