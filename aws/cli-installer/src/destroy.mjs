@@ -8,7 +8,7 @@ import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCom
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { teardownDemoInstance } from './ec2-demo.mjs';
-import { FGAC_ROLES, defaultCollectionGroupName } from './aws.mjs';
+import { FGAC_ROLES, defaultCollectionGroupName, sigv4Fetch } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
   try {
@@ -46,30 +46,23 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
         masterPass = SecretString;
       } catch { /* no secret found */ }
     }
-    if (!masterPass) {
-      printWarning('No master password available. FGAC cleanup skipped. Pass --opensearch-password to clean up role mappings.');
-      return;
-    }
-
+    // Basic auth for domains with an internal master user; otherwise sign the requests.
     const endpoint = `https://${DomainStatus.Endpoint}`;
-    const auth = Buffer.from(`admin:${masterPass}`).toString('base64');
-    const headers = { 'Content-Type': 'application/json', 'Authorization': `Basic ${auth}` };
+    const domainFetch = masterPass
+      ? (url, method, body) => fetch(url, { method, body, headers: { 'Content-Type': 'application/json', Authorization: `Basic ${Buffer.from(`admin:${masterPass}`).toString('base64')}` } })
+      : sigv4Fetch(region, 'es');
 
     let cleaned = false;
     for (const role of FGAC_ROLES) {
       const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
-      const getResp = await fetch(url, { headers });
+      const getResp = await domainFetch(url, 'GET');
       if (!getResp.ok) continue;
 
       const data = await getResp.json();
       const existing = data?.[role]?.backend_roles || [];
       const filtered = existing.filter(r => !r.includes(pipelineName));
       if (filtered.length !== existing.length) {
-        await fetch(url, {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
-        });
+        await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]));
         cleaned = true;
       }
     }

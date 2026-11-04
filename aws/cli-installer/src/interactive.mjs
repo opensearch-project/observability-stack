@@ -229,8 +229,7 @@ async function stepOpenSearch(cfg) {
         cfg.opensearchUser = user;
 
         const pass = await eInput({
-          message: 'OpenSearch master password (for FGAC role mapping)',
-          validate: (v) => v.trim().length > 0 || 'Password is required to configure access',
+          message: 'OpenSearch master password (leave empty to sign requests with your AWS credentials)',
         });
         if (pass === GoBack) { clearFromCursor(); continue; }
         cfg.opensearchPassword = pass;

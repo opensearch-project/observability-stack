@@ -14,9 +14,8 @@ Deploy the Observability Stack to AWS using managed services. This creates the s
 | | Managed (AOS) | Serverless (AOSS) |
 |---|---|---|
 | **Scaling** | Fixed instance count | Auto-scales with OCU |
-| **Authentication** | FGAC + basic auth | IAM only |
+| **Authentication** | IAM (SigV4) + FGAC; the deploying IAM role or user is the FGAC master user | IAM only |
 | **Index management** | Built-in index types | Explicit index templates |
-| **Master password** | Yes (Secrets Manager) | No |
 | **Best for** | Predictable workloads, fine-grained control | Variable workloads, zero cluster management |
 
 Both backends use the same OSIS ingestion pipeline and Prometheus workspace. The choice only affects the OpenSearch storage layer.

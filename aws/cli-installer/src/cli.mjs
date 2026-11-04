@@ -46,7 +46,7 @@ export function parseCli(argv) {
   program
     .option('--opensearch-endpoint <url>', 'Reuse an existing OpenSearch endpoint')
     .option('--opensearch-user <user>', 'OpenSearch master username', 'admin')
-    .option('--opensearch-password <password>', 'Master password for existing OpenSearch domain (for FGAC mapping)');
+    .option('--opensearch-password <password>', 'Master password for an existing domain with an internal master user (otherwise requests are signed with your AWS credentials)');
   // OpenSearch — create (managed domain)
   program
     .option('--os-domain-name <name>', 'Domain name for new OpenSearch domain')
@@ -106,7 +106,7 @@ function parseDestroyArgs(argv) {
     .description('Tear down all AWS resources created by the CLI for a given pipeline name')
     .requiredOption('--pipeline-name <name>', 'Pipeline name used during creation')
     .option('--region <region>', 'AWS region', process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION)
-    .option('--opensearch-password <password>', 'Master password (if domain was not created by CLI)')
+    .option('--opensearch-password <password>', 'Master password for a domain with an internal master user (otherwise requests are signed)')
     .option('--aoss-collection-name <name>', 'Collection name if it differs from the pipeline name')
     .option('--aoss-collection-group-name <name>', 'Collection group name if it differs from <collection>-cg');
 
@@ -267,9 +267,6 @@ export function validateConfig(cfg) {
   }
   if (cfg.osAction === 'reuse' && !cfg.opensearchEndpoint) {
     errors.push('--opensearch-endpoint required when reusing OpenSearch');
-  }
-  if (cfg.osAction === 'reuse' && cfg.opensearchType !== 'serverless' && !cfg.opensearchPassword) {
-    errors.push('--opensearch-password required when reusing an existing OpenSearch domain (needed for FGAC mapping)');
   }
   // The OSI pipeline cannot be created without a role. In advanced mode with no
   // IAM flags, iamAction stays empty and the role step is silently skipped — the

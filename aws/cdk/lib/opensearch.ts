@@ -13,6 +13,9 @@ export interface OpenSearchConstructProps {
 export class OpenSearchConstruct extends Construct {
   public readonly domain: opensearch.Domain;
   public readonly pipelineRole: iam.Role;
+  /** FGAC master user. The FGAC mapping Lambda runs as this role. */
+  public readonly fgacAdminRole: iam.Role;
+  /** Unused. Kept so ObservabilityStack deployments that still import its ARN can update. */
   public readonly masterPasswordSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: OpenSearchConstructProps) {
@@ -29,6 +32,11 @@ export class OpenSearchConstruct extends Construct {
       },
     });
 
+    this.fgacAdminRole = new iam.Role(this, 'FgacAdminRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
+    });
+
     this.domain = new opensearch.Domain(this, 'Domain', {
       version: opensearch.EngineVersion.openSearch('3.5'),
       capacity: {
@@ -43,23 +51,33 @@ export class OpenSearchConstruct extends Construct {
       encryptionAtRest: { enabled: true },
       enforceHttps: true,
       fineGrainedAccessControl: {
-        masterUserName: 'admin',
-        masterUserPassword: this.masterPasswordSecret.secretValueFromJson('password'),
+        masterUserArn: this.fgacAdminRole.roleArn,
       },
+      // FGAC authorizes each caller; this policy limits callers to signed requests from this account.
       accessPolicies: [
         new iam.PolicyStatement({
           effect: iam.Effect.ALLOW,
-          principals: [new iam.AnyPrincipal()],
-          actions: ['es:*'],
+          principals: [new iam.AccountRootPrincipal()],
+          actions: ['es:ESHttp*'],
           resources: [`arn:aws:es:${stack.region}:${stack.account}:domain/*/*`],
         }),
       ],
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    this.fgacAdminRole.addToPolicy(new iam.PolicyStatement({
+      actions: ['es:ESHttp*'],
+      resources: [this.domain.domainArn, `${this.domain.domainArn}/*`],
+    }));
+
     // IAM role for OSIS pipeline
     this.pipelineRole = new iam.Role(this, 'PipelineRole', {
-      assumedBy: new iam.ServicePrincipal('osis-pipelines.amazonaws.com'),
+      assumedBy: new iam.ServicePrincipal('osis-pipelines.amazonaws.com', {
+        conditions: {
+          StringEquals: { 'aws:SourceAccount': stack.account },
+          ArnLike: { 'aws:SourceArn': `arn:${stack.partition}:osis:${stack.region}:${stack.account}:pipeline/*` },
+        },
+      }),
     });
     this.domain.grantReadWrite(this.pipelineRole);
     this.pipelineRole.addToPolicy(new iam.PolicyStatement({
