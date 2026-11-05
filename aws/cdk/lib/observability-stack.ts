@@ -79,6 +79,7 @@ export class ObservabilityStack extends cdk.Stack {
       dqsDataSourceArn: infra.dqsDataSourceArn,
       uiInitRole,
       adminRoleArns: props.adminRoleArns,
+      uiInitDependsOn: [pipeline],
     });
     if (!props.adminRoleArns?.length) {
       cdk.Annotations.of(this).addWarning(
