@@ -29,8 +29,11 @@ chmod +x "$PATCHED_SCRIPT"
 printf '%s\n' "$INSTALL_DIR" "n" "n" "n" | bash "$PATCHED_SCRIPT" --skip-pull
 rm -f "$PATCHED_SCRIPT"
 
-# Parse .env from the installed directory
-eval "$(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$INSTALL_DIR/.env")"
+# Read .env values as literal strings; don't source or eval (values aren't shell-safe).
+while IFS='=' read -r key value; do
+  if [[ $value =~ ^\'(.*)\'$ || $value =~ ^\"(.*)\"$ ]]; then value="${BASH_REMATCH[1]}"; fi
+  printf -v "$key" '%s' "$value"
+done < <(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_DASHBOARDS_PORT|OTEL_COLLECTOR_PORT_HTTP|PROMETHEUS_PORT)=' "$INSTALL_DIR/.env")
 
 source "$SCRIPT_DIR/checks.sh"
 run_checks

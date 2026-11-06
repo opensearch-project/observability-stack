@@ -13,16 +13,27 @@ const env = {
 
 const opensearchType = (app.node.tryGetContext('opensearchType') as 'managed' | 'serverless') || 'managed';
 const enableDemo = String(app.node.tryGetContext('enableDemo') ?? true) !== 'false';
+const adminRoleArns = String(app.node.tryGetContext('adminRoleArns') ?? '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+const optionalNumber = (key: string): number | undefined => {
+  const value = app.node.tryGetContext(key);
+  return value === undefined ? undefined : Number(value);
+};
 
 // Slow-changing infra: OpenSearch domain/collection, AMP workspace, DQS data source
 const infra = new InfraStack(app, 'ObsInfra', {
   env,
   opensearchType,
+  ...(opensearchType === 'serverless' && {
+    aossMinOcu: optionalNumber('aossMinOcu'),
+    aossMaxOcu: optionalNumber('aossMaxOcu'),
+  }),
   ...(opensearchType !== 'serverless' && {
     osInstanceType: 'r6g.large.search',
     osInstanceCount: 1,
     osVolumeSize: 100,
   }),
+  adminRoleArns,
 });
 
 // Fast-iteration stack: FGAC, OSIS pipeline, OpenSearch App, UI init
@@ -32,4 +43,5 @@ new ObservabilityStack(app, 'ObservabilityStack', {
   minOcu: 1,
   maxOcu: 4,
   enableDemo,
+  adminRoleArns,
 });

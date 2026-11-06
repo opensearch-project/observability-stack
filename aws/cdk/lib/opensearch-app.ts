@@ -10,6 +10,14 @@ export interface OpenSearchAppConstructProps {
   domainArn: string;
   domainEndpoint: string;
   dqsDataSourceArn: string;
+  uiInitRole: iam.IRole;
+  /** IAM role ARNs made OpenSearch UI application admins, in addition to the UI init role. */
+  adminRoleArns?: string[];
+  /**
+   * Resources UI init must wait for. The ingestion pipeline creates the indices from its templates
+   * when it starts, and UI init stores each index pattern's fields from them.
+   */
+  uiInitDependsOn?: Construct[];
 }
 
 export class OpenSearchAppConstruct extends Construct {
@@ -46,6 +54,7 @@ export class OpenSearchAppConstruct extends Construct {
         AppName: appName,
         DomainDataSource: props.domainArn,
         DqsDataSource: props.dqsDataSourceArn,
+        AdminRoleArns: JSON.stringify([props.uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
       },
     });
 
@@ -59,13 +68,9 @@ export class OpenSearchAppConstruct extends Construct {
       entry: path.join(__dirname, '..', 'custom-resources', 'ui-init', 'index.ts'),
       timeout: cdk.Duration.minutes(10),
       memorySize: 256,
+      role: props.uiInitRole,
       bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
     });
-    uiInitFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['es:*', 'opensearch:*', 'aoss:*'],
-      resources: ['*'],
-    }));
-
     const uiInitProvider = new cr.Provider(this, 'UiInitProvider', { onEventHandler: uiInitFn });
 
     const uiInit = new cdk.CustomResource(this, 'UiInit', {
@@ -76,10 +81,12 @@ export class OpenSearchAppConstruct extends Construct {
       },
     });
     uiInit.node.addDependency(app);
+    for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
 
     new cdk.CfnOutput(stack, 'OpenSearchAppEndpoint', { value: this.appEndpoint });
     new cdk.CfnOutput(stack, 'DashboardUrl', {
-      value: `${this.appEndpoint}/w/${uiInit.getAttString('WorkspaceId')}/app/home`,
+      // app/home is not a workspace app and redirects to the workspace picker.
+      value: `${this.appEndpoint}/w/${uiInit.getAttString('WorkspaceId')}/app/dashboards#/view/observability-overview-dashboard`,
     });
   }
 }
