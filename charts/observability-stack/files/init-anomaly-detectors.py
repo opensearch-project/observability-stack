@@ -457,8 +457,46 @@ def interval(minutes):
     return {"period": {"interval": minutes, "unit": "Minutes"}}
 
 
+def suppression_rules(features, spike_only, min_increase=None):
+    """AD suppression rules for a detector.
+
+    Setting `rules` replaces AD's default rule, which ignores anomalies whose
+    actual value is within 20% of the expected value (in either direction),
+    so that rule is added back for every feature. Features in `spike_only`
+    also ignore anomalies where the actual value is below the expected one:
+    a drop in latency, errors or tokens is good news, and without this rule a
+    fault is flagged a second time when it stops. AD applies the directional
+    rule only to the feature(s) that drove the anomaly, so a latency spike is
+    not suppressed because errors happen to be below expected.
+    (ACTUAL_IS_* conditions must not carry operator/value.)
+    `min_increase` maps a feature to an absolute margin: increases up to that
+    much over the expected value are ignored (for example, a sub-millisecond
+    service going from 0.3 ms to 0.8 ms is a big relative change but not a
+    problem).
+    """
+    rules = []
+    for f in features:
+        name = f["feature_name"]
+        rules.append({"action": "IGNORE_ANOMALY", "conditions": [
+            {"feature_name": name, "threshold_type": "ACTUAL_OVER_EXPECTED_RATIO",
+             "operator": "LTE", "value": 0.2},
+            {"feature_name": name, "threshold_type": "EXPECTED_OVER_ACTUAL_RATIO",
+             "operator": "LTE", "value": 0.2},
+        ]})
+        if name in spike_only:
+            rules.append({"action": "IGNORE_ANOMALY", "conditions": [
+                {"feature_name": name, "threshold_type": "ACTUAL_IS_BELOW_EXPECTED"},
+            ]})
+        if min_increase and name in min_increase:
+            rules.append({"action": "IGNORE_ANOMALY", "conditions": [
+                {"feature_name": name, "threshold_type": "ACTUAL_OVER_EXPECTED_MARGIN",
+                 "operator": "LTE", "value": min_increase[name]},
+            ]})
+    return rules
+
+
 def detector(name, description, indices, time_field, features, filter_query=None,
-             category=None, minutes=1):
+             category=None, minutes=1, spike_only=(), min_increase=None):
     config = {
         "name": name,
         "description": description,
@@ -472,6 +510,7 @@ def detector(name, description, indices, time_field, features, filter_query=None
         # (grade 1.0 vs 0.8 for the latency spike in testing). AD flags the
         # change, not the whole period a fault stays on.
         "shingle_size": 4,
+        "rules": suppression_rules(features, spike_only, min_increase),
     }
     if filter_query:
         config["filter_query"] = filter_query
@@ -534,7 +573,8 @@ def examples_setup():
             SPAN_INDEX, "endTime",
             [feature("avg_latency_ms", AVG_LATENCY_MS),
              feature("error_count", ERROR_SPAN_COUNT)],
-            filter_query=agent_spans, category="attributes.gen_ai.agent.name"),
+            filter_query=agent_spans, category="attributes.gen_ai.agent.name",
+            spike_only=("avg_latency_ms", "error_count")),
          "Agent Demo - Agent Latency/Error Anomaly", "Agent anomaly detected", "2"),
         (detector(
             "agent-tool-errors-latency",
@@ -544,7 +584,8 @@ def examples_setup():
             SPAN_INDEX, "endTime",
             [feature("avg_latency_ms", AVG_LATENCY_MS),
              feature("error_count", ERROR_SPAN_COUNT)],
-            filter_query=tool_spans, category="attributes.gen_ai.tool.name"),
+            filter_query=tool_spans, category="attributes.gen_ai.tool.name",
+            spike_only=("avg_latency_ms", "error_count")),
          "Agent Demo - Tool Call Anomaly", "Tool anomaly detected", "2"),
         (detector(
             "agent-llm-token-usage",
@@ -553,7 +594,8 @@ def examples_setup():
             SPAN_INDEX, "endTime",
             [feature("total_tokens", TOTAL_TOKENS),
              feature("llm_calls", SPAN_COUNT)],
-            filter_query=token_spans, category="serviceName"),
+            filter_query=token_spans, category="serviceName",
+            spike_only=("total_tokens", "llm_calls")),
          "Agent Demo - LLM Token Usage Anomaly", "Token usage anomaly detected", "3"),
     ]
     forecasters = [
@@ -575,25 +617,52 @@ def examples_setup():
 
 def otel_demo_setup():
     """OpenTelemetry Demo (astronomy shop). flagd flags drive these (feature
-    flag UI at http://localhost:8080/feature). In testing: paymentFailure
-    flagged payment, checkout and frontend errors; cartFailure flagged cart
-    and checkout; kafkaQueueProblems flagged fraud-detection latency; and
-    loadGeneratorFloodHomepage pushed frontend traffic ~18x above the
-    forecast band. (The demo writes no ERROR-severity logs for these faults,
-    so there is no log detector.)"""
-    entry_spans = {"terms": {"kind": ["SPAN_KIND_SERVER", "SPAN_KIND_CONSUMER"]}}
+    flag UI at http://localhost:8080/feature): paymentFailure and cartFailure
+    (errors), kafkaQueueProblems (fraud-detection latency) and
+    loadGeneratorFloodHomepage (traffic, ~18x above the forecast band). The
+    demo writes no ERROR-severity logs for these faults, so there is no log
+    detector."""
+    # Requests and Kafka messages each service handles. flagd's EventStream
+    # RPCs are long-lived streams (open for minutes), not requests, and would
+    # show up as huge latency outliers on the flagd service.
+    entry_spans = {"bool": {
+        "filter": [{"terms": {"kind": ["SPAN_KIND_SERVER", "SPAN_KIND_CONSUMER"]}}],
+        "must_not": [{"terms": {"name": [
+            "flagd.evaluation.v1.Service/EventStream",
+            "/flagd.evaluation.v1.Service/EventStream",
+        ]}}],
+    }}
+    # Traffic/errors and latency are separate detectors: average latency is the
+    # noisiest per-service signal, and sharing a model with it makes smaller
+    # error spikes harder to catch.
     detectors = [
         (detector(
-            "otel-demo-service-latency-errors",
-            "Per-service anomalies in request latency and error count for the "
+            "otel-demo-service-traffic-errors",
+            "Per-service anomalies in request count and error count for the "
             "OpenTelemetry Demo (server and consumer spans). Fires on the "
-            "paymentFailure, cartFailure, kafkaQueueProblems and "
-            "loadGeneratorFloodHomepage flags.",
+            "paymentFailure and cartFailure flags (errors) and on "
+            "loadGeneratorFloodHomepage (traffic). A traffic drop is flagged "
+            "too, since it can mean an outage.",
             SPAN_INDEX, "endTime",
-            [feature("avg_latency_ms", AVG_LATENCY_MS),
+            [feature("request_count", SPAN_COUNT),
              feature("error_count", ERROR_SPAN_COUNT)],
-            filter_query=bool_filter(entry_spans), category="serviceName"),
-         "OTel Demo - Service Latency/Error Anomaly", "Service anomaly detected", "2"),
+            filter_query=entry_spans, category="serviceName",
+            spike_only=("error_count",)),
+         "OTel Demo - Service Traffic/Error Anomaly", "Service traffic or error anomaly detected", "2"),
+        (detector(
+            "otel-demo-service-latency",
+            "Per-service anomalies in average request latency for the "
+            "OpenTelemetry Demo (server and consumer spans). Fires on the "
+            "kafkaQueueProblems flag (fraud-detection) and other slowdowns.",
+            SPAN_INDEX, "endTime",
+            [feature("avg_latency_ms", AVG_LATENCY_MS)],
+            filter_query=entry_spans, category="serviceName",
+            spike_only=("avg_latency_ms",),
+            # Several demo services answer in about a millisecond; in testing,
+            # increases of up to ~6 ms were noise and every fault added 12 ms
+            # or more.
+            min_increase={"avg_latency_ms": 10}),
+         "OTel Demo - Service Latency Anomaly", "Service latency anomaly detected", "2"),
     ]
     forecasters = [
         forecaster(
