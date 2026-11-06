@@ -234,3 +234,135 @@ run_negative_checks() {
   echo ""
   echo "==> Negative-path checks passed!"
 }
+
+# Anomaly detection and forecasting seeded for the demos by
+# docker-compose/opensearch-dashboards/init/init-anomaly-detectors.py: one
+# init container per demo (example agents, OTel Demo), each creating its
+# detectors, forecasters and one anomaly alerting monitor per detector.
+#
+# Creation waits for the demo's first spans (the plugins reject a detector
+# until its index has documents and its fields are mapped), so allow a few
+# minutes. Models only produce results ~40 minutes after bring-up, which is
+# out of scope for E2E; these checks verify the setups exist and their
+# real-time jobs are started.
+AD_RETRIES="${AD_RETRIES:-480}"
+AD_API="/_plugins/_anomaly_detection/detectors"
+FORECAST_API="/_plugins/_forecast/forecasters"
+EXAMPLE_DETECTORS=(agent-invocation-latency-errors agent-tool-errors-latency agent-llm-token-usage)
+EXAMPLE_FORECASTERS=(agent-request-volume-forecast agent-llm-token-forecast)
+EXAMPLE_AD_MONITORS=("Agent Demo - Agent Latency/Error Anomaly" "Agent Demo - Tool Call Anomaly" "Agent Demo - LLM Token Usage Anomaly")
+OTEL_DEMO_DETECTORS=(otel-demo-service-traffic-errors otel-demo-service-latency)
+OTEL_DEMO_FORECASTERS=(otel-demo-frontend-traffic-forecast)
+OTEL_DEMO_AD_MONITORS=("OTel Demo - Service Traffic/Error Anomaly" "OTel Demo - Service Latency Anomaly")
+
+# Print the id of the detector/forecaster named $2 under API $1, or nothing.
+# Before the first one is created the config index doesn't exist, so the
+# search returns an error body with no _id.
+ad_config_id() {
+  local api="$1" name="$2"
+  osd_proxy POST "${api}/_search" -H "Content-Type: application/json" \
+    -d "{\"size\":1,\"query\":{\"term\":{\"name.keyword\":\"${name}\"}}}" \
+    | grep -o '"_id":"[^"]*"' | head -1 | sed 's/"_id":"\([^"]*\)"/\1/' || true
+}
+
+# Succeed if the config's real-time job is enabled. With ?job=true the
+# response embeds the job, whose "enabled" flag is the only bare "enabled"
+# key ("feature_enabled" doesn't match the quoted pattern).
+ad_job_enabled() {
+  local api="$1" id="$2"
+  osd_proxy GET "${api}/${id}%3Fjob%3Dtrue" | grep -q '"enabled":true'
+}
+
+# Print the body of the alerting monitor named $1 (empty hits if none).
+ad_monitor_search() {
+  osd_proxy POST "/_plugins/_alerting/monitors/_search" -H "Content-Type: application/json" \
+    -d "{\"size\":1,\"query\":{\"term\":{\"monitor.name.keyword\":\"$1\"}}}" || true
+}
+
+# Wait until the config named $3 exists under API $2 with its job started.
+# Prints the id. $1 is a label for messages.
+wait_for_ad_config() {
+  local kind="$1" api="$2" name="$3" id=""
+  for i in $(seq 1 "$((AD_RETRIES / 5))"); do
+    id=$(ad_config_id "$api" "$name")
+    if [[ -n "$id" ]] && ad_job_enabled "$api" "$id"; then
+      echo "$id"
+      return 0
+    fi
+    sleep 5
+  done
+  echo "FAIL: ${kind} '${name}' not created and started after ${AD_RETRIES}s (id: ${id:-none})" >&2
+  return 1
+}
+
+# Fail if any of the named configs exists.
+# Usage: assert_ad_absent <label> <detector|forecaster|monitor> <name>...
+assert_ad_absent() {
+  local label="$1" kind="$2" name
+  shift 2
+  for name in "$@"; do
+    case "$kind" in
+      detector)   [[ -z "$(ad_config_id "$AD_API" "$name")" ]] ;;
+      forecaster) [[ -z "$(ad_config_id "$FORECAST_API" "$name")" ]] ;;
+      monitor)    ! ad_monitor_search "$name" | grep -q '"_id"' ;;
+    esac || { echo "FAIL: ${label} ${kind} '${name}' exists but shouldn't"; exit 1; }
+  done
+}
+
+assert_otel_demo_ad_absent() {
+  assert_ad_absent "OTel Demo" detector "${OTEL_DEMO_DETECTORS[@]}"
+  assert_ad_absent "OTel Demo" forecaster "${OTEL_DEMO_FORECASTERS[@]}"
+  assert_ad_absent "OTel Demo" monitor "${OTEL_DEMO_AD_MONITORS[@]}"
+  echo "  No OTel Demo detectors, forecasters or anomaly monitors: OK"
+}
+
+# Usage: run_anomaly_detection_checks <examples|none>
+#   examples: the example agents are on (the default .env) and the OTel Demo
+#             is off: expect the example-agent set, and no OTel Demo set.
+#   none:     both demos are off: expect nothing seeded.
+run_anomaly_detection_checks() {
+  local mode="$1" idx name id monitor_name body
+  echo "==> Checking demo anomaly detection setups (${mode})..."
+  case "$mode" in
+    examples)
+      for idx in "${!EXAMPLE_DETECTORS[@]}"; do
+        name="${EXAMPLE_DETECTORS[$idx]}"
+        monitor_name="${EXAMPLE_AD_MONITORS[$idx]}"
+        id=$(wait_for_ad_config "Detector" "$AD_API" "$name") || exit 1
+        echo "  Detector ${name}: started (${id})"
+        # The detector's monitor must be an anomaly detector monitor over
+        # this detector's results (what Alerting's "Anomaly detector"
+        # defining method builds). It's created right after the detector.
+        body=""
+        for i in $(seq 1 30); do
+          body=$(ad_monitor_search "$monitor_name")
+          echo "$body" | grep -q "\"${id}\"" && break
+          sleep 2
+        done
+        if ! echo "$body" | grep -q "\"${id}\"" || ! echo "$body" | grep -q 'opendistro-anomaly-results'; then
+          echo "FAIL: anomaly monitor '${monitor_name}' missing or not wired to detector ${id}"
+          exit 1
+        fi
+        echo "  Monitor '${monitor_name}': OK"
+      done
+      for name in "${EXAMPLE_FORECASTERS[@]}"; do
+        id=$(wait_for_ad_config "Forecaster" "$FORECAST_API" "$name") || exit 1
+        echo "  Forecaster ${name}: started (${id})"
+      done
+      assert_otel_demo_ad_absent
+      ;;
+    none)
+      assert_ad_absent "example-agent" detector "${EXAMPLE_DETECTORS[@]}"
+      assert_ad_absent "example-agent" forecaster "${EXAMPLE_FORECASTERS[@]}"
+      assert_ad_absent "example-agent" monitor "${EXAMPLE_AD_MONITORS[@]}"
+      echo "  No example-agent detectors, forecasters or anomaly monitors: OK"
+      assert_otel_demo_ad_absent
+      ;;
+    *)
+      echo "FAIL: run_anomaly_detection_checks: unknown mode '${mode}'"
+      exit 1
+      ;;
+  esac
+  echo ""
+  echo "==> Anomaly detection checks passed!"
+}

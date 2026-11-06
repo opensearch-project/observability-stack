@@ -288,6 +288,8 @@ describe('EC2 demo managed compose project', { skip: !dockerComposeAvailable() }
         'eval canary should be pruned in managed mode (no local opensearch)');
       assert.ok(!services.includes('otel-demo-alerting-rules-monitors-init'),
         'otel-demo monitors-init should be pruned in managed mode (no local prometheus/opensearch)');
+      assert.ok(!services.includes('example-anomaly-detection-init'),
+        'anomaly-detection-init should be pruned in managed mode (no local opensearch)');
       assert.ok(services.includes('otel-collector'),
         'otel-collector should always be present');
     } finally {

@@ -205,5 +205,36 @@ services:
           memory: ${CANARY_MEMORY_LIMIT}
     logging: *logging
 
+  # Anomaly Detection Init: one-shot loader that creates anomaly detectors,
+  # forecasters and anomaly alerting monitors over the example agents' spans
+  # (agent and tool latency/errors, LLM token usage, request volume).
+  # The fault panel presets produce the anomalies. Idempotent by name; it
+  # waits for the first spans before creating them, and on a fresh
+  # stack stays up ~40 minutes to re-initialize models once enough data
+  # exists (see the script). Requires a local OpenSearch backend; gated
+  # behind the local-backends profile.
+  example-anomaly-detection-init:
+    profiles: ["local-backends"]
+    image: python:3.11-alpine
+    container_name: anomaly-detection-init
+    command:
+      - sh
+      - -c
+      - |
+        pip install requests || exit 1
+        python /init-anomaly-detectors.py examples
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/init/init-anomaly-detectors.py:/init-anomaly-detectors.py:ro
+    networks:
+      - observability-stack-network
+    restart: "no"
+    logging: *logging
+
 volumes:
   fault-panel-data:
