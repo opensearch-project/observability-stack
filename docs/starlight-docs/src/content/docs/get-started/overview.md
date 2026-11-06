@@ -21,20 +21,18 @@ The OpenSearch Observability Stack is built on open standards with OpenTelemetry
 
 For a distributed application, a request normally follows this path:
 
-```text
-service A → service B
-   │            │
-   └─ trace context (traceparent) ─┘
-                ↓
-         OTel Collector
-                ↓
-          Data Prepper
-          ┌─────┴─────┐
-          ↓           ↓
-      OpenSearch   Prometheus
-          └─────┬─────┘
-                ↓
-       OpenSearch Dashboards
+```mermaid
+flowchart LR
+    subgraph APP[Distributed application]
+        A[Service A] -->|"request + traceparent"| B[Service B]
+    end
+    A -->|"traces, logs, and metrics via OTLP"| C[OTel Collector]
+    B -->|"traces, logs, and metrics via OTLP"| C
+    C -->|"OTLP"| DP[Data Prepper]
+    DP -->|"traces and logs"| OS[(OpenSearch)]
+    DP -->|"RED metrics"| P[(Prometheus)]
+    OS --> D[OpenSearch Dashboards]
+    P --> D
 ```
 
 The trace spans stored in OpenSearch provide the detail for a request and its
