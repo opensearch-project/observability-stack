@@ -113,6 +113,16 @@ services:
       resources:
         limits:
           memory: ${DATA_PREPPER_MEMORY_LIMIT}
+    # Data Prepper can keep running while its sinks retry. Only report healthy
+    # once the OTLP gRPC receiver is accepting connections.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - timeout 3 /bin/bash -c 'exec 3<>/dev/tcp/127.0.0.1/21890'
+      start_period: 10s
+      interval: 5s
+      timeout: 4s
+      retries: 12
     logging: *logging
 
   # Cortex - Prometheus-compatible metrics backend with Ruler + Alertmanager APIs
