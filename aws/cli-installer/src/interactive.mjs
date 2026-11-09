@@ -57,8 +57,10 @@ async function stepCore(cfg, session) {
 
   if (session) {
     cfg.region = session.region;
+    cfg.profile = session.profile || '';
     cfg.accountId = session.accountId;
     printSubStep(`Region: ${theme.accent(cfg.region)}`);
+    printSubStep(`AWS profile: ${theme.accent(cfg.profile || 'default credential chain')}`);
   } else {
     const region = await eInput({
       message: 'AWS region',

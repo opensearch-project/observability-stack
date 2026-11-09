@@ -6,11 +6,16 @@ import {
 } from './ui.mjs';
 import { COMMANDS, COMMAND_CHOICES } from './commands/index.mjs';
 import { DEFAULT_REGION } from './config.mjs';
+import { configureAwsProfile, environmentAwsProfile } from './aws-profile.mjs';
 
 /**
  * Initialize session — prompt for region and verify AWS credentials.
  */
 async function initSession() {
+  const profile = configureAwsProfile(await input({
+    message: 'AWS profile (optional)',
+    default: environmentAwsProfile(),
+  }));
   const envRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
   const region = envRegion || await input({
     message: 'AWS region',
@@ -29,7 +34,7 @@ async function initSession() {
     throw err;
   }
 
-  return { region, accountId: identity.Account, arn: identity.Arn };
+  return { region, profile, accountId: identity.Account, arn: identity.Arn };
 }
 
 /**
@@ -44,7 +49,12 @@ export async function startRepl() {
   }
 
   process.stderr.write('\x1B[2J\x1B[H');
-  printBanner({ account: session.accountId, region: session.region, arn: session.arn });
+  printBanner({
+    account: session.accountId,
+    region: session.region,
+    profile: session.profile,
+    arn: session.arn,
+  });
 
   console.error();
 

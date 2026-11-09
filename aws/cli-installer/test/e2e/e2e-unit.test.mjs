@@ -221,6 +221,38 @@ describe('buildDestroyArgs', () => {
   });
 });
 
+describe('AWS profile selection', () => {
+  it('parses --profile for create', async () => {
+    const { parseCli } = await import('../../src/cli.mjs');
+    const cfg = parseCli([
+      'node', 'cli', '--managed', '--pipeline-name', 'profile-test',
+      '--region', 'us-east-1', '--profile', 'my-sandbox',
+    ]);
+    assert.equal(cfg.profile, 'my-sandbox');
+  });
+
+  it('parses --profile for destroy', async () => {
+    const { parseCli } = await import('../../src/cli.mjs');
+    const cfg = parseCli([
+      'node', 'cli', 'destroy', '--pipeline-name', 'profile-test',
+      '--region', 'us-east-1', '--profile', 'my-sandbox',
+    ]);
+    assert.equal(cfg.profile, 'my-sandbox');
+  });
+
+  it('configures AWS_PROFILE for the SDK credential chain', async () => {
+    const previous = process.env.AWS_PROFILE;
+    const { configureAwsProfile } = await import('../../src/aws-profile.mjs');
+    try {
+      assert.equal(configureAwsProfile('  my-sandbox  '), 'my-sandbox');
+      assert.equal(process.env.AWS_PROFILE, 'my-sandbox');
+    } finally {
+      if (previous === undefined) delete process.env.AWS_PROFILE;
+      else process.env.AWS_PROFILE = previous;
+    }
+  });
+});
+
 // ── count evaluation ──────────────────────────────────────────────────────────
 
 describe('evaluateCounts', () => {
