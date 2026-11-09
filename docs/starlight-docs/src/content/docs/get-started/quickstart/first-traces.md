@@ -1,22 +1,63 @@
 ---
 title: Ingest Your First Traces
-description: Instrument your application to send traces to the Observability Stack
+description: Instrument an application and verify traces in OpenSearch Dashboards
 ---
 
-## 1. Install dependencies
+This quickstart is for an application that is already running locally. If you
+are new to the stack, start with the [installation guide](/docs/get-started/installation/)
+and confirm that the OTel Collector is accepting telemetry on port `4317`.
+
+## 1. Choose an instrumentation path
+
+For an APM workflow, start with auto-instrumentation. It creates framework and
+client spans without requiring changes to application code. Use manual
+instrumentation when you need custom business spans or your framework is not
+supported.
+
+### Python
+
+```bash
+pip install opentelemetry-distro opentelemetry-exporter-otlp
+opentelemetry-bootstrap -a install
+
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+export OTEL_SERVICE_NAME="orders-service"
+opentelemetry-instrument python app.py
+```
+
+### Node.js
+
+```bash
+npm install @opentelemetry/auto-instrumentations-node \
+  @opentelemetry/sdk-node \
+  @opentelemetry/exporter-trace-otlp-grpc
+
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+export OTEL_SERVICE_NAME="orders-service"
+node --require @opentelemetry/auto-instrumentations-node/register app.js
+```
+
+### Java
+
+```bash
+curl -L -o opentelemetry-javaagent.jar \
+  https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/latest/download/opentelemetry-javaagent.jar
+
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4317"
+export OTEL_SERVICE_NAME="orders-service"
+java -javaagent:opentelemetry-javaagent.jar -jar app.jar
+```
+
+See [Auto-Instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
+for .NET, Ruby, Go eBPF, configuration options, and supported libraries.
+
+## 2. Manual instrumentation (Python)
+
+Use this smaller example when you want to see how spans are created explicitly.
 
 ```bash
 pip install opentelemetry-api opentelemetry-sdk opentelemetry-exporter-otlp
 ```
-
-:::tip[OpenTelemetry auto-instrumentation]
-The example below instruments a span by hand so you can see what a trace is made
-of. For a real service, [auto-instrumentation](/docs/send-data/opentelemetry/auto-instrumentation/)
-is usually the faster path: it emits HTTP, database and framework spans with no
-code changes, and is available for Python, Java, Node.js, Go, .NET and Ruby.
-:::
-
-## 2. Send traces
 
 ```python
 from opentelemetry import trace
@@ -40,18 +81,30 @@ with tracer.start_as_current_span("handle-request") as span:
         # your database query here
 ```
 
-For other languages, see [Send Data](/docs/send-data/).
+For manual instrumentation in other languages, see the [application guides](/docs/send-data/applications/).
 
-## 3. View traces in OpenSearch Dashboards
+## 3. Generate and verify a trace
 
-1. Open [OpenSearch Dashboards](http://localhost:5601)
-2. Navigate to **Observability** → **Traces**
-3. Search for your trace by name or filter by time range
-4. Click a trace to see the span tree, timing, and attributes
+Send at least one request to the instrumented application. For example:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Then open [OpenSearch Dashboards](http://localhost:5601) and:
+
+1. Navigate to **Observability** → **Traces**.
+2. Search for your trace by name or filter by time range.
+3. Click a trace to see the span tree, timing, and attributes.
+
+If the trace does not appear within a few seconds, check the
+[APM troubleshooting guide](/docs/apm/troubleshooting/) before changing your
+application code.
 
 ## Next steps
 
+- [Explore Application Monitoring](/docs/get-started/quickstart/application-monitoring/) - open the service map, services catalog, and RED metrics
+- [OpenTelemetry Demo Application](/docs/get-started/quickstart/otel-demo/) - explore a realistic distributed system
 - [Create Your First Dashboard](/docs/get-started/quickstart/first-dashboard/) - build custom visualizations
 - [Agent Tracing](/docs/ai-observability/agent-tracing/) - trace AI agent workflows with GenAI semantic conventions
-- [Application Monitoring](/docs/apm/) - service maps and RED metrics built from the traces you just sent
 - [Send Data](/docs/send-data/) - more instrumentation options
