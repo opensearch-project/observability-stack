@@ -101,24 +101,19 @@ function buildUserData(cfg) {
   const osiEndpoint = `https://${cfg.ingestEndpoints[0]}`;
   const region = cfg.region;
 
+  // Overlay on the stack's own collector config (docker-compose/otel-collector/config.yaml at
+  // the pinned ref), passed as a second --config. The collector merges the files and replaces
+  // lists, so this swaps the exporters and pipelines for OSIS while keeping the base config's
+  // processors -- notably gen_ai_normalizer and the transform that de-dots attribute keys and
+  // stringifies map log bodies. Without them OpenSearch rejects spans with colliding dotted keys
+  // (db.system vs db.system.name, user_agent vs user_agent.original) and logs whose body is a map.
   const collectorConfig = `
 extensions:
   sigv4auth:
     region: "${region}"
     service: osis
 
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
-      http:
-        endpoint: 0.0.0.0:4318
-        cors: { allowed_origins: ["http://*", "https://*"] }
-
 processors:
-  batch: { timeout: 10s, send_batch_size: 1024 }
-  memory_limiter: { check_interval: 5s, limit_percentage: 80, spike_limit_percentage: 25 }
   resourcedetection: { detectors: [env, ec2, system] }
 
 exporters:
@@ -136,13 +131,10 @@ exporters:
     compression: none
 
 service:
-  telemetry:
-    logs:
-      level: info
   extensions: [sigv4auth]
   pipelines:
-    logs:    { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-logs] }
-    traces:  { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-traces] }
+    logs:    { receivers: [otlp], processors: [resourcedetection, memory_limiter, transform, batch], exporters: [otlphttp/osis-logs] }
+    traces:  { receivers: [otlp], processors: [resourcedetection, memory_limiter, gen_ai_normalizer, transform, batch], exporters: [otlphttp/osis-traces] }
     metrics: { receivers: [otlp], processors: [resourcedetection, memory_limiter, batch], exporters: [otlphttp/osis-metrics] }
 `.trim();
 
@@ -172,7 +164,7 @@ if ! git clone --depth 1 --branch "\$OBS_STACK_REF" https://github.com/opensearc
 fi
 cd /opt/obs-stack
 
-cat > docker-compose/otel-collector/config.yaml << 'COLLECTOREOF'
+cat > docker-compose/otel-collector/managed.yaml << 'COLLECTOREOF'
 ${collectorConfig}
 COLLECTOREOF
 
@@ -208,9 +200,10 @@ services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:\${OTEL_COLLECTOR_VERSION}
     container_name: otel-collector
-    command: ["--config=/etc/otelcol-config.yml"]
+    command: ["--config=/etc/otelcol-config.yml", "--config=/etc/otelcol-managed.yml"]
     volumes:
       - ./docker-compose/otel-collector/config.yaml:/etc/otelcol-config.yml
+      - ./docker-compose/otel-collector/managed.yaml:/etc/otelcol-managed.yml
     ports:
       - "\${OTEL_COLLECTOR_PORT_GRPC:-4317}:4317"
       - "\${OTEL_COLLECTOR_PORT_HTTP:-4318}:4318"
@@ -331,13 +324,13 @@ export async function launchDemoInstance(cfg) {
   // back to the account's default VPC subnet (current behavior).
   const inVpc = Boolean(cfg.vpcId);
 
-  const spinner = createSpinner('Looking up AMI and subnet...');
+  const spinner = createSpinner('Looking up AMI and subnet...').start();
   const amiPromise = getLatestAL2023Ami(ssm);
   const subnetId = inVpc
     ? await getVpcSubnetForInstance(ec2, cfg.subnetIds, INSTANCE_TYPE)
     : (await getDefaultVpcSubnet(ec2, INSTANCE_TYPE)).SubnetId;
   const ami = await amiPromise;
-  spinner.stop(`AMI: ${ami}`);
+  spinner.succeed(`AMI: ${ami}`);
 
   // In VPC mode, reuse the caller-provided security groups (they should already
   // allow the intra-VPC traffic the domain/pipeline need). Otherwise create a
@@ -346,16 +339,16 @@ export async function launchDemoInstance(cfg) {
   if (inVpc) {
     sgIds = cfg.securityGroupIds;
   } else {
-    const sgSpinner = createSpinner('Creating security group...');
+    const sgSpinner = createSpinner('Creating security group...').start();
     sgIds = [await createDemoSecurityGroup(ec2, cfg)];
-    sgSpinner.stop(`Security group: ${sgIds[0]}`);
+    sgSpinner.succeed(`Security group: ${sgIds[0]}`);
   }
 
-  const profileSpinner = createSpinner('Creating instance profile...');
+  const profileSpinner = createSpinner('Creating instance profile...').start();
   const profileName = await createDemoInstanceProfile(iam, cfg);
-  profileSpinner.stop(`Instance profile: ${profileName}`);
+  profileSpinner.succeed(`Instance profile: ${profileName}`);
 
-  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`);
+  const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`).start();
   const { Instances } = await ec2.send(new RunInstancesCommand({
     ImageId: ami,
     InstanceType: INSTANCE_TYPE,
@@ -370,11 +363,11 @@ export async function launchDemoInstance(cfg) {
     MetadataOptions: { HttpTokens: 'required', HttpPutResponseHopLimit: 2 },
   }));
   const instanceId = Instances[0].InstanceId;
-  launchSpinner.stop(`Instance launched: ${instanceId}`);
+  launchSpinner.succeed(`Instance launched: ${instanceId}`);
 
-  const waitSpinner = createSpinner('Waiting for instance to be running...');
+  const waitSpinner = createSpinner('Waiting for instance to be running...').start();
   await waitUntilInstanceRunning({ client: ec2, maxWaitTime: 300 }, { InstanceIds: [instanceId] });
-  waitSpinner.stop('Instance running');
+  waitSpinner.succeed('Instance running');
 
   printSuccess(`Demo workloads deploying on ${instanceId}`);
   printInfo('Services will be ready in ~3-5 minutes (docker pull + start)');
@@ -399,10 +392,10 @@ export async function teardownDemoInstance(cfg) {
   const instanceIds = (Reservations || []).flatMap(r => r.Instances.map(i => i.InstanceId));
 
   if (instanceIds.length) {
-    const spinner = createSpinner(`Terminating ${instanceIds.length} instance(s)...`);
+    const spinner = createSpinner(`Terminating ${instanceIds.length} instance(s)...`).start();
     await ec2.send(new TerminateInstancesCommand({ InstanceIds: instanceIds }));
     await waitUntilInstanceTerminated({ client: ec2, maxWaitTime: 300 }, { InstanceIds: instanceIds });
-    spinner.stop('Instances terminated');
+    spinner.succeed('Instances terminated');
   } else {
     printInfo('No demo instances found');
   }

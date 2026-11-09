@@ -1,91 +1,113 @@
 /**
  * FGAC role mapping custom resource handler.
  * Maps IAM roles to OpenSearch all_access and security_manager via the Security API.
- * Ported from cli-installer/src/aws.mjs → mapOsiRoleInDomain()
+ * Runs as the domain's IAM master user and signs requests with SigV4.
  */
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
+import { SignatureV4 } from '@aws-sdk/signature-v4';
+import { Sha256 } from '@aws-crypto/sha256-js';
+import { HttpRequest } from '@smithy/protocol-http';
+import { defaultProvider } from '@aws-sdk/credential-provider-node';
+
+interface Props {
+  OpenSearchEndpoint: string;
+  RoleArns: string; // JSON array of ARNs to map
+  Region: string;
+}
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
   PhysicalResourceId?: string;
-  ResourceProperties: {
-    OpenSearchEndpoint: string;
-    MasterUserSecretArn: string;
-    MasterUserName: string;
-    RoleArns: string; // JSON array of ARNs to map
-    Region: string;
-  };
+  ResourceProperties: Props;
+  OldResourceProperties?: Props;
+}
+
+const IAM_ROLE_ARN = /^arn:aws[a-z-]*:iam::\d{12}:role\/[\w+=,.@\/-]+$/;
+
+/**
+ * Returns the concrete IAM role ARNs in a RoleArns JSON array. backend_roles entries are
+ * matched as patterns, so other entries are skipped. Never throws: CloudFormation sends
+ * pre-upgrade properties on Delete and on rollback Updates.
+ */
+export function parseRoleArns(raw: string | undefined): string[] {
+  let arns: unknown;
+  try { arns = JSON.parse(raw ?? '[]'); } catch { arns = []; }
+  if (!Array.isArray(arns)) return [];
+  const valid = arns.filter((a): a is string => typeof a === 'string' && IAM_ROLE_ARN.test(a));
+  const skipped = arns.filter((a) => !valid.includes(a as string));
+  if (skipped.length) console.log(`Skipping RoleArns entries that are not IAM role ARNs: ${JSON.stringify(skipped)}`);
+  return valid;
+}
+
+/** Backend roles after an update: existing entries minus revoked ones and '*', plus the new set. */
+export function mergeBackendRoles(existing: string[], add: string[], revoke: string[]): string[] {
+  const kept = existing.filter((r) => r !== '*' && !revoke.includes(r));
+  return [...new Set([...kept, ...add])];
 }
 
 export async function handler(event: Event) {
-  const { OpenSearchEndpoint, MasterUserSecretArn, MasterUserName, RoleArns, Region } = event.ResourceProperties;
-  const roleArns: string[] = JSON.parse(RoleArns);
+  const { OpenSearchEndpoint, RoleArns, Region } = event.ResourceProperties;
+  const roleArns = parseRoleArns(RoleArns);
+  const base = `https://${OpenSearchEndpoint}`;
+  const sign = signerFor(Region);
 
   if (event.RequestType === 'Delete') {
     // Best-effort: remove role mappings
     try {
-      const password = await getMasterPassword(MasterUserSecretArn, Region);
-      for (const role of ['all_access', 'security_manager']) {
-        await removeMappings(`https://${OpenSearchEndpoint}`, MasterUserName, password, role, roleArns);
+      for (const role of FGAC_ROLES) {
+        await removeMappings(sign, base, role, roleArns);
       }
     } catch { /* best effort */ }
     return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
   }
 
-  // Create or Update
-  const password = await getMasterPassword(MasterUserSecretArn, Region);
-  for (const role of ['all_access', 'security_manager']) {
-    await addMappings(`https://${OpenSearchEndpoint}`, MasterUserName, password, role, roleArns);
+  // On Update, roles this resource mapped before but no longer lists are removed.
+  const revoked = event.RequestType === 'Update'
+    ? parseRoleArns(event.OldResourceProperties?.RoleArns).filter((r) => !roleArns.includes(r))
+    : [];
+  for (const role of FGAC_ROLES) {
+    const existing = await getBackendRoles(sign, base, role);
+    await putBackendRoles(sign, base, role, mergeBackendRoles(existing, roleArns, revoked));
   }
 
   return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
 }
 
-async function getMasterPassword(secretArn: string, region: string): Promise<string> {
-  const sm = new SecretsManagerClient({ region });
-  const { SecretString } = await sm.send(new GetSecretValueCommand({ SecretId: secretArn }));
-  const parsed = JSON.parse(SecretString!);
-  return parsed.password;
-}
+const FGAC_ROLES = ['all_access', 'security_manager'];
+type Signer = (url: string, method: 'GET' | 'PATCH', body?: string) => Promise<Response>;
 
-async function addMappings(endpoint: string, username: string, password: string, role: string, arns: string[]) {
-  const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-  const headers = { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` };
-
-  // Get existing mappings
-  const getResp = await fetch(url, { headers });
-  let existing: string[] = [];
-  if (getResp.ok) {
-    const data = await getResp.json();
-    existing = (data as any)?.[role]?.backend_roles || [];
-  }
-
-  const merged = [...new Set([...existing, ...arns])];
-  await fetch(url, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: merged }]),
-  });
-}
-
-async function removeMappings(endpoint: string, username: string, password: string, role: string, arns: string[]) {
-  const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
-  const auth = Buffer.from(`${username}:${password}`).toString('base64');
-  const headers = { 'Content-Type': 'application/json', Authorization: `Basic ${auth}` };
-
-  const getResp = await fetch(url, { headers });
-  if (!getResp.ok) return;
-
-  const data = await getResp.json();
-  const existing: string[] = (data as any)?.[role]?.backend_roles || [];
-  const filtered = existing.filter((r) => !arns.some((a) => r.includes(a)));
-
-  if (filtered.length !== existing.length) {
-    await fetch(url, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify([{ op: 'add', path: '/backend_roles', value: filtered }]),
+function signerFor(region: string): Signer {
+  const signer = new SignatureV4({ credentials: defaultProvider(), region, service: 'es', sha256: Sha256 });
+  return async (url, method, body) => {
+    const parsed = new URL(url);
+    const request = new HttpRequest({
+      method,
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      path: parsed.pathname,
+      headers: { host: parsed.hostname, 'Content-Type': 'application/json' },
+      body,
     });
-  }
+    const signed = await signer.sign(request);
+    return fetch(url, { method, headers: signed.headers as Record<string, string>, body });
+  };
+}
+
+async function getBackendRoles(sign: Signer, base: string, role: string): Promise<string[]> {
+  const resp = await sign(`${base}/_plugins/_security/api/rolesmapping/${role}`, 'GET');
+  if (resp.status === 404) return [];
+  if (!resp.ok) throw new Error(`GET rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return (data as any)?.[role]?.backend_roles || [];
+}
+
+async function putBackendRoles(sign: Signer, base: string, role: string, roles: string[]) {
+  const resp = await sign(`${base}/_plugins/_security/api/rolesmapping/${role}`, 'PATCH',
+    JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+  if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
+}
+
+async function removeMappings(sign: Signer, base: string, role: string, arns: string[]) {
+  const existing = await getBackendRoles(sign, base, role);
+  const filtered = existing.filter((r) => !arns.includes(r));
+  if (filtered.length !== existing.length) await putBackendRoles(sign, base, role, filtered);
 }

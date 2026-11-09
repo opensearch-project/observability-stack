@@ -1,5 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -15,6 +15,8 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   minOcu?: number;
   maxOcu?: number;
   enableDemo?: boolean;
+  /** IAM role ARNs mapped to all_access and security_manager and made OpenSearch UI admins, e.g. the roles people use to open Dashboards. */
+  adminRoleArns?: string[];
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -27,6 +29,14 @@ export class ObservabilityStack extends cdk.Stack {
 
     const isServerless = infra.opensearchType === 'serverless';
 
+    for (const arn of props.adminRoleArns ?? []) {
+      if (!/^arn:aws[a-z-]*:iam::\d{12}:role\/[\w+=,.@\/-]+$/.test(arn)) {
+        throw new Error(`adminRoleArns entry is not an IAM role ARN: ${arn}`);
+      }
+    }
+
+    const uiInitRole = iam.Role.fromRoleArn(this, 'UiInitRole', infra.uiInitRoleArn, { mutable: false });
+
     // FGAC role mapping (managed domains only — serverless uses IAM)
     let fgacMapping: cdk.CustomResource | undefined;
     if (!isServerless) {
@@ -35,18 +45,16 @@ export class ObservabilityStack extends cdk.Stack {
         handler: 'handler',
         entry: path.join(__dirname, '..', 'custom-resources', 'fgac-mapping', 'index.ts'),
         timeout: cdk.Duration.minutes(5),
-        bundling: { externalModules: ['@aws-sdk/*'] },
+        role: iam.Role.fromRoleArn(this, 'FgacAdminRole', infra.fgacAdminRoleArn, { mutable: false }),
+        bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
       });
-      secretsmanager.Secret.fromSecretCompleteArn(this, 'MasterPassword', infra.masterPasswordSecretArn).grantRead(fgacFn);
 
       const fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
       fgacMapping = new cdk.CustomResource(this, 'FgacMapping', {
         serviceToken: fgacProvider.serviceToken,
         properties: {
           OpenSearchEndpoint: infra.domainEndpoint,
-          MasterUserSecretArn: infra.masterPasswordSecretArn,
-          MasterUserName: 'admin',
-          RoleArns: JSON.stringify([infra.pipelineRoleArn, '*']),
+          RoleArns: JSON.stringify([infra.pipelineRoleArn, uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
           Region: this.region,
         },
       });
@@ -69,7 +77,15 @@ export class ObservabilityStack extends cdk.Stack {
       domainArn: infra.domainArn,
       domainEndpoint: infra.domainEndpoint,
       dqsDataSourceArn: infra.dqsDataSourceArn,
+      uiInitRole,
+      adminRoleArns: props.adminRoleArns,
+      uiInitDependsOn: [pipeline],
     });
+    if (!props.adminRoleArns?.length) {
+      cdk.Annotations.of(this).addWarning(
+        'No adminRoleArns set, so no IAM role you sign in with can open Dashboards. Redeploy with -c adminRoleArns=<role ARN>[,<role ARN>]. Each listed role also needs es:ESHttp* (managed) or aoss:APIAccessAll (serverless) in its own IAM policy.',
+      );
+    }
     if (fgacMapping) {
       app.node.addDependency(fgacMapping);
     }

@@ -4,7 +4,7 @@ import {
   saveCursor, clearFromCursor,
 } from './ui.mjs';
 import { createDefaultConfig, DEFAULTS, DEFAULT_REGION } from './config.mjs';
-import { listDomains, listCollections, listWorkspaces, listApplications, listVpcs, listSubnets, listSecurityGroups } from './aws.mjs';
+import { listDomains, listCollections, collectionIdFromEndpoint, listWorkspaces, listApplications, listVpcs, listSubnets, listSecurityGroups } from './aws.mjs';
 
 const CUSTOM_INPUT = Symbol('custom');
 
@@ -76,7 +76,7 @@ async function stepCore(cfg, session) {
     message: 'OpenSearch backend',
     choices: [
       { name: `Managed domain    ${theme.muted('— provisioned cluster with FGAC')}`, value: 'managed' },
-      { name: `Serverless (AOSS) ${theme.muted('— auto-scaling, IAM-only auth')}`, value: 'serverless' },
+      { name: `Serverless (AOSS) ${theme.muted('— NextGen time series, auto-scaling, IAM-only auth')}`, value: 'serverless' },
     ],
     default: cfg.opensearchType || 'managed',
   });
@@ -144,12 +144,15 @@ async function stepOpenSearch(cfg) {
         );
 
         if (collections.length > 0) {
+          // Only NextGen time series collections are supported.
           const choices = collections.map((c) => ({
             name: c.status === 'ACTIVE'
               ? `${c.name} ${theme.muted(`— ${c.endpoint}`)}`
               : `${c.name} ${theme.muted(`— ${c.status}`)}`,
-            value: { endpoint: c.endpoint, id: c.id, name: c.name },
-            disabled: c.status !== 'ACTIVE' ? `(${c.status})` : false,
+            value: { endpoint: c.endpoint, id: c.id, name: c.name, group: c.collectionGroupName },
+            disabled: !c.nextgenTimeseries
+              ? '(not a NextGen time series collection)'
+              : c.status !== 'ACTIVE' ? `(${c.status})` : false,
           }));
           choices.push({ name: theme.accent('Enter manually...'), value: CUSTOM_INPUT });
 
@@ -159,6 +162,7 @@ async function stepOpenSearch(cfg) {
             const ep = await promptEndpoint();
             if (ep === GoBack) { clearFromCursor(); continue; }
             cfg.opensearchEndpoint = ep;
+            cfg.collectionId = collectionIdFromEndpoint(ep);
             const collName = await eInput({ message: 'Collection name', validate: (v) => v.trim().length > 0 || 'Collection name is required' });
             if (collName === GoBack) { clearFromCursor(); continue; }
             cfg.aossCollectionName = collName;
@@ -166,12 +170,14 @@ async function stepOpenSearch(cfg) {
             cfg.opensearchEndpoint = selected.endpoint;
             cfg.collectionId = selected.id;
             cfg.aossCollectionName = selected.name;
+            cfg.aossCollectionGroupName = selected.group;
           }
         } else {
           printInfo('No collections found — enter endpoint manually');
           const ep = await promptEndpoint();
           if (ep === GoBack) { clearFromCursor(); continue; }
           cfg.opensearchEndpoint = ep;
+          cfg.collectionId = collectionIdFromEndpoint(ep);
           const collName = await eInput({ message: 'Collection name', validate: (v) => v.trim().length > 0 || 'Collection name is required' });
           if (collName === GoBack) { clearFromCursor(); continue; }
           cfg.aossCollectionName = collName;
@@ -225,8 +231,7 @@ async function stepOpenSearch(cfg) {
         cfg.opensearchUser = user;
 
         const pass = await eInput({
-          message: 'OpenSearch master password (for FGAC role mapping)',
-          validate: (v) => v.trim().length > 0 || 'Password is required to configure access',
+          message: 'OpenSearch master password (leave empty to sign requests with your AWS credentials)',
         });
         if (pass === GoBack) { clearFromCursor(); continue; }
         cfg.opensearchPassword = pass;
@@ -239,6 +244,12 @@ async function stepOpenSearch(cfg) {
         const collName = await eInput({ message: 'Collection name', default: cfg.aossCollectionName || cfg.pipelineName });
         if (collName === GoBack) { clearFromCursor(); continue; }
         cfg.aossCollectionName = collName;
+        const minOcu = await eInput({ message: 'Collection group minimum OCU (0 scales to zero when idle)', default: String(cfg.aossMinOcu ?? DEFAULTS.aossMinOcu) });
+        if (minOcu === GoBack) { clearFromCursor(); continue; }
+        const maxOcu = await eInput({ message: 'Collection group maximum OCU', default: String(cfg.aossMaxOcu ?? DEFAULTS.aossMaxOcu) });
+        if (maxOcu === GoBack) { clearFromCursor(); continue; }
+        cfg.aossMinOcu = Number(minOcu);
+        cfg.aossMaxOcu = Number(maxOcu);
       } else {
       const domainName = await eInput({ message: 'Domain name', default: cfg.osDomainName || cfg.pipelineName });
       if (domainName === GoBack) { clearFromCursor(); continue; }

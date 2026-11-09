@@ -5,10 +5,25 @@ import { Construct } from 'constructs';
 
 export interface OpenSearchServerlessConstructProps {
   collectionName: string;
+  /** Role ARNs given data access in addition to the pipeline role. */
+  dataAccessRoleArns?: string[];
+  /** Minimum indexing and search OCU for the collection group. 0 lets an idle stack scale to zero. */
+  minOcu?: number;
+  /** Maximum indexing and search OCU for the collection group. */
+  maxOcu?: number;
+}
+
+const GROUP_NAME_MAX = 32;
+
+/** `<collection>-cg`, truncated to the 32 character collection group name limit. */
+export function collectionGroupName(collectionName: string): string {
+  const suffix = '-cg';
+  return `${collectionName.slice(0, GROUP_NAME_MAX - suffix.length)}${suffix}`;
 }
 
 export class OpenSearchServerlessConstruct extends Construct {
   public readonly collection: aoss.CfnCollection;
+  public readonly collectionGroup: aoss.CfnCollectionGroup;
   public readonly collectionEndpoint: string;
   public readonly collectionArn: string;
   public readonly pipelineRole: iam.Role;
@@ -42,19 +57,43 @@ export class OpenSearchServerlessConstruct extends Construct {
       }]),
     });
 
-    // Collection
+    // NextGen collection group. Capacity defaults to 0 to 16 OCU: the demo workloads settle at
+    // about 2 indexing and 2 search OCU, and 0 lets an idle stack scale down (the first queries
+    // after an idle period take longer while search capacity comes back).
+    const minOcu = props.minOcu ?? 0;
+    const maxOcu = props.maxOcu ?? 16;
+    this.collectionGroup = new aoss.CfnCollectionGroup(this, 'CollectionGroup', {
+      name: collectionGroupName(name),
+      generation: 'NEXTGEN',
+      standbyReplicas: 'ENABLED',
+      capacityLimits: {
+        minIndexingCapacityInOcu: minOcu,
+        maxIndexingCapacityInOcu: maxOcu,
+        minSearchCapacityInOcu: minOcu,
+        maxSearchCapacityInOcu: maxOcu,
+      },
+    });
+
+    // Time series collection in the group
     this.collection = new aoss.CfnCollection(this, 'Collection', {
       name,
-      type: 'SEARCH',
+      type: 'TIMESERIES',
+      collectionGroupName: this.collectionGroup.name,
     });
     this.collection.addDependency(encPolicy);
+    this.collection.addDependency(this.collectionGroup);
 
     this.collectionEndpoint = this.collection.attrCollectionEndpoint;
     this.collectionArn = this.collection.attrArn;
 
     // IAM role for OSIS pipeline
     this.pipelineRole = new iam.Role(this, 'PipelineRole', {
-      assumedBy: new iam.ServicePrincipal('osis-pipelines.amazonaws.com'),
+      assumedBy: new iam.ServicePrincipal('osis-pipelines.amazonaws.com', {
+        conditions: {
+          StringEquals: { 'aws:SourceAccount': stack.account },
+          ArnLike: { 'aws:SourceArn': `arn:${stack.partition}:osis:${stack.region}:${stack.account}:pipeline/*` },
+        },
+      }),
     });
     this.pipelineRole.addToPolicy(new iam.PolicyStatement({
       actions: ['aoss:APIAccessAll', 'aoss:BatchGetCollection', 'aoss:DashboardsAccessAll'],
@@ -65,7 +104,7 @@ export class OpenSearchServerlessConstruct extends Construct {
       resources: ['*'],
     }));
 
-    // Data access policy — grants the pipeline role index/collection permissions
+    // Data access policy: the pipeline role plus dataAccessRoleArns.
     new aoss.CfnAccessPolicy(this, 'DataAccessPolicy', {
       name: `${name}-access`,
       type: 'data',
@@ -88,7 +127,7 @@ export class OpenSearchServerlessConstruct extends Construct {
             ],
           },
         ],
-        Principal: [this.pipelineRole.roleArn, `arn:aws:iam::${stack.account}:root`],
+        Principal: [this.pipelineRole.roleArn, ...(props.dataAccessRoleArns ?? [])],
       }]),
     });
   }

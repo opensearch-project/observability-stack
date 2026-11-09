@@ -9,14 +9,19 @@ Deploy the Observability Stack to AWS using managed services. This creates the s
 - **Amazon OpenSearch Ingestion (OSIS)** — OTLP ingestion pipeline (replaces OTel Collector + Data Prepper)
 - **OpenSearch Dashboards** — visualization and exploration
 
+## How it works
+
+![Applications, AI agents and infrastructure send OTLP to Amazon OpenSearch Ingestion, which writes logs and traces to Amazon OpenSearch Serverless and metrics to Amazon Managed Service for Prometheus. Users query both from OpenSearch UI.](./images/aws-how-it-works.png)
+
+Applications, AI agents and infrastructure send OTLP from any OpenTelemetry SDK or Collector to the ingestion pipeline. The pipeline writes logs and traces to OpenSearch and metrics to Prometheus. OpenSearch UI queries both. The diagram shows the Serverless backend; with a managed domain, logs and traces go to the domain instead.
+
 ## Choose an OpenSearch backend
 
 | | Managed (AOS) | Serverless (AOSS) |
 |---|---|---|
 | **Scaling** | Fixed instance count | Auto-scales with OCU |
-| **Authentication** | FGAC + basic auth | IAM only |
+| **Authentication** | IAM (SigV4) + FGAC; the deploying IAM role or user is the FGAC master user | IAM only |
 | **Index management** | Built-in index types | Explicit index templates |
-| **Master password** | Yes (Secrets Manager) | No |
 | **Best for** | Predictable workloads, fine-grained control | Variable workloads, zero cluster management |
 
 Both backends use the same OSIS ingestion pipeline and Prometheus workspace. The choice only affects the OpenSearch storage layer.

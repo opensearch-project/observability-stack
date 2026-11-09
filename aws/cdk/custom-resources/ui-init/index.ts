@@ -26,8 +26,13 @@ async function osuiRequest(method: string, url: string, body: any, region: strin
   const bodyHash = createHash('sha256').update(bodyBytes).digest('hex');
   const parsed = new URL(url);
 
-  const query: Record<string, string> = {};
-  parsed.searchParams.forEach((v, k) => { query[k] = v; });
+  // Repeated params (e.g. meta_fields) are kept as arrays; collapsing them signs a different
+  // query than is sent and the request is rejected.
+  const query: Record<string, string | string[]> = {};
+  parsed.searchParams.forEach((v, k) => {
+    const prev = query[k];
+    query[k] = prev === undefined ? v : ([] as string[]).concat(prev, v);
+  });
 
   const request = new HttpRequest({
     method,
@@ -72,7 +77,42 @@ async function osuiPost(base: string, path: string, body: any, region: string) {
   return osuiRequest('POST', `${base}${path}`, body, region);
 }
 
+async function osuiPut(base: string, path: string, body: any, region: string) {
+  return osuiRequest('PUT', `${base}${path}`, body, region);
+}
+
 function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
+
+// Same meta fields the index pattern service sends; the route rejects a partial set.
+const FIELD_META_PARAMS = ['_source', '_id', '_type', '_index', '_score'].map((f) => `meta_fields=${f}`).join('&');
+
+/**
+ * Fetch each index pattern's fields and store them on its saved object. Explore builds its data
+ * view from the saved object without fetching fields, so a pattern saved without them has no time
+ * field and the logs and traces histograms fail with "Could not locate that index-pattern-field".
+ * The pipeline creates its indices from the templates when it starts, so the mapped fields are
+ * normally available before data arrives; poll briefly in case they are not.
+ */
+async function storeIndexPatternFields(
+  base: string, wsId: string, dsId: string | undefined,
+  patterns: { title: string; timeFieldName: string }[], patternIds: Record<string, string>, region: string,
+) {
+  const pending = patterns.filter((p) => patternIds[p.title]);
+  for (let attempt = 1; pending.length && attempt <= 12; attempt++) {
+    for (const p of [...pending]) {
+      const query = `pattern=${encodeURIComponent(p.title)}&${FIELD_META_PARAMS}${dsId ? `&data_source=${dsId}` : ''}`;
+      const resp = await osuiGet(base, `/w/${wsId}/api/index_patterns/_fields_for_wildcard?${query}`, region);
+      const fields: any[] = resp.status === 200 ? (resp.data as any)?.fields || [] : [];
+      if (!fields.some((f) => f.name === p.timeFieldName)) continue;
+      const put = await osuiPut(base, `/w/${wsId}/api/saved_objects/index-pattern/${patternIds[p.title]}`, {
+        attributes: { fields: JSON.stringify(fields) },
+      }, region);
+      if (put.status === 200) pending.splice(pending.indexOf(p), 1);
+    }
+    if (pending.length) await sleep(15000);
+  }
+  for (const p of pending) console.warn(`Fields for ${p.title} not stored; refresh its field list once data arrives`);
+}
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
@@ -176,6 +216,8 @@ export async function handler(event: Event) {
     }, Region);
     patternIds[p.title] = (resp.data as any)?.id;
   }
+
+  await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, Region);
 
   const logsId = patternIds['logs-otel-v1*'];
   const tracesId = patternIds['otel-v1-apm-span*'];

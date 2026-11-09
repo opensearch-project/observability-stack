@@ -5,7 +5,7 @@ description = "Periodically runs LLM-as-judge evaluations on agent traces"
 requires-python = ">=3.10"
 dependencies = [
     "opensearch-genai-observability-sdk-py[opensearch]>=0.2.7",
-    "strands-agents-evals[opensearch]>=0.1.15",
+    "strands-agents-evals[opensearch]>=0.1.16",
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",

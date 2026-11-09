@@ -9,7 +9,7 @@ RUN pip install --no-cache-dir \
     httpx \
     requests \
     boto3 \
-    opensearch-genai-observability-sdk-py>=0.2.7 \
+    "opensearch-genai-observability-sdk-py>=0.2.7" \
     opentelemetry-exporter-otlp-proto-grpc \
     opentelemetry-instrumentation-httpx \
     opentelemetry-instrumentation-asgi

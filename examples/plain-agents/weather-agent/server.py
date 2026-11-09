@@ -59,7 +59,10 @@ meter, logger = setup_telemetry(
 agent = WeatherAgent(meter, logger)
 
 # Create inner FastAPI app
-inner_app = FastAPI(title="Weather Agent API", version="1.0.0")
+# FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
+# This service instruments itself, and enrich()/get_current_span() must reach the request span,
+# so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
+inner_app = FastAPI(title="Weather Agent API", version="1.0.0", telemetry={"tracing": False, "metrics": False, "logs": False, "operation_spans": False})
 
 logger.info("Weather Agent API server started", extra={"otlp_endpoint": otlp_endpoint})
 
