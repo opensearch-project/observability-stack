@@ -1,14 +1,21 @@
 ---
 title: "Evaluation Integrations"
-description: "Bridge external evaluation frameworks like DeepEval, RAGAS, MLflow, and pytest into the observability stack"
+description: "Send results from DeepEval, RAGAS, MLflow, pytest or any other evaluation library to Agent Evaluations, offline with Benchmark or online with score()"
+sidebar:
+  order: 5
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-The `Benchmark` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
+Keep the evaluation library you already use. Run it as usual, then send its numbers with the SDK, so they land as `gen_ai.evaluation.result` events next to your agent traces and show up in **Agent Monitoring > Evaluations**:
+
+- **Offline** (a dataset run): `Benchmark`, one `log()` per case. Each case gets `test.suite.name`, `test.suite.run.id` and `test.case.id`. Pass the agent run's `trace_id` and `span_id` when you have them, so each result links to its trace.
+- **Online** (scoring live traces): `score()` with the trace and span ids of the judged agent run.
+
+Declare a pass rule (`threshold`, or a `pass` / `fail` label) so results get a verdict instead of a neutral "Scored", and use a stable `case_id` so runs can be compared case by case. Results are routed and stored as described in [Data Model & Ingestion](/docs/agent-evals/data-model/).
 
 <Aside type="note">
-Third-party framework APIs change frequently. The examples below show the integration pattern — adapt imports and method calls to your installed version. The SDK side (`Benchmark`, `b.log()`, `evaluate()`, `EvalScore`) is stable.
+Third-party framework APIs change frequently. The examples below show the integration pattern; adapt imports and method calls to your installed version. The SDK side (`Benchmark`, `log()`, `evaluate()`, `score()`, `EvalScore`) is what this page documents.
 </Aside>
 
 ---
@@ -22,7 +29,7 @@ pip install opensearch-genai-observability-sdk-py deepeval
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Benchmark
+from opensearch_genai_observability_sdk_py import Benchmark, EvalScore, register
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
@@ -48,8 +55,8 @@ test_cases = [
 relevancy = AnswerRelevancyMetric(model="gpt-4o")
 faithfulness = FaithfulnessMetric(model="gpt-4o")
 
-with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
-    for case in test_cases:
+with Benchmark("deepeval_run", run_name="gpt-4o judge", metadata={"framework": "deepeval"}) as b:
+    for i, case in enumerate(test_cases):
         tc = LLMTestCase(
             input=case["input"],
             actual_output=case["output"],
@@ -62,16 +69,19 @@ with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
             input=case["input"],
             output=case["output"],
             expected=case["expected"],
-            scores={
-                "answer_relevancy": relevancy.score,
-                "faithfulness": faithfulness.score,
-            },
+            scores=[
+                EvalScore(name="answer_relevancy", value=relevancy.score, threshold=relevancy.threshold,
+                          score_min=0, score_max=1, explanation=relevancy.reason),
+                EvalScore(name="faithfulness", value=faithfulness.score, threshold=faithfulness.threshold,
+                          score_min=0, score_max=1, explanation=faithfulness.reason),
+            ],
+            case_id=f"case-{i}",  # keep ids stable across runs
             case_name=case["input"][:50],
         )
 ```
 
 <Aside type="tip">
-DeepEval also has a `deepeval.evaluate()` function that runs all metrics at once. You can use either approach — the key is extracting the numeric scores and passing them to `b.log()`.
+DeepEval also has a `deepeval.evaluate()` function that runs all metrics at once. You can use either approach: the key is extracting the numeric scores, the metric's threshold and its reason, and passing them to `b.log()`.
 </Aside>
 
 ---
@@ -124,13 +134,14 @@ with Benchmark("ragas_eval", metadata={"framework": "ragas"}) as b:
             input=data["question"][i],
             output=data["answer"][i],
             expected=data["ground_truth"][i],
-            scores={col: row[col] for col in df.columns if col not in data},
+            scores={col: float(row[col]) for col in df.columns if col not in data},
+            case_id=f"q{i}",
             case_name=data["question"][i][:50],
         )
 ```
 
 <Aside type="note">
-RAGAS v0.2+ changed its dataset format and metric API. If you're on v0.2+, check the [RAGAS migration guide](https://docs.ragas.io/) for the updated `evaluate()` signature. The SDK-side `Benchmark.log()` call stays the same — only the RAGAS imports and `evaluate()` call change.
+RAGAS v0.2+ changed its dataset format and metric API. If you're on v0.2+, check the [RAGAS migration guide](https://docs.ragas.io/) for the updated `evaluate()` signature. The SDK-side `Benchmark.log()` call stays the same: only the RAGAS imports and `evaluate()` call change.
 </Aside>
 
 ---
@@ -173,9 +184,10 @@ with Benchmark("mlflow_eval", metadata={"framework": "mlflow"}) as b:
             input=row.get("inputs", ""),
             output=row.get("outputs", ""),
             expected=row.get("ground_truth", ""),
+            # per-row metric columns, for example "exact_match/score"; not the run-level aggregates
             scores={
-                k: v for k, v in mlflow_result.metrics.items()
-                if isinstance(v, (int, float))
+                k.removesuffix("/score"): float(v) for k, v in row.items()
+                if k.endswith("/score") and isinstance(v, (int, float))
             },
         )
 ```
@@ -195,13 +207,15 @@ pip install opensearch-genai-observability-sdk-py pytest
 ```
 
 ```python
-# conftest.py — initialize tracing once for all tests
+# conftest.py: initialize tracing once for all tests
 import pytest
 from opensearch_genai_observability_sdk_py import register
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_tracing():
-    register(service_name="pytest-eval")
+    provider = register(service_name="pytest-eval", agent_name="my_agent", agent_version="v1")
+    yield
+    provider.force_flush()
 ```
 
 ```python
@@ -228,8 +242,8 @@ def test_agent_quality():
         name="ci_regression_test",
         task=my_agent,
         data=[
-            {"input": "What is OpenSearch?", "expected": "search"},
-            {"input": "What is OTEL?", "expected": "opentelemetry"},
+            {"case_id": "opensearch", "input": "What is OpenSearch?", "expected": "search"},
+            {"case_id": "otel", "input": "What is OTEL?", "expected": "opentelemetry"},
         ],
         scores=[accuracy_scorer, response_length_scorer],
     )
@@ -237,11 +251,37 @@ def test_agent_quality():
     assert avg_accuracy >= 0.8, f"Accuracy dropped to {avg_accuracy}"
 ```
 
-Run with: `pytest test_agent.py` — results are recorded as OTel benchmark spans and available in OpenSearch Dashboards.
+Run with `pytest test_agent.py`. Each test run is one eval run of `ci_regression_test` in OpenSearch Dashboards. Pass stable `case_id`s in `data` to compare runs case by case, and flush the provider `register()` returns at session end so the last results are exported. For CI gates and links back to the CI job, see [Run evaluations in CI](/docs/agent-evals/ci/).
+
+---
+
+## Online: score live traces with any library
+
+Run the library's metric on a stored agent trace and post the value with `score()`. The SDK has no dependency on any evaluation library.
+
+```python
+from opensearch_genai_observability_sdk_py import score
+
+value = my_metric.measure(test_case)  # for example a DeepEval or RAGAS metric
+score(
+    "deepeval.answer_relevancy",
+    float(value),
+    trace_id=trace_id,
+    span_id=span_id,
+    evaluator="deepeval.AnswerRelevancyMetric",
+    evaluator_type="llm_judge",
+    threshold=0.7,
+    score_min=0,
+    score_max=1,
+)
+```
+
+Any other OpenTelemetry producer works too: send an OTLP log record with the event name `gen_ai.evaluation.result` and the attributes in [Data Model & Ingestion](/docs/agent-evals/data-model/#attributes).
 
 ---
 
 ## Related links
 
-- [Evaluation & Scoring](/docs/agent-evals/evaluation/) - core `score()`, `evaluate()`, `Benchmark` API
-- [Python SDK reference](/docs/send-data/ai-agents/python/) - full SDK documentation
+- [Evaluation & Scoring](/docs/agent-evals/evaluation/): `score()`, `evaluate()` and `Benchmark`
+- [Run evaluations in CI](/docs/agent-evals/ci/): gates and CI links
+- [Python SDK reference](/docs/send-data/ai-agents/python/): full SDK documentation

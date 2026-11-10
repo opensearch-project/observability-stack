@@ -1,416 +1,373 @@
 ---
 title: "Evaluation & Scoring"
-description: "Score agent traces, run experiments against datasets, and upload evaluation results"
+description: "Score live traces with score(), run test suites with evaluate() and Benchmark, declare pass rules, record LLM judges, and read stored traces for evaluators"
 sidebar:
-  order: 5
+  order: 2
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-The Python SDK provides three evaluation capabilities that all emit data through the standard OTLP pipeline:
+The GenAI Observability SDKs ([Python](/docs/send-data/ai-agents/python/), [TypeScript](/docs/send-data/ai-agents/typescript/)) record evaluation results as OpenTelemetry `gen_ai.evaluation.result` log events, one per score, linked to the agent trace that was judged. Three APIs produce them:
 
-- **`score()`** - attach quality scores to individual traces or spans
-- **`evaluate()`** - run an agent against a dataset with automated scorer functions
-- **`Benchmark`** - upload pre-computed results from any evaluation framework
+| API | Use it for | Result has suite, run, case |
+|---|---|---|
+| `score()` | **Online**: grade live traffic, inline or from a separate evaluator job | No |
+| `evaluate()` | **Offline**: run a synchronous agent over a test suite with scorer functions | Yes |
+| `Benchmark` | **Offline**: log cases you ran yourself (async agents, other harnesses, imported results) | Yes |
 
-All evaluation data lands in the same OpenSearch index as your traces, so you can query scores alongside agent spans.
+None of them creates spans: the agent's own spans are the trace, and the results attach to it. Every attribute they set is listed in [Data Model & Ingestion](/docs/agent-evals/data-model/#attributes). The full argument reference is in the SDK guides: [Python](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/agent-evaluations.md), [TypeScript](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/agent-evaluations.md).
+
+Call `register()` first. It sets up the logs exporter that carries the events next to the traces exporter, and its `agent_name` / `agent_version` become `gen_ai.agent.name` / `gen_ai.agent.version` on every result unless a call or the judged span names another agent.
 
 ---
 
-## `score()` - attach scores to traces
+## Online evaluation: `score()`
 
-Submits an evaluation score as an OTEL span linked to the trace being scored.
+### Levels
+
+<Tabs syncKey="sdk-lang">
+<TabItem label="Python">
 
 ```python
-from opensearch_genai_observability_sdk_py import score
+from opensearch_genai_observability_sdk_py import Op, observe, score
 
-# Score an entire trace
-score(
-    name="relevance",
-    value=0.92,
-    trace_id="abc123def456...",
-    explanation="Response addresses the user's query",
-)
 
-# Score a specific span
-score(
-    name="accuracy",
-    value=0.95,
-    trace_id="abc123def456...",
-    span_id="789abc...",
-    label="pass",
-)
+@observe(name="travel_planner", op=Op.INVOKE_AGENT)
+def travel_planner(question: str) -> str:
+    answer = "Paris"
+    # Span level, inline: the active span is judged.
+    score("tool_selection", 1.0, label="pass", evaluator="tool_check", evaluator_type="code")
+    return answer
 
-# Standalone score (no trace link)
-score(name="baseline", value=0.75, label="acceptable")
+
+# Span level, later: a stored span by its ids (works after the span ended).
+score("relevance", 0.92, trace_id="6ebb9835f43af1552f2cebb9f5165e39", span_id="89829115c2128845",
+      evaluator="relevance_judge", evaluator_type="llm_judge")
+
+# Trace level: only the trace id.
+score("helpfulness", 4.0, trace_id="6ebb9835f43af1552f2cebb9f5165e39", score_min=1, score_max=5)
+
+# Session level: gen_ai.conversation.id, no trace context.
+score("goal_completed", 1.0, label="pass", conversation_id="session-456", evaluator_type="human")
 ```
 
-### Parameters
+</TabItem>
+<TabItem label="TypeScript">
 
-| Parameter | Type | Description |
+```typescript
+import { Op, score, withObserve } from "@opensearch-project/genai-observability-sdk-ts";
+
+await withObserve("travel_planner", { op: Op.INVOKE_AGENT }, async () => {
+  // Span level, inline: the active span is judged.
+  score({ name: "tool_selection", value: 1, label: "pass", evaluator: "tool_check", evaluatorType: "code" });
+  return "Paris";
+});
+
+// Span level, later: a stored span by its ids.
+score({ name: "relevance", value: 0.92, traceId: "6ebb9835f43af1552f2cebb9f5165e39", spanId: "89829115c2128845",
+        evaluator: "relevance_judge", evaluatorType: "llm_judge" });
+
+// Trace level.
+score({ name: "helpfulness", value: 4, traceId: "6ebb9835f43af1552f2cebb9f5165e39", scoreMin: 1, scoreMax: 5 });
+
+// Session level.
+score({ name: "goal_completed", value: 1, label: "pass", conversationId: "session-456", evaluatorType: "human" });
+```
+
+</TabItem>
+</Tabs>
+
+The level defaults to `span` with a span context, `trace` with only a trace id, and `session` with only a conversation id. Pass `level=` to set it (`span`, `trace`, `session`, `tool_call`).
+
+### Pass rules
+
+The verdict is `gen_ai.evaluation.score.label` = `pass` or `fail`. Your code decides it; Dashboards shows it and never computes one. The same rule applies to `score()`, `evaluate()` and `Benchmark`:
+
+1. The verdict comes from the first source that gives one: a `pass` / `fail` `label` (any case), then `EvalScore.passed`, then `threshold` + `direction` (`maximize` by default).
+2. A label that is not a verdict (for example `partially_relevant`) moves to `opensearch.gen_ai.evaluation.judge_label` when the result has a verdict. Without a verdict it stays the label, and the result shows as **Scored**, outside pass rates.
+3. A scorer that returns a `bool` returns a verdict.
+
+```python
+score("answer_quality", 3.0, threshold=4, score_min=1, score_max=5)   # fail
+score("latency_s", 9.2, threshold=12, direction="minimize")            # pass
+score("faithfulness", 0.4, label="fail", explanation="Claims a hotel the tool did not return")
+score("relevance", 2.0, label="partially_relevant", threshold=4)       # fail, judge_label kept
+```
+
+Record the scale with `score_min` / `score_max` (`scoreMin` / `scoreMax`) so a 1 to 5 judge and a 0 to 1 check read side by side, and name the evaluator with `evaluator`, `evaluator_version` and `evaluator_type` (`llm_judge`, `code`, `human`, `external`).
+
+### LLM judges
+
+Record what a judge checked and how, so two judge versions are never mixed up:
+
+| Python `score()` / `@scorer` | TypeScript | Attribute |
 |---|---|---|
-| `name` | `str` | Metric name, e.g. `"relevance"`, `"factuality"`. |
-| `value` | `float` | Numeric score. |
-| `trace_id` | `str` | Hex trace ID of the trace being scored. |
-| `span_id` | `str` | Hex span ID for span-level scoring. Omit to score the whole trace. |
-| `label` | `str` | Human-readable label, e.g. `"pass"`, `"relevant"`. |
-| `explanation` | `str` | Evaluator rationale. Truncated to 500 characters. |
-| `response_id` | `str` | LLM completion ID for correlation. |
-| `attributes` | `dict` | Additional span attributes. |
-
-### Getting the trace ID
+| `evaluator_description` / `description` | `evaluatorDescription` | `opensearch.gen_ai.evaluation.evaluator.description` |
+| `judge_model` | `judgeModel` | `gen_ai.request.model` |
+| `judge_prompt_name` | `judgePromptName` | `gen_ai.prompt.name` |
+| `judge_prompt_version` | `judgePromptVersion` | `gen_ai.prompt.version` |
+| `judge_trace_id` (also on `EvalScore`) | `judgeTraceId` | `opensearch.gen_ai.evaluation.judge.trace_id` |
 
 ```python
 from opentelemetry import trace
-from opensearch_genai_observability_sdk_py import observe, Op
 
-@observe(op=Op.INVOKE_AGENT, name="my_agent")
-def run(query: str) -> str:
-    ctx = trace.get_current_span().get_span_context()
-    trace_id = format(ctx.trace_id, "032x")
-    # ... agent logic ...
-    return result
+from opensearch_genai_observability_sdk_py import Op, enrich, observe, score
+
+JUDGE_PROMPT = "You grade answers 1 to 5 ... Reply with JSON."
+
+
+@observe(name="answer_quality_judge", op=Op.CHAT)
+def judge(question: str, answer: str) -> dict:
+    enrich(model="claude-haiku-4-5", system_instructions=JUDGE_PROMPT)  # the full prompt, on the judge's span
+    return call_model(JUDGE_PROMPT, question, answer)  # {"score": 4, "reason": "..."}
+
+
+with trace.get_tracer("judge").start_as_current_span("judge run") as span:
+    verdict = judge(question, answer)
+judge_trace_id = format(span.get_span_context().trace_id, "032x")
+
+score(
+    "answer_quality", verdict["score"],
+    trace_id=agent_trace_id, span_id=agent_span_id,
+    explanation=verdict["reason"],
+    threshold=4, score_min=1, score_max=5,
+    evaluator="answer_quality_judge", evaluator_type="llm_judge",
+    evaluator_description="Correct, grounded in tool output, answers the question",
+    judge_model="claude-haiku-4-5",
+    judge_prompt_name="answer-quality", judge_prompt_version="v3",
+    judge_trace_id=judge_trace_id,
+)
 ```
+
+Results identify the prompt by name and version (`answer-quality@v3`). The full prompt never goes on a result event; if you want it, it belongs on the judge's own LLM span as `gen_ai.system_instructions`, as above. See [Judge prompts](/docs/agent-evals/data-model/#judge-prompts).
+
+### Errors
+
+If the evaluator fails, send an error result: `error.type` set, no value, no label. It shows as **Evaluator error** and is left out of pass rates.
+
+```python
+score("relevance", trace_id=agent_trace_id, span_id=agent_span_id, error_type="TimeoutError", evaluator="relevance_judge")
+```
+
+### An online evaluator job
+
+A typical online evaluator samples recent agent traces, skips the ones it already scored, and posts a result per trace. `OpenSearchTraceRetriever` reads the traces back:
+
+<Tabs syncKey="sdk-lang">
+<TabItem label="Python">
+
+```python
+import random
+from datetime import datetime, timedelta, timezone
+
+from opensearch_genai_observability_sdk_py import OpenSearchTraceRetriever, register, score
+
+register(service_name="my-agent-evaluator")
+retriever = OpenSearchTraceRetriever(host="https://localhost:9200", auth=("admin", PASSWORD), verify_certs=False)
+
+since = datetime.now(timezone.utc) - timedelta(minutes=60)
+roots = retriever.list_root_spans(services=["my-agent"], since=since, max_results=50)
+done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots])
+
+for root in roots:
+    if root.trace_id in done or random.random() > 0.5:  # skip scored traces, sample 50%
+        continue
+    question = root.input_messages[0].content if root.input_messages else ""
+    answer = root.output_messages[-1].content if root.output_messages else ""
+    verdict = judge(question, answer)
+    score("answer_quality", verdict["score"], trace_id=root.trace_id, span_id=root.span_id,
+          explanation=verdict["reason"], threshold=4, score_min=1, score_max=5,
+          evaluator="answer_quality_judge", evaluator_type="llm_judge",
+          agent_name=root.agent_name)
+```
+
+</TabItem>
+<TabItem label="TypeScript">
+
+```typescript
+import { OpenSearchTraceRetriever, register, score } from "@opensearch-project/genai-observability-sdk-ts";
+
+const provider = await register({ serviceName: "my-agent-evaluator" });
+const retriever = new OpenSearchTraceRetriever({
+  host: "https://localhost:9200",
+  auth: { username: "admin", password: process.env.OPENSEARCH_PASSWORD! },
+  verifyCerts: false, // local self-signed certificate only
+});
+
+const since = new Date(Date.now() - 60 * 60 * 1000);
+const roots = await retriever.listRootSpans({ services: ["my-agent"], since, maxResults: 50 });
+const done = await retriever.findEvaluatedTraceIds(roots.map((r) => r.traceId));
+
+for (const root of roots) {
+  if (done.has(root.traceId) || Math.random() > 0.5) continue;
+  const verdict = await judge(root.inputMessages[0]?.content ?? "", root.outputMessages.at(-1)?.content ?? "");
+  score({ name: "answer_quality", value: verdict.score, traceId: root.traceId, spanId: root.spanId,
+          explanation: verdict.reason, threshold: 4, scoreMin: 1, scoreMax: 5,
+          evaluator: "answer_quality_judge", evaluatorType: "llm_judge", agentName: root.agentName });
+}
+await provider.forceFlush();
+```
+
+</TabItem>
+</Tabs>
+
+Run it on a schedule. `find_evaluated_trace_ids()` makes it safe to re-run. The stack's eval canary (`docker-compose/agent-eval-canary/`) is a working example with deterministic checks.
 
 ---
 
-## `evaluate()` - run experiments
+## Offline evaluation: `evaluate()`
 
-Executes a task function against each item in a dataset, runs scorer functions, and records everything as OTel benchmark spans.
+`evaluate()` runs your task once per case. Each call is its own trace, like production: the SDK adds no wrapper span, stamps `test.suite.name`, `test.suite.run.id` and `test.case.id` on the root span the task starts, and parents each scorer's result to that span.
+
+<Tabs syncKey="sdk-lang">
+<TabItem label="Python">
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, evaluate, Op, EvalScore
+import sys
 
-register(service_name="my-eval")
+from opensearch_genai_observability_sdk_py import EvalScore, Op, evaluate, observe, register, scorer
 
-@observe(op=Op.INVOKE_AGENT, name="my_agent")
-def my_agent(input: str) -> str:
-    return f"Answer to: {input}"
+register(service_name="travel-agent", agent_name="travel_planner", agent_version="v3")
 
-def relevance_scorer(input, output, expected) -> EvalScore:
-    is_relevant = expected.lower() in output.lower()
-    return EvalScore(
-        name="relevance",
-        value=1.0 if is_relevant else 0.0,
-        label="relevant" if is_relevant else "irrelevant",
-    )
+
+@observe(name="travel_planner", op=Op.INVOKE_AGENT)
+def travel_planner(question: str) -> str:
+    return "Paris" if "France" in question else "I do not know"
+
+
+@scorer(name="exact_match", evaluator_type="code")
+def exact_match(input, output, expected) -> bool:
+    return output == expected
+
+
+@scorer(name="answer_quality", threshold=4, score_min=1, score_max=5, evaluator_type="llm_judge",
+        judge_model="claude-haiku-4-5", judge_prompt_name="answer-quality", judge_prompt_version="v3")
+def quality(input, output, expected) -> EvalScore:
+    verdict = judge(input, output)
+    return EvalScore(name="answer_quality", value=verdict["score"], explanation=verdict["reason"])
+
 
 result = evaluate(
-    name="my_agent_v1_eval",
-    task=my_agent,
+    name="travel-capitals",  # test.suite.name
+    task=travel_planner,
     data=[
-        {"input": "What is Python?", "expected": "programming language"},
-        {"input": "What is OpenSearch?", "expected": "search engine"},
+        {"case_id": "fr", "case_name": "France", "input": "Capital of France?", "expected": "Paris"},
+        {"case_id": "pe", "case_name": "Peru", "input": "Capital of Peru?", "expected": "Lima"},
     ],
-    scores=[relevance_scorer],
-    metadata={"agent_version": "v1"},
+    scores=[exact_match, quality],
+    run_name="v3 shorter prompt",
+    run_description="Shorter system prompt, same model",
 )
-
-print(result.summary)
+sys.exit(1 if result.summary.fail_count or result.summary.error_count else 0)
 ```
 
-### Parameters
+</TabItem>
+<TabItem label="TypeScript">
 
-| Parameter | Type | Description |
-|---|---|---|
-| `name` | `str` | Benchmark name (`test.suite.name`). Stable across runs. |
-| `task` | `Callable` | Function that takes input and returns output. Use `@observe` for full tracing. |
-| `data` | `list[dict]` | Test cases: `"input"` (required), `"expected"`, `"case_id"`, `"case_name"` (optional). |
-| `scores` | `list[Callable]` | Scorer functions - each receives `(input, output, expected)`. |
-| `metadata` | `dict` | Attached to the root benchmark span. Reserved keys (`test.*`, `gen_ai.operation.name`) are filtered with a warning. |
-| `record_io` | `bool` | Record input/output/expected as span attributes. Default `False`. |
+```typescript
+import { Op, defineScorer, evaluate, observe } from "@opensearch-project/genai-observability-sdk-ts";
 
-### Scorer functions
+const travelPlanner = observe({ name: "travel_planner", op: Op.INVOKE_AGENT }, (question: string) =>
+  question.includes("France") ? "Paris" : "I do not know",
+);
 
-Scorers return one of:
+const exactMatch = defineScorer({ name: "exact_match", evaluatorType: "code" }, (_i, output, expected) => output === expected);
+
+const result = evaluate({
+  name: "travel-capitals",
+  task: (input) => travelPlanner(String(input)), // synchronous; use Benchmark for async agents
+  data: [
+    { caseId: "fr", caseName: "France", input: "Capital of France?", expected: "Paris" },
+    { caseId: "pe", caseName: "Peru", input: "Capital of Peru?", expected: "Lima" },
+  ],
+  scores: [exactMatch],
+  runName: "v3 shorter prompt",
+});
+process.exitCode = result.summary.failCount || result.summary.errorCount ? 1 : 0;
+```
+
+</TabItem>
+</Tabs>
+
+- A scorer receives `(input, output, expected)` and returns a `bool` (a verdict), a number, an `EvalScore`, or a list of `EvalScore`. Scorers are synchronous; wrap an async judge yourself, or use `Benchmark`.
+- `@scorer(...)` (`defineScorer()`) declares the evaluation name, `threshold`, `direction`, `score_min`, `score_max`, `evaluator`, `evaluator_type`, the description and the judge context. Fields set on a returned `EvalScore` win.
+- A task that raises is not scored: each scorer emits an error result with `error.type` set to the exception class. A scorer that raises emits one error result. The run continues.
+- `evaluate()` prints a summary and returns it (`result.summary`: run id, pass, fail and error counts, and per-evaluation `avg`, `min`, `max`, `count`). The summary is computed locally and is not sent.
+
+## Offline evaluation: `Benchmark`
+
+Use `Benchmark` when you run the cases yourself: async agents (all TypeScript agents, Python `asyncio`), another test harness, or results you import. Pass the agent run's `trace_id` and `span_id` so each result links to its trace.
+
+<Tabs syncKey="sdk-lang">
+<TabItem label="Python">
 
 ```python
-# Full EvalScore object
-def accuracy(input, output, expected) -> EvalScore:
-    return EvalScore(name="accuracy", value=0.95, label="pass", explanation="Correct")
+from opensearch_genai_observability_sdk_py import Benchmark, EvalScore
 
-# Multiple scores
-def multi(input, output, expected) -> list[EvalScore]:
-    return [EvalScore(name="relevance", value=0.9), EvalScore(name="coherence", value=0.85)]
-
-# Simple float (function name becomes metric name)
-def brevity(input, output, expected) -> float:
-    return min(1.0, 100 / max(len(output), 1))
-```
-
-### `EvalScore` dataclass
-
-```python
-@dataclass
-class EvalScore:
-    name: str                       # Metric name
-    value: float                    # Numeric score
-    label: str | None = None        # Human-readable label
-    explanation: str | None = None  # Rationale
-    metadata: dict | None = None    # Extra metadata
-```
-
-### OTel span structure
-
-```mermaid
-flowchart TD
-    A["test_suite_run - benchmark root"] --> B["test_case - case 1"]
-    A --> C["test_case - case 2"]
-    B --> D["invoke_agent my_agent"]
-    B --> E["evaluation result events"]
-    D --> F["execute_tool ..."]
-```
-
-Agent traces from the task become children of `test_case` spans - full waterfall from benchmark to individual LLM calls.
-
-### Result types
-
-```python
-result = evaluate(...)
-result.summary          # BenchmarkSummary
-result.summary.scores   # dict[str, ScoreSummary] - avg, min, max, count per metric
-result.cases            # list[TestCaseResult] - per-case input, output, scores, status
-```
-
-`BenchmarkResult` contains:
-- `summary: BenchmarkSummary` — benchmark name, run ID, total cases, error count, duration, and per-metric `ScoreSummary` (avg, min, max, count)
-- `cases: list[TestCaseResult]` — per-case case_id, input, output, expected, scores dict, error, status, scorer_errors
-
----
-
-## `Benchmark` - upload pre-computed results
-
-Use `Benchmark` when you already have evaluation results from another framework (RAGAS, DeepEval, pytest, custom) and want to upload them as OTel spans.
-
-```python
-from opensearch_genai_observability_sdk_py import register, Benchmark
-
-register(service_name="eval-upload")
-
-with Benchmark("ragas_eval_v2", metadata={"framework": "ragas"}) as b:
+b = Benchmark(name="travel-capitals", run_name="v3 async", agent_name="travel_planner", agent_version="v3")
+for case in cases:
+    answer, trace_id, span_id = run_agent(case["input"])  # your harness: run (or await) the agent
     b.log(
-        input="What is OpenSearch?",
-        output="OpenSearch is an open-source search engine.",
-        expected="search and analytics engine",
-        scores={"faithfulness": 0.92, "relevance": 0.88},
-        case_name="opensearch_definition",
+        case_id=case["case_id"], case_name=case["case_name"],
+        input=case["input"], output=answer, expected=case["expected"],
+        trace_id=trace_id, span_id=span_id,
+        scores=[EvalScore(name="exact_match", value=float(answer == case["expected"]), threshold=1)],
     )
-    b.log(
-        input="How does RAG work?",
-        output="RAG retrieves documents then generates answers.",
-        scores={"faithfulness": 0.95, "relevance": 0.91},
-        case_name="rag_explanation",
-    )
-# summary printed on close
-```
-
-You can also use `Benchmark` without a context manager:
-
-```python
-b = Benchmark(name="my-eval")
-b.log(input="q1", output="a1", scores={"accuracy": 1.0})
 summary = b.close()
 ```
 
-### Constructor parameters
+</TabItem>
+<TabItem label="TypeScript">
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `name` | `str` | | Benchmark name (`test.suite.name`). Stable across runs. |
-| `metadata` | `dict` | `None` | Attached to the root span. Reserved keys (`test.*`, `gen_ai.operation.name`) are filtered with a warning. |
-| `record_io` | `bool` | `False` | Record input/output/expected as span attributes. |
+```typescript
+import { Benchmark } from "@opensearch-project/genai-observability-sdk-ts";
 
-### `log()` parameters
+const bench = new Benchmark("travel-capitals", { runName: "v3 async", agentName: "travel_planner", agentVersion: "v3" });
+for (const c of cases) {
+  const { answer, traceId, spanId } = await ask(c.input); // withObserve returns span.spanContext() ids
+  bench.log({
+    caseId: c.caseId, caseName: c.caseName, input: c.input, output: answer, expected: c.expected,
+    traceId, spanId,
+    scores: [{ name: "exact_match", value: answer === c.expected ? 1 : 0, threshold: 1 }],
+  });
+}
+const summary = bench.close();
+await provider.forceFlush();
+```
 
-| Parameter | Type | Description |
-|---|---|---|
-| `input` | any | Test case input. |
-| `output` | any | Agent output. |
-| `expected` | any | Ground truth. |
-| `scores` | `dict[str, float]` | Pre-computed scores. |
-| `metadata` | `dict` | Per-case metadata. Reserved keys are filtered. |
-| `error` | `str` | Error message (sets status to `"fail"`). |
-| `case_id` | `str` | Explicit ID. Defaults to SHA256 hash of input. |
-| `case_name` | `str` | Human-readable name (`test.case.name`). |
-| `trace_id` | `str` | Creates OTel span link to an agent trace. Must be provided with `span_id`. |
-| `span_id` | `str` | Span-level linking. Must be provided with `trace_id`. |
+</TabItem>
+</Tabs>
+
+`scores` is a list of `EvalScore` or a `{name: value}` map. `log(error_type="TimeoutError", ...)` sends every listed score as an error result.
+
+## Cases, expected output and runs
+
+- **Case ids.** Pass a stable `case_id` (`caseId`). Without one the SDK uses the first 16 hex characters of the SHA-256 of the input, so editing the input makes a new case. See [Case identity](/docs/agent-evals/data-model/#case-identity).
+- **Expected output.** A case's `expected` is sent on each of its results as `opensearch.test.case.expected`: strings as is, other values JSON-encoded, cut at 32768 characters with `opensearch.test.case.expected_truncated` = `true`. Pass `record_expected=False` (`recordExpected: false`) if your test data is sensitive; scorers still get it. Inputs and outputs are never sent on results: they are in the agent's trace.
+- **Run name and description.** `run_name` and `run_description` (`runName`, `runDescription`) are shown in place of the generated run id (`run_<timestamp>_<random>`) and explain what changed.
+- **Run id.** `run_id` (`runId`) sets `test.suite.run.id` exactly. Use it to [shard a suite](/docs/agent-evals/ci/#shard-a-suite-under-one-run-id) under one run, or to add re-scored results to an existing run.
+- **Metadata.** `metadata=` is copied to every result of the run. Reserved keys (`test.*`, `cicd.pipeline.*`, the evaluation fields) are dropped with a warning.
+- **CI.** Inside GitHub Actions, GitLab CI and Jenkins the SDK adds `cicd.pipeline.*`. See [Run evaluations in CI](/docs/agent-evals/ci/#cicd-attributes).
 
 ---
 
-### A/B comparison
+## `OpenSearchTraceRetriever`
 
-Run the same dataset against different agent versions:
+Reads stored agent traces back from OpenSearch, for evaluator jobs and trace-based scorers. Python needs the `[opensearch]` extra (`pip install "opensearch-genai-observability-sdk-py[opensearch]"`).
 
-```python
-result_a = evaluate(name="comparison", task=agent_v1, data=cases, scores=[accuracy],
-                    metadata={"version": "v1"})
-result_b = evaluate(name="comparison", task=agent_v2, data=cases, scores=[accuracy],
-                    metadata={"version": "v2"})
+| Method (Python / TypeScript) | Returns |
+|---|---|
+| `list_root_spans(services=, since=, max_results=)` / `listRootSpans({...})` | One `SpanRecord` per recent trace: the root span with its agent name, messages and token counts |
+| `get_traces(identifier)` / `getTraces(id)` | A `SessionRecord`: all traces of a conversation id (`gen_ai.conversation.id`) or of one trace id, with their spans |
+| `find_evaluated_trace_ids(trace_ids)` / `findEvaluatedTraceIds(ids)` | The ids that already have a `gen_ai.evaluation.result` |
 
-print(f"V1: {result_a.summary.scores['accuracy'].avg:.2f}")
-print(f"V2: {result_b.summary.scores['accuracy'].avg:.2f}")
-```
+`SpanRecord` carries `trace_id`, `span_id`, `parent_span_id`, `operation_name`, `agent_name`, `model`, `input_messages`, `output_messages`, `tool_name`, `tool_call_arguments`, `tool_call_result`, `input_tokens`, `output_tokens` and the raw document. For Amazon OpenSearch Service, pass a SigV4 `auth` (Python: `RequestsAWSV4SignerAuth`).
 
----
-
-## `OpenSearchTraceRetriever` - query stored traces
-
-Retrieves traces from OpenSearch for building evaluation pipelines. Requires the `[opensearch]` extra:
-
-```bash
-pip install "opensearch-genai-observability-sdk-py[opensearch]"
-```
-
-```python
-from opensearch_genai_observability_sdk_py import OpenSearchTraceRetriever
-
-retriever = OpenSearchTraceRetriever(
-    host="https://localhost:9200",
-    auth=("admin", "admin"),
-    verify_certs=False,
-)
-```
-
-### Constructor parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `host` | `str` | `"https://localhost:9200"` | OpenSearch endpoint URL. |
-| `index` | `str` | `"otel-v1-apm-span-*"` | Index pattern for span data. |
-| `auth` | `tuple` \| `RequestsAWSV4SignerAuth` | | `("user", "pass")` for basic auth, or a SigV4 signer for AWS. |
-| `verify_certs` | `bool` | `True` | Whether to verify TLS certificates. |
-
-### Methods
-
-**`list_root_spans()`** - find recent agent traces:
-
-```python
-roots = retriever.list_root_spans(services=["my-agent"], max_results=20)
-```
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `services` | `list[str]` | `None` | Filter by service names. |
-| `since` | `datetime` | 15 min ago | Only traces started after this time. |
-| `max_results` | `int` | `50` | Maximum root spans to return. |
-
-Returns `list[SpanRecord]` - one per trace (the root span with no parent).
-
-**`get_traces()`** - fetch full trace with all spans:
-
-```python
-session = retriever.get_traces(roots[0].trace_id)
-for trace in session.traces:
-    for span in trace.spans:
-        print(f"  {span.name} | {span.operation_name} | tokens: {span.input_tokens}")
-```
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `identifier` | `str` | | A conversation/session ID or trace ID. Queries by `gen_ai.conversation.id` first, falls back to `traceId`. |
-| `max_spans` | `int` | `10000` | Maximum spans to fetch. |
-
-Returns a `SessionRecord`.
-
-**`find_evaluated_trace_ids()`** - filter out already-scored traces:
-
-```python
-evaluated = retriever.find_evaluated_trace_ids([s.trace_id for s in roots])
-to_score = [s for s in roots if s.trace_id not in evaluated]
-```
-
-Returns `set[str]` - trace IDs that already have an evaluation span.
-
-### Return types
-
-**`SpanRecord`** - normalised view of one span:
-
-```python
-@dataclass
-class SpanRecord:
-    trace_id: str
-    span_id: str
-    parent_span_id: str
-    name: str                            # Span name, e.g. "invoke_agent my_agent"
-    start_time: str
-    end_time: str
-    operation_name: str                  # "invoke_agent" | "execute_tool" | "chat"
-    agent_name: str = ""                 # gen_ai.agent.name
-    model: str = ""                      # gen_ai.request.model
-    input_messages: list[Message] = []   # Parsed gen_ai.input.messages
-    output_messages: list[Message] = []  # Parsed gen_ai.output.messages
-    tool_name: str = ""                  # gen_ai.tool.name
-    tool_call_arguments: str = ""        # gen_ai.tool.call.arguments
-    tool_call_result: str = ""           # gen_ai.tool.call.result
-    input_tokens: int = 0               # gen_ai.usage.input_tokens
-    output_tokens: int = 0              # gen_ai.usage.output_tokens
-    raw: dict = {}                       # Original OpenSearch document
-```
-
-**`Message`** - a single user or assistant message:
-
-```python
-@dataclass
-class Message:
-    role: str       # "user", "assistant", etc.
-    content: str
-```
-
-**`TraceRecord`** - all spans sharing a single trace ID:
-
-```python
-@dataclass
-class TraceRecord:
-    trace_id: str
-    spans: list[SpanRecord] = []
-```
-
-**`SessionRecord`** - all traces for a session/conversation:
-
-```python
-@dataclass
-class SessionRecord:
-    session_id: str
-    traces: list[TraceRecord] = []
-    truncated: bool = False     # True if max_spans was reached
-```
-
-### Complete evaluation pipeline
-
-```python
-from opensearch_genai_observability_sdk_py import register, score, OpenSearchTraceRetriever
-
-register(service_name="eval-pipeline")
-retriever = OpenSearchTraceRetriever(host="https://localhost:9200",
-                                     auth=("admin", "admin"), verify_certs=False)
-
-# Find un-evaluated traces → score them
-roots = retriever.list_root_spans(services=["my-agent"])
-evaluated = retriever.find_evaluated_trace_ids([s.trace_id for s in roots])
-
-for root in roots:
-    if root.trace_id not in evaluated:
-        session = retriever.get_traces(root.trace_id)
-        relevance = compute_relevance(session.traces[0].spans)
-        score(name="relevance", value=relevance, trace_id=root.trace_id)
-```
-
-### AWS authentication
-
-```python
-from opensearchpy import RequestsAWSV4SignerAuth
-import boto3
-
-auth = RequestsAWSV4SignerAuth(boto3.Session().get_credentials(), "us-east-1", "es")
-retriever = OpenSearchTraceRetriever(
-    host="https://search-my-domain.us-east-1.es.amazonaws.com", auth=auth,
-)
-```
-
----
+Spans are exported in batches and ingested a few seconds later. In a trace-based scorer, call `force_flush()` on the provider first and poll until the span count is stable.
 
 ## Related links
 
-- [Evaluation Integrations](/docs/agent-evals/evaluation-integrations/) - use DeepEval, RAGAS, MLflow, pytest with the observability stack
-- [Python SDK reference](/docs/send-data/ai-agents/python/) - `register`, `observe`, `enrich` documentation
-- [Agent Tracing UI](/docs/ai-observability/agent-tracing/) - explore traces in OpenSearch Dashboards
+- [Quickstart](/docs/agent-evals/quickstart/): an end-to-end run.
+- [Run evaluations in CI](/docs/agent-evals/ci/): gates, CI links, shards.
+- [Evaluation Integrations](/docs/agent-evals/evaluation-integrations/): DeepEval, RAGAS, MLflow and pytest.
+- [Data Model & Ingestion](/docs/agent-evals/data-model/): the event and the index.

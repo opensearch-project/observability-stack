@@ -67,8 +67,8 @@ flowchart LR
 | **Trace agents & tools** | `@observe` | Decorator/context manager that creates spans with GenAI semantic attributes |
 | **Enrich spans** | `enrich()` | Sets model, tokens, provider, session ID, and other GenAI attributes on the active span |
 | **Auto-instrument LLMs** | `register(auto_instrument=True)` | OpenAI, Anthropic, Bedrock, LangChain, and 20+ libraries traced automatically |
-| **Score traces** | `score()` | Attaches evaluation scores to traces through the OTLP pipeline |
-| **Run experiments** | `evaluate()` | Runs a task against a dataset with scorer functions, records everything as OTel spans |
+| **Score traces** | `score()` | Records evaluation results linked to traces, as OTLP log events |
+| **Run experiments** | `evaluate()` | Runs a task against a dataset with scorer functions, records one `gen_ai.evaluation.result` event per score |
 | **Upload results** | `Benchmark` | Uploads pre-computed eval results from RAGAS, DeepEval, pytest, or custom frameworks |
 | **Query traces** | `OpenSearchTraceRetriever` | Retrieves stored traces from OpenSearch for evaluation pipelines |
 | **AWS production** | `AWSSigV4OTLPExporter` | SigV4-signed exports to OpenSearch Ingestion or OpenSearch Service |
@@ -112,10 +112,7 @@ flowchart LR
     from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
 
     # One-line setup - connects to the local OTel Collector
-    register(
-        endpoint="http://localhost:4318/v1/traces",
-        service_name="my-agent",
-    )
+    register(service_name="my-agent")  # OTLP to http://localhost:4318
 
     @observe(op=Op.EXECUTE_TOOL)
     def search_docs(query: str) -> list[dict]:
@@ -166,7 +163,7 @@ flowchart LR
     )
     ```
 
-    Scores appear as evaluation spans in the same trace, queryable alongside the agent spans.
+    Each score is a `gen_ai.evaluation.result` event linked to the trace. It shows in the trace's **Evaluations** tab in Agent Traces and in **Agent Monitoring > Evaluations**. See the [Agent Evals Quickstart](/docs/agent-evals/quickstart/).
 
 6. **Run an experiment** (optional)
 
