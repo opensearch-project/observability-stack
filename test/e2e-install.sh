@@ -38,3 +38,6 @@ done < <(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_DASHBOARDS_PO
 source "$SCRIPT_DIR/checks.sh"
 run_checks
 run_negative_checks
+# The install answered no to the example agents and the OTel Demo, so no
+# anomaly detection setups may be seeded.
+run_anomaly_detection_checks none

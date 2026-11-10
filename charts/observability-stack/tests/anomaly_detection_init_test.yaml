@@ -1,0 +1,100 @@
+suite: anomaly-detection-init Jobs
+templates:
+  - templates/anomaly-detection-init-job.yaml
+release:
+  name: obs-stack
+  revision: 3
+tests:
+  - it: should render the script ConfigMap + examples Job by default
+    asserts:
+      - hasDocuments:
+          count: 2
+
+  - it: should render both Jobs when the OTel Demo is enabled
+    set:
+      opentelemetry-demo.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 3
+
+  - it: should render only the otel-demo Job when examples are disabled
+    set:
+      examples.enabled: false
+      opentelemetry-demo.enabled: true
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - equal:
+          path: metadata.name
+          value: obs-stack-observability-stack-otel-demo-anomaly-detection-init-3
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-anomaly-detectors.py otel-demo"
+
+  - it: should render nothing when examples and the OTel Demo are disabled
+    set:
+      examples.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should render nothing when opensearch is disabled
+    set:
+      opensearch.enabled: false
+      opentelemetry-demo.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: ConfigMap should embed the script and not be a hook
+    documentSelector:
+      path: kind
+      value: ConfigMap
+    asserts:
+      - matchRegex:
+          path: data["init-anomaly-detectors.py"]
+          pattern: "^#!/usr/bin/env python3"
+      - notExists:
+          path: metadata.annotations["helm.sh/hook"]
+
+  - it: examples Job is a regular Job named per release revision
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - equal:
+          path: metadata.name
+          value: obs-stack-observability-stack-examples-anomaly-detection-init-3
+      - notExists:
+          path: metadata.annotations["helm.sh/hook"]
+      - matchRegex:
+          path: spec.template.spec.containers[0].command[2]
+          pattern: "python /scripts/init-anomaly-detectors.py examples"
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: script
+            configMap:
+              name: obs-stack-observability-stack-anomaly-detection-init-script
+
+  - it: Job should take credentials from the Secret and honor opensearchServiceName
+    set:
+      opensearchServiceName: my-opensearch-svc
+    documentSelector:
+      path: kind
+      value: Job
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_URL
+            value: "https://my-opensearch-svc:9200"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OPENSEARCH_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: opensearch-credentials
+                key: password

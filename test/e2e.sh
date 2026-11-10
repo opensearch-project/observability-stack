@@ -23,3 +23,6 @@ done < <(grep -E '^(OPENSEARCH_USER|OPENSEARCH_PASSWORD|OPENSEARCH_DASHBOARDS_PO
 source "$SCRIPT_DIR/checks.sh"
 run_checks
 run_negative_checks
+# The default .env includes the example agents (not the OTel Demo), so the
+# example-agent anomaly detection setups must be seeded and the OTel Demo's not.
+run_anomaly_detection_checks examples

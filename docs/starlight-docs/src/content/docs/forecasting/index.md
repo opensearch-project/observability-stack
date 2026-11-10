@@ -23,6 +23,18 @@ Forecasting is useful for capacity planning and proactive operations:
 | Cost estimation | Ingestion volume, storage growth |
 | SLA management | Latency trends, error rate trajectory |
 
+## Demo forecasters
+
+With the example agents or the OpenTelemetry Demo running against the local OpenSearch, the same init container that creates the [demo detectors](/docs/anomaly-detection/#demo-detectors) also creates and starts these forecasters. Each predicts one value per minute, 30 minutes ahead:
+
+| Forecaster | Demo | Forecasts |
+|---|---|---|
+| `agent-request-volume-forecast` | Example agents | Requests per minute for each agent (server spans) |
+| `agent-llm-token-forecast` | Example agents | Total LLM tokens per minute across the agents |
+| `otel-demo-frontend-traffic-forecast` | OpenTelemetry Demo | Frontend requests per minute |
+
+Like the detectors, a forecaster needs about 35 minutes of data before its first forecast. To see actual values leave the forecast band, change the traffic: the **Chaos** and **Cascading Failure** presets in the travel agent control panel run the canary three times as often (and spend more tokens), and the `loadGeneratorFloodHomepage` feature flag floods the OpenTelemetry Demo frontend with roughly 18 times its normal traffic.
+
 ## Getting started
 
 1. Open OpenSearch Dashboards and navigate to **Forecasting** (available alongside Anomaly Detection).

@@ -36,6 +36,9 @@ list (or, easier, leave gaps of 5 so future inserts don't shuffle):
   15  alerting-rules-monitors-init                    (Job — Cortex stack rules + OSD stack monitors)
   15  otel-demo-alerting-rules-monitors-init          (Job — Cortex otel-demo rules + OSD otel-demo monitors)
 
+The anomaly-detection init Jobs are deliberately NOT hooks (they can run
+~40 minutes on a fresh install); see anomaly-detection-init-job.yaml.
+
 Update this table when you add or move a hook so the next person can
 slot in without re-deriving the order.
 */}}
