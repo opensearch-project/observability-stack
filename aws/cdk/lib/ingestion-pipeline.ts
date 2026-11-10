@@ -1,6 +1,36 @@
 import * as cdk from 'aws-cdk-lib';
 import * as osis from 'aws-cdk-lib/aws-osis';
 import { Construct } from 'constructs';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// GenAI evaluation index: write alias (managed) or index (serverless) for gen_ai.evaluation.result
+// log events. Same template as the CLI installer and the local compose stack.
+export const EVALUATION_INDEX = 'otel-v1-genai-evaluation';
+const EVALUATION_DIR = path.join(__dirname, 'genai-evaluation');
+export const EVALUATION_TEMPLATE_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-index-template.json'), 'utf8');
+export const EVALUATION_POLICY_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-policy.json'), 'utf8');
+
+/**
+ * Template for a sink's template_content, one line. Managed: the frozen template without
+ * index_patterns (the sink sets them). Serverless (no ISM or aliases): the same mappings for the
+ * single index named like the alias, with `settings` replacing the ISM rollover setting.
+ */
+function evaluationTemplateContent(settings?: Record<string, unknown>): string {
+  const { index_patterns: _ignored, ...rest } = JSON.parse(EVALUATION_TEMPLATE_JSON);
+  if (!settings) return JSON.stringify(rest);
+  return JSON.stringify({
+    version: rest.version,
+    index_patterns: [EVALUATION_INDEX],
+    priority: rest.priority,
+    template: { ...rest.template, settings },
+  });
+}
+
+// Evaluation results go only to the evaluation index, never to the logs index.
+const LOG_ROUTES = `\
+    - logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'
+    - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'`;
 
 export interface IngestionPipelineProps {
   domainEndpoint: string;
@@ -66,7 +96,7 @@ otlp-pipeline:
       traces_path: '/${cfg.pipelineName}/v1/traces'
       metrics_path: '/${cfg.pipelineName}/v1/metrics'
   route:
-    - logs: 'getEventType() == "LOG"'
+${LOG_ROUTES}
     - traces: 'getEventType() == "TRACE"'
     - metrics: 'getEventType() == "METRIC"'
   processor: []
@@ -75,6 +105,10 @@ otlp-pipeline:
         name: otel-logs-pipeline
         routes:
           - logs
+    - pipeline:
+        name: otel-evaluations-pipeline
+        routes:
+          - evaluations
     - pipeline:
         name: otel-traces-pipeline
         routes:
@@ -98,6 +132,29 @@ otel-logs-pipeline:
         hosts:
           - '${cfg.opensearchEndpoint}'
         index_type: log-analytics-plain
+        aws:
+          region: '${cfg.region}'
+          sts_role_arn: "${cfg.roleArn}"
+
+# The EvaluationIndex custom resource creates the rollover policy, template and write alias
+# before this pipeline starts; template_content gives a single index the same mappings otherwise.
+otel-evaluations-pipeline:
+  source:
+    pipeline:
+      name: otlp-pipeline
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts:
+          - '${cfg.opensearchEndpoint}'
+        index_type: custom
+        index: '${EVALUATION_INDEX}'
+        template_type: 'index-template'
+        template_content: '${evaluationTemplateContent()}'
         aws:
           region: '${cfg.region}'
           sts_role_arn: "${cfg.roleArn}"
@@ -179,7 +236,7 @@ otel-metrics-pipeline:
 // Time series collections require every document to carry the index timestamp field
 // (`@timestamp` by default). Each template points `index.timestamp_field` at the time field the
 // signal already has, so no copy into `@timestamp` is needed.
-export const SERVERLESS_TIMESTAMP_FIELDS = { logs: 'time', traces: 'endTime', serviceMap: 'timestamp' } as const;
+export const SERVERLESS_TIMESTAMP_FIELDS = { logs: 'time', traces: 'endTime', serviceMap: 'timestamp', evaluations: 'time' } as const;
 
 function withTimestampField(template: { version: number; template: Record<string, unknown> }, field: string): string {
   return JSON.stringify({ ...template, template: { ...template.template, settings: { 'index.timestamp_field': field } } });
@@ -191,6 +248,8 @@ const TRACES_TEMPLATE = withTimestampField({"version":1,"template":{"mappings":{
 
 const SERVICE_MAP_TEMPLATE = withTimestampField({"version":0,"template":{"mappings":{"date_detection":false,"dynamic_templates":[{"long_group_by_attributes":{"path_match":"*.groupByAttributes.*","match_mapping_type":"long","mapping":{"type":"long"}}},{"double_group_by_attributes":{"path_match":"*.groupByAttributes.*","match_mapping_type":"double","mapping":{"type":"double"}}},{"string_group_by_attributes":{"path_match":"*.groupByAttributes.*","match_mapping_type":"string","mapping":{"type":"keyword"}}},{"long_operation_attributes":{"path_match":"*.attributes.*","match_mapping_type":"long","mapping":{"type":"long"}}},{"double_operation_attributes":{"path_match":"*.attributes.*","match_mapping_type":"double","mapping":{"type":"double"}}},{"string_operation_attributes":{"path_match":"*.attributes.*","match_mapping_type":"string","mapping":{"type":"keyword"}}}],"_source":{"enabled":true},"properties":{"sourceNode":{"properties":{"type":{"type":"keyword"},"keyAttributes":{"properties":{"environment":{"type":"keyword"},"name":{"type":"keyword"}}},"groupByAttributes":{"type":"object","dynamic":"true"}}},"targetNode":{"properties":{"type":{"type":"keyword"},"keyAttributes":{"properties":{"environment":{"type":"keyword"},"name":{"type":"keyword"}}},"groupByAttributes":{"type":"object","dynamic":"true"}}},"sourceOperation":{"properties":{"name":{"type":"keyword"},"attributes":{"type":"object","dynamic":"true"}}},"targetOperation":{"properties":{"name":{"type":"keyword"},"attributes":{"type":"object","dynamic":"true"}}},"nodeConnectionHash":{"type":"keyword"},"operationConnectionHash":{"type":"keyword"},"timestamp":{"type":"date","format":"strict_date_optional_time||epoch_millis"}}}}}, SERVERLESS_TIMESTAMP_FIELDS.serviceMap);
 
+const EVALUATION_TEMPLATE = evaluationTemplateContent({ 'index.timestamp_field': SERVERLESS_TIMESTAMP_FIELDS.evaluations });
+
 function renderServerlessPipelineYaml(cfg: PipelineConfig): string {
   return `\
 version: '2'
@@ -201,7 +260,7 @@ otlp-pipeline:
       traces_path: '/${cfg.pipelineName}/v1/traces'
       metrics_path: '/${cfg.pipelineName}/v1/metrics'
   route:
-    - logs: 'getEventType() == "LOG"'
+${LOG_ROUTES}
     - traces: 'getEventType() == "TRACE"'
     - metrics: 'getEventType() == "METRIC"'
   processor: []
@@ -210,6 +269,10 @@ otlp-pipeline:
         name: otel-logs-pipeline
         routes:
           - logs
+    - pipeline:
+        name: otel-evaluations-pipeline
+        routes:
+          - evaluations
     - pipeline:
         name: otel-traces-pipeline
         routes:
@@ -232,6 +295,30 @@ otel-logs-pipeline:
         index_type: custom
         template_type: 'index-template'
         template_content: '${LOGS_TEMPLATE}'
+        aws:
+          serverless: true
+          region: '${cfg.region}'
+          sts_role_arn: "${cfg.roleArn}"
+
+# One evaluation index on serverless (no ISM or aliases)
+otel-evaluations-pipeline:
+  source:
+    pipeline:
+      name: otlp-pipeline
+  # The Agent Evaluations UI filters on @timestamp; the collection sorts on time.
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts:
+          - '${cfg.opensearchEndpoint}'
+        index: '${EVALUATION_INDEX}'
+        index_type: custom
+        template_type: 'index-template'
+        template_content: '${EVALUATION_TEMPLATE}'
         aws:
           serverless: true
           region: '${cfg.region}'

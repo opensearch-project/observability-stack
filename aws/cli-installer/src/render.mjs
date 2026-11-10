@@ -3,6 +3,8 @@
  * Dispatches to managed (index_type) or serverless (template_content) renderer.
  */
 
+import { evaluationTemplateContent, EVALUATION_ALIAS } from './evaluation-index.mjs';
+
 export function renderPipeline(cfg) {
   if (cfg.opensearchType === 'serverless') return renderServerlessPipeline(cfg);
   return renderManagedPipeline(cfg);
@@ -25,6 +27,20 @@ function serviceMapSinkConfig() {
         index_type: otel-v2-apm-service-map`;
 }
 
+// GenAI evaluation results are OTel log events named gen_ai.evaluation.result. They go only to
+// the evaluation index, never to the logs index.
+export const EVALUATION_ROUTES = `\
+    - logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'
+    - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'`;
+
+function evaluationsSinkConfig() {
+  return `\
+        index_type: custom
+        index: '${EVALUATION_ALIAS}'
+        template_type: 'index-template'
+        template_content: '${evaluationTemplateContent()}'`;
+}
+
 // ── Managed pipeline renderer ───────────────────────────────────────────────
 
 function renderManagedPipeline(cfg) {
@@ -44,7 +60,7 @@ otlp-pipeline:
       traces_path: '/${name}/v1/traces'
       metrics_path: '/${name}/v1/metrics'
   route:
-    - logs: 'getEventType() == "LOG"'
+${EVALUATION_ROUTES}
     - traces: 'getEventType() == "TRACE"'
     - metrics: 'getEventType() == "METRIC"'
   processor: []
@@ -53,6 +69,10 @@ otlp-pipeline:
         name: otel-logs-pipeline
         routes:
           - logs
+    - pipeline:
+        name: otel-evaluations-pipeline
+        routes:
+          - evaluations
     - pipeline:
         name: otel-traces-pipeline
         routes:
@@ -77,6 +97,27 @@ otel-logs-pipeline:
         hosts:
           - '${cfg.opensearchEndpoint}'
 ${logsSinkConfig()}
+        aws:
+          region: '${cfg.region}'
+          sts_role_arn: "${cfg.iamRoleArn}"
+
+# GenAI evaluation results (gen_ai.evaluation.result log events). The installer creates the
+# rollover policy, template and write alias before the pipeline starts; template_content is a
+# fallback that gives a single index the same mappings if that setup did not run.
+otel-evaluations-pipeline:
+  source:
+    pipeline:
+      name: otlp-pipeline
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts:
+          - '${cfg.opensearchEndpoint}'
+${evaluationsSinkConfig()}
         aws:
           region: '${cfg.region}'
           sts_role_arn: "${cfg.iamRoleArn}"
@@ -167,6 +208,7 @@ export const SERVERLESS_TIMESTAMP_FIELDS = {
   logs: 'time',
   traces: 'endTime',
   serviceMap: 'timestamp',
+  evaluations: 'time',
 };
 
 function withTimestampField(template, field) {
@@ -210,6 +252,15 @@ function serverlessServiceMapSinkConfig() {
         template_content: '${SERVICE_MAP_TEMPLATE_CONTENT}'`;
 }
 
+// Serverless collections have no ISM or aliases: one index named like the managed alias.
+function serverlessEvaluationsSinkConfig() {
+  return `\
+        index_type: custom
+        index: '${EVALUATION_ALIAS}'
+        template_type: 'index-template'
+        template_content: '${evaluationTemplateContent({ 'index.timestamp_field': SERVERLESS_TIMESTAMP_FIELDS.evaluations })}'`;
+}
+
 // ── Serverless pipeline renderer ────────────────────────────────────────────
 
 function renderServerlessPipeline(cfg) {
@@ -229,7 +280,7 @@ otlp-pipeline:
       traces_path: '/${name}/v1/traces'
       metrics_path: '/${name}/v1/metrics'
   route:
-    - logs: 'getEventType() == "LOG"'
+${EVALUATION_ROUTES}
     - traces: 'getEventType() == "TRACE"'
     - metrics: 'getEventType() == "METRIC"'
   processor: []
@@ -238,6 +289,10 @@ otlp-pipeline:
         name: otel-logs-pipeline
         routes:
           - logs
+    - pipeline:
+        name: otel-evaluations-pipeline
+        routes:
+          - evaluations
     - pipeline:
         name: otel-traces-pipeline
         routes:
@@ -258,6 +313,27 @@ otel-logs-pipeline:
         hosts:
           - '${cfg.opensearchEndpoint}'
 ${serverlessLogsSinkConfig()}
+        aws:
+          serverless: true
+          region: '${cfg.region}'
+          sts_role_arn: "${cfg.iamRoleArn}"
+
+# GenAI evaluation results (gen_ai.evaluation.result log events), one index, no ISM
+otel-evaluations-pipeline:
+  source:
+    pipeline:
+      name: otlp-pipeline
+  # The Agent Evaluations UI filters on @timestamp; the collection sorts on time.
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts:
+          - '${cfg.opensearchEndpoint}'
+${serverlessEvaluationsSinkConfig()}
         aws:
           serverless: true
           region: '${cfg.region}'

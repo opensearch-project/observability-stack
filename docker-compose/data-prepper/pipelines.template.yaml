@@ -13,7 +13,10 @@ otlp-pipeline:
       ssl: false
   # Route telemetry by signal type
   route:
-    - logs: "getEventType() == \"LOG\""
+    # GenAI evaluation results (OTel log events named gen_ai.evaluation.result) go only to
+    # the evaluation index, never to the logs index.
+    - logs: "getEventType() == \"LOG\" and /eventName != \"gen_ai.evaluation.result\""
+    - evaluations: "getEventType() == \"LOG\" and /eventName == \"gen_ai.evaluation.result\""
     - traces: "getEventType() == \"TRACE\""
   # Send to appropriate sub-pipelines
   sink:
@@ -21,6 +24,10 @@ otlp-pipeline:
         name: "otel-logs-pipeline"
         routes:
           - "logs"
+    - pipeline:
+        name: "otel-evaluations-pipeline"
+        routes:
+          - "evaluations"
     - pipeline:
         name: "otel-traces-pipeline"
         routes:
@@ -51,6 +58,33 @@ otel-logs-pipeline:
         insecure: true
         # Use log analytics index type for automatic index management
         index_type: log-analytics-plain
+
+# GenAI evaluation results pipeline (Agent Evaluations)
+# Writes to the write alias otel-v1-genai-evaluation over otel-v1-genai-evaluation-000001, ...
+# Data Prepper creates the ISM rollover policy (otel-v1-genai-evaluation-policy), the index
+# template (otel-v1-genai-evaluation-index-template, replaced only by a higher version) and the
+# first index with the alias. The init script creates the same objects, whichever runs first.
+otel-evaluations-pipeline:
+  delay: 10
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  processor:
+    # The Agent Evaluations UI filters on @timestamp
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts: ["OPENSEARCH_PROTOCOL://OPENSEARCH_HOST:OPENSEARCH_PORT"]
+        username: OPENSEARCH_USER
+        password: OPENSEARCH_PASSWORD
+        insecure: true
+        index: otel-v1-genai-evaluation
+        template_type: index-template
+        template_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-index-template.json
+        ism_policy_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-policy.json
 
 # Trace processing pipeline
 # Receives traces from main pipeline and distributes to raw and service map pipelines

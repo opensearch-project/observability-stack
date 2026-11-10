@@ -3,7 +3,8 @@ title: "Python SDK"
 description: "Reference for opensearch-genai-observability-sdk-py - instrument AI agent applications with OpenTelemetry"
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Code } from '@astrojs/starlight/components';
+import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `opensearch-genai-observability-sdk-py` instruments Python AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides a unified `observe()` primitive for tracing agents and tools, and enriches spans with GenAI semantic convention attributes automatically.
 
@@ -37,35 +38,32 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 
 | Export | Purpose | Docs |
 |---|---|---|
-| `register()` | Configure OTEL pipeline | [This page](#register) |
+| `register()` | Configure the OTLP traces and logs pipelines | [This page](#register) |
 | `observe()` | Trace agents, tools, LLM calls | [This page](#observe) |
 | `Op` | Operation name constants | [This page](#op-constants) |
-| `enrich()` | Set GenAI attributes on active span | [This page](#enrich) |
-| `score()` | Attach evaluation scores to traces | [This page](#score) |
-| `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
-| `evaluate()` | Run agent against dataset with scorers | [Evaluation & Scoring](/docs/agent-evals/evaluation/#evaluate---run-experiments) |
-| `Benchmark` | Upload pre-computed eval results | [Evaluation & Scoring](/docs/agent-evals/evaluation/#benchmark---upload-pre-computed-results) |
-| `EvalScore` | Scorer return type | [Evaluation & Scoring](/docs/agent-evals/evaluation/#evalscore-dataclass) |
-| `BenchmarkResult` | Result from `evaluate()` | [Evaluation & Scoring](/docs/agent-evals/evaluation/#result-types) |
-| `BenchmarkSummary` | Aggregate score statistics | [Evaluation & Scoring](/docs/agent-evals/evaluation/#result-types) |
-| `TestCaseResult` | Per-case result | [Evaluation & Scoring](/docs/agent-evals/evaluation/#result-types) |
-| `ScoreSummary` | Per-metric statistics | [Evaluation & Scoring](/docs/agent-evals/evaluation/#result-types) |
-| `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [Evaluation & Scoring](/docs/agent-evals/evaluation/#opensearchtraceretriever---query-stored-traces) |
+| `enrich()` | Set GenAI attributes on the active span | [This page](#enrich) |
+| `mark_agent_root()` | Mark the active span as the trace's agent root | [This page](#mark_agent_root) |
+| `score()` | Record an evaluation result on a span, trace or session | [Evaluation & Scoring](/docs/agent-evals/evaluation/#online-evaluation-score) |
+| `evaluate()`, `scorer`, `EvalScore` | Run an agent over a test suite with scorers | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-evaluate) |
+| `Benchmark` | Log offline results for cases you ran yourself | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-benchmark) |
+| `OpenSearchTraceRetriever` | Read stored traces back from OpenSearch | [Evaluation & Scoring](/docs/agent-evals/evaluation/#opensearchtraceretriever) |
+| `AWSSigV4OTLPExporter`, `AWSSigV4OTLPLogExporter` | SigV4-signed OTLP exporters | [This page](#aws-authentication) |
 
 ## Quick start
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
 
-register(endpoint="http://localhost:4318/v1/traces", service_name="my-agent")
+register(service_name="my-agent")  # OTLP to http://localhost:4318
 
 @observe(op=Op.EXECUTE_TOOL)
 def get_weather(city: str) -> dict:
     return {"city": city, "temp": 22, "condition": "sunny"}
 
-@observe(op=Op.INVOKE_AGENT)
+@observe(name="assistant", op=Op.INVOKE_AGENT)
 def assistant(query: str) -> str:
-    enrich(model="gpt-4o", provider="openai")
+    mark_agent_root()
+    enrich(model="gpt-4o", provider="openai", session_id="conversation-42")
     data = get_weather("Paris")
     return f"{data['condition']}, {data['temp']}C"
 
@@ -76,60 +74,67 @@ result = assistant("What's the weather?")
 
 ## `register()`
 
-Configures the OTEL tracing pipeline. Call once at startup before any tracing occurs.
+Configures two OTLP pipelines: traces (a `TracerProvider`) and logs (a `LoggerProvider`) for the `gen_ai.evaluation.result` events that `score()`, `evaluate()` and `Benchmark` emit. Call once at startup, before the agent or framework is built.
 
 ```python
 from opensearch_genai_observability_sdk_py import register
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
+provider = register(
     service_name="my-app",
+    agent_name="travel_planner",  # gen_ai.agent.name on every evaluation result
+    agent_version="v3",           # gen_ai.agent.version on every evaluation result
 )
 ```
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `endpoint` | `str` | `http://localhost:21890/opentelemetry/v1/traces` | OTLP endpoint URL. Reads `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` or `OTEL_EXPORTER_OTLP_ENDPOINT` if not set. |
-| `protocol` | `"http"` \| `"grpc"` | inferred from URL | Force transport. `grpc://` -> gRPC, `grpcs://` -> gRPC+TLS, else HTTP. |
-| `service_name` | `str` | `"default"` | Attached as `service.name`. Reads `OTEL_SERVICE_NAME`. |
-| `project_name` | `str` | | Alias for `service_name`. Reads `OPENSEARCH_PROJECT`. |
-| `service_version` | `str` | | Sets `service.version`. Reads `OTEL_SERVICE_VERSION`. |
-| `batch` | `bool` | `True` | `True` = `BatchSpanProcessor`, `False` = `SimpleSpanProcessor`. |
-| `auto_instrument` | `bool` | `True` | Discover and activate installed OTel instrumentor packages. |
-| `exporter` | `SpanExporter` | | Custom exporter. Overrides `endpoint`, `protocol`, `headers`. |
-| `set_global` | `bool` | `True` | Register as the global `TracerProvider`. |
-| `headers` | `dict` | | Additional HTTP headers for the OTLP exporter. |
+| Parameter | Default | Description |
+|---|---|---|
+| `endpoint` | resolved | OTLP **base** URL for both signals (like `OTEL_EXPORTER_OTLP_ENDPOINT`). Over HTTP the SDK appends `/v1/traces` and `/v1/logs`. A base ending in `/v1/traces` or `/v1/logs` raises `ValueError` |
+| `traces_endpoint`, `logs_endpoint` | resolved | Full URLs, one per signal. Pass both or neither |
+| `protocol` | from the URL | `"http"` or `"grpc"`. `grpc://` is insecure gRPC, `grpcs://` gRPC with TLS |
+| `compression` | `none` | `"none"` or `"gzip"`; must match the receiving pipeline |
+| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | Extra headers for both exporters |
+| `sigv4` | `None` | `True` or `{"service": "osis", "region": ...}`: sign both exporters with SigV4 |
+| `service_name` | `OTEL_SERVICE_NAME` | `service.name` |
+| `service_version` | `OTEL_SERVICE_VERSION` | `service.version` |
+| `agent_name`, `agent_version` | `None` | Default agent for evaluation results |
+| `batch` | `True` | Batch or simple span and log processors |
+| `auto_instrument` | `True` | Discover and activate installed instrumentor packages |
+| `exporter`, `log_exporter` | `None` | Custom exporters, used as-is |
+| `enable_logs` | `True` | Set up the logs pipeline for evaluation events |
+| `set_global` | `True` | Register as the global providers |
 
-Returns the configured `TracerProvider`.
+Returns the `TracerProvider`. Its `force_flush()` and `shutdown()` also flush the logs pipeline, so call `provider.force_flush()` before a script exits.
 
-### Endpoint schemes
+### Endpoint resolution
 
-| URL scheme | Transport |
-|---|---|
-| `http://` or `https://` | OTLP HTTP (default) |
-| `grpc://` | OTLP gRPC, insecure |
-| `grpcs://` | OTLP gRPC with TLS |
+Per signal, the first that is set wins: `traces_endpoint=` / `logs_endpoint=`, then `endpoint=`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
+
+<Aside type="caution" title="Upgrading from 0.2.9 and earlier">
+`endpoint=` used to be the full traces URL; it is now the OTLP base URL, and the default moved from `http://localhost:21890/opentelemetry` to `http://localhost:4318`. Remove a `/v1/traces` suffix, or pass `traces_endpoint=` and `logs_endpoint=`.
+</Aside>
 
 ### Examples
 
 ```python
-# Self-hosted with Data Prepper
+# Local OTel Collector or the observability stack: nothing to set
 register(service_name="my-agent")
 
-# OTel Collector on localhost
-register(endpoint="http://localhost:4318/v1/traces", service_name="my-agent")
-
-# gRPC
+# gRPC to a collector
 register(endpoint="grpc://localhost:4317", service_name="my-agent")
 
-# AWS OpenSearch Ingestion with SigV4
-from opensearch_genai_observability_sdk_py import AWSSigV4OTLPExporter
-exporter = AWSSigV4OTLPExporter(
-    endpoint="https://pipeline.us-east-1.osis.amazonaws.com/v1/traces",
-    service="osis", region="us-east-1",
+# One Data Prepper or OpenSearch Ingestion otlp source for both signals, under a pipeline path
+register(endpoint="https://<host>/<pipeline>", sigv4={"service": "osis", "region": "us-east-1"})
+
+# Separate traces and logs pipelines (OpenSearch Ingestion, SigV4)
+register(
+    traces_endpoint="https://<traces-pipeline>.us-east-1.osis.amazonaws.com/v1/traces",
+    logs_endpoint="https://<logs-pipeline>.us-east-1.osis.amazonaws.com/v1/logs",
+    sigv4=True,
+    service_name="my-agent",
 )
-register(service_name="my-agent", exporter=exporter)
 ```
+
+Evaluation results travel as OTLP **logs**, so the logs path must reach Data Prepper too. Do not call a framework's own exporter setup as well (for example `StrandsTelemetry().setup_otlp_exporter()`): `register()` owns the global tracer provider.
 
 ---
 
@@ -220,6 +225,63 @@ async def async_search(query: str) -> list:
 
 ---
 
+## What Agent Traces needs
+
+[Agent Traces](/docs/ai-observability/agent-tracing/) builds its Traces, Spans and Sessions views from these span attributes. Framework auto-instrumentation sets most of them; set the rest with `observe()` and `enrich()`.
+
+| Attribute | Where | Used for |
+|---|---|---|
+| `gen_ai.operation.name` | Every GenAI span (`invoke_agent`, `chat`, `execute_tool`, ...) | Span kind, icons, filters. Set by `op=` |
+| `gen_ai.agent.name`, `gen_ai.agent.version` | The agent span | The agent column, per-version evaluation pages |
+| `gen_ai.conversation.id` | The agent span of every turn | **Sessions**: all turns with the same id form one session. `enrich(session_id=...)` |
+| `gen_ai.input.messages`, `gen_ai.output.messages` | The agent span, `chat` spans | Input and output in the flyout, and what online evaluators read. GenAI format: `[{"role": "user", "parts": [{"type": "text", "content": "..."}]}]` |
+| `gen_ai.request.model`, `gen_ai.provider.name` | `chat` spans | Model and provider columns |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | `chat` spans | Token counts per span and per trace |
+| `gen_ai.tool.name`, `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` | `execute_tool` spans | Tool calls in the tree and the graph |
+| `derived.gen_ai.is_root` | The agent span | Which span is the agent run. `mark_agent_root()` |
+
+### One trace per turn, rooted at the agent
+
+Make each user request one trace whose root, or marked root, is the agent span:
+
+- Agent Traces lists a trace by its **agent root**: the span marked `derived.gen_ai.is_root`, or else a trace root that is a GenAI span. Data Prepper marks the outermost GenAI span of each trace for you, including the agent span below an HTTP handler, so marking is needed only to choose the span yourself. A span marked at the source wins.
+- Call `mark_agent_root()` inside the agent span when the agent runs inside an HTTP handler, a job or another non-GenAI span, or when several agents call each other and you want a specific one listed.
+- **Never adopt a remote parent that is never exported.** If the agent receives a `traceparent` from a caller that does not send its spans to the same OpenSearch (a gateway, a hosted runtime, a client app), do not continue that context. The agent span would point at a parent that never arrives, and the trace has no root in OpenSearch. Start a new root span instead (optionally add a span link to the incoming context). Continue incoming context only when the caller's spans are exported to the same place.
+- Keep `gen_ai.conversation.id` stable for the whole conversation and set it on every turn, so Sessions groups the turns.
+
+```python
+from opentelemetry import context as otel_context
+
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+@observe(name="travel_planner", op=Op.INVOKE_AGENT)
+def handle_turn(conversation_id: str, question: str) -> str:
+    mark_agent_root()
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           **{"gen_ai.agent.version": "v3"})
+    answer = run_agent(question)  # framework spans (chat, execute_tool) nest below
+    enrich(output_messages=_messages("assistant", answer))
+    return answer
+
+
+def http_handler(request):
+    # The caller's traceparent is not exported to OpenSearch: start a new trace.
+    token = otel_context.attach(otel_context.Context())
+    try:
+        return handle_turn(request.conversation_id, request.question)
+    finally:
+        otel_context.detach(token)
+```
+
+Never put secrets or credentials in span attributes.
+
+---
+
 ## `enrich()`
 
 Adds GenAI semantic convention attributes to the currently active span. Call inside `@observe`-decorated functions or `with observe(...)` blocks.
@@ -286,78 +348,77 @@ register(auto_instrument=False)  # to disable
 
 ---
 
-## `score()`
+## `mark_agent_root()`
 
-Attaches an evaluation score to a trace or span. Scores are emitted as OTEL spans through the same OTLP pipeline - no separate client or index needed.
+Marks the active span as its trace's agent root (`derived.gen_ai.is_root` = `true`). See [One trace per turn](#one-trace-per-turn-rooted-at-the-agent). Without the SDK, set that span attribute yourself.
+
+```python
+@observe(name="planner", op=Op.INVOKE_AGENT)
+def plan(query: str) -> str:
+    mark_agent_root()
+    ...
+```
+
+---
+
+## Evaluations
+
+`score()`, `evaluate()`, `scorer`, `EvalScore`, `Benchmark` and `OpenSearchTraceRetriever` record evaluation results as `gen_ai.evaluation.result` log events, linked to these traces. See [Evaluation & Scoring](/docs/agent-evals/evaluation/), and the [Quickstart](/docs/agent-evals/quickstart/) for an end-to-end run.
 
 ```python
 from opensearch_genai_observability_sdk_py import score
 
-# Score an entire trace
-score(name="relevance", value=0.92, trace_id="abc123...",
-      explanation="Response addresses the user's query")
-
-# Score a specific span
-score(name="accuracy", value=0.95, trace_id="abc123...", span_id="def456...",
-      label="pass")
+score("relevance", 0.92, trace_id="6ebb9835f43af1552f2cebb9f5165e39", span_id="89829115c2128845",
+      threshold=0.7, evaluator="relevance_judge", evaluator_type="llm_judge")
 ```
-
-| Parameter | Type | Description |
-|---|---|---|
-| `name` | `str` | Metric name, e.g. `"relevance"`, `"factuality"`. |
-| `value` | `float` | Numeric score. |
-| `trace_id` | `str` | Hex trace ID to score. Omit for standalone scores. |
-| `span_id` | `str` | Hex span ID for span-level scoring. |
-| `label` | `str` | Human-readable label, e.g. `"pass"`. |
-| `explanation` | `str` | Evaluator rationale (truncated to 500 chars). |
-| `response_id` | `str` | LLM completion ID for correlation. |
-| `attributes` | `dict` | Additional span attributes. |
-
-For running evaluations at scale (`evaluate()`, `Benchmark`, `OpenSearchTraceRetriever`), see [Evaluation & Scoring](/docs/agent-evals/evaluation/).
 
 ---
 
 ## AWS authentication
 
-For AWS-hosted endpoints, use `AWSSigV4OTLPExporter` to sign requests with SigV4:
+For Amazon OpenSearch Ingestion, pass `sigv4=` to `register()`. It signs both the traces and the logs exporter (service `osis` by default, `es` for OpenSearch Service directly), with botocore credentials (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `~/.aws/credentials`, IAM role or IMDS).
 
 ```python
-from opensearch_genai_observability_sdk_py import AWSSigV4OTLPExporter, register
-
-exporter = AWSSigV4OTLPExporter(
-    endpoint="https://pipeline.us-east-1.osis.amazonaws.com/v1/traces",
-    service="osis",           # "osis" for OSIS, "es" for OpenSearch Service
-    region="us-east-1",       # auto-detected if omitted
-)
-register(service_name="my-agent", exporter=exporter)
+register(endpoint="https://<host>/<pipeline>", sigv4={"service": "osis", "region": "us-east-1"}, service_name="my-agent")
 ```
 
-Credentials: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` -> `~/.aws/credentials` -> IAM role/IMDS.
+`register(exporter=AWSSigV4OTLPExporter(...))` still works for traces only; use `sigv4=` so evaluation events are signed too. The process needs `osis:Ingest` on the pipelines.
 
 <Aside type="caution">
-SigV4 + gRPC is not supported. Use `https://` for AWS endpoints.
+OpenSearch Ingestion accepts OTLP over HTTP (protobuf) only. SigV4 with gRPC is not supported: use `https://` endpoints.
 </Aside>
 
 ---
 
 ## Environment variables
 
-| Variable | Description | Default |
-|---|---|---|
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full OTLP traces endpoint URL (used as-is) | |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP endpoint URL (`/v1/traces` appended) | Data Prepper default |
-| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Protocol for traces (`http/protobuf`, `grpc`) | |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol for all signals (`http/protobuf`, `grpc`) | |
-| `OTEL_SERVICE_NAME` | Service name | `"default"` |
-| `OTEL_SERVICE_VERSION` | Service version | |
-| `OPENSEARCH_PROJECT` | Project name (fallback for `service_name`) | `"default"` |
+| Variable | Description |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP URL for both signals |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL per signal |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `http/protobuf` or `grpc` |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` | `none` or `gzip` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Extra headers |
+| `OTEL_SERVICE_NAME`, `OTEL_SERVICE_VERSION` | Service name and version |
+| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE`, `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` | Lower these if a pipeline rejects large requests |
+
+Arguments passed in code always win over environment variables.
+
+---
+
+## Prompt for your coding agent
+
+Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and Agent Evaluations:
+
+<Code code={codingAgentPrompt} lang="markdown" title="Prompt for your coding agent" />
 
 ---
 
 ## Related links
 
-- [AI Observability - Getting Started](/docs/ai-observability/getting-started/) - end-to-end walkthrough
-- [Evaluation & Scoring](/docs/agent-evals/evaluation/) - score traces, run experiments
-- [Trace Retrieval](/docs/agent-evals/evaluation/#opensearchtraceretriever---query-stored-traces) - query stored traces from OpenSearch
-- [Agent Traces](/docs/ai-observability/agent-tracing/) - viewing traces in OpenSearch Dashboards
-- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) - OTel spec reference
+- [AI Observability - Getting Started](/docs/ai-observability/getting-started/): end-to-end walkthrough
+- [Framework integrations](/docs/send-data/ai-agents/integrations/): Strands, LangGraph, CrewAI, OpenAI Agents, Bedrock
+- [Agent Evals Quickstart](/docs/agent-evals/quickstart/): first offline and online evaluation results
+- [Evaluation & Scoring](/docs/agent-evals/evaluation/): `score()`, `evaluate()`, `Benchmark`
+- [Agent Traces](/docs/ai-observability/agent-tracing/): viewing traces in OpenSearch Dashboards
+- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/): OTel spec reference

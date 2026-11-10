@@ -90,6 +90,9 @@ services:
     volumes:
       - ./docker-compose/data-prepper/pipelines.template.yaml:/tmp/pipelines.template.yaml
       - ./docker-compose/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml
+      # GenAI evaluation index template and ISM rollover policy (otel-evaluations-pipeline)
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/usr/share/data-prepper/templates/otel-v1-genai-evaluation-index-template.json:ro
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json:/usr/share/data-prepper/templates/otel-v1-genai-evaluation-policy.json:ro
     ports:
       # OTLP gRPC receiver from OpenTelemetry Collector
       - "${DATA_PREPPER_OTLP_PORT}:21890"
@@ -308,6 +311,8 @@ services:
       - ISM_RETENTION_DAYS=${ISM_RETENTION_DAYS:-7}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/config/genai-evaluation/otel-v1-genai-evaluation-index-template.json:ro
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json:/config/genai-evaluation/otel-v1-genai-evaluation-policy.json:ro
       - ./docker-compose/opensearch-dashboards/saved-queries-traces.yaml:/config/saved-queries-traces.yaml
       - ./docker-compose/opensearch-dashboards/saved-queries-metrics.yaml:/config/saved-queries-metrics.yaml
       - ./docker-compose/opensearch-dashboards/dashboard-opensearch-health.yaml:/config/dashboard-opensearch-health.yaml

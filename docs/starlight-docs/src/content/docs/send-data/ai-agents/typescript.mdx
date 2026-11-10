@@ -3,12 +3,13 @@ title: "TypeScript SDK"
 description: "Reference for @opensearch-project/genai-observability-sdk-ts - instrument TypeScript AI agent applications with OpenTelemetry"
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+import { Aside, Code } from '@astrojs/starlight/components';
+import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `@opensearch-project/genai-observability-sdk-ts` instruments JavaScript and TypeScript AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides an `observe()` wrapper for tracing agents and tools, and enriches spans with GenAI semantic convention attributes. It is the TypeScript counterpart of the [Python SDK](/docs/send-data/ai-agents/python/).
 
 - **npm:** [`@opensearch-project/genai-observability-sdk-ts`](https://www.npmjs.com/package/@opensearch-project/genai-observability-sdk-ts)
-- **Node.js:** 18+
+- **Node.js:** 20+
 - **Source:** [github.com/opensearch-project/genai-observability-sdk-ts](https://github.com/opensearch-project/genai-observability-sdk-ts)
 
 ## Installation
@@ -27,6 +28,9 @@ npm install @opensearch-project/opensearch
 
 # AWS SigV4 authentication (AWSSigV4OTLPExporter)
 npm install @aws-sdk/credential-providers aws4
+
+# Async context propagation (recommended for async agents)
+npm install @opentelemetry/context-async-hooks
 ```
 
 ## API overview
@@ -35,26 +39,30 @@ The SDK exports these functions and classes. This page covers the full API surfa
 
 | Export | Purpose | Docs |
 |---|---|---|
-| `register()` | Configure OTEL pipeline | [This page](#register) |
+| `register()` | Configure the OTLP traces and logs pipelines | [This page](#register) |
 | `observe()` | Trace agents, tools, LLM calls | [This page](#observe) |
 | `withObserve()` | Block-level tracing | [This page](#withobserve) |
 | `Op` | Operation name constants | [This page](#op-constants) |
-| `enrich()` | Set GenAI attributes on active span | [This page](#enrich) |
-| `score()` | Attach evaluation scores to traces | [This page](#score) |
-| `evaluate()` | Run a task against a dataset with scorers | [This page](#evaluate) |
-| `Benchmark` | Upload pre-computed eval results | [This page](#benchmark) |
-| `OpenSearchTraceRetriever` | Query stored traces from OpenSearch | [This page](#opensearchtraceretriever) |
+| `enrich()` | Set GenAI attributes on the active span | [This page](#enrich) |
+| `markAgentRoot()` | Mark the active span as the trace's agent root | [This page](#markagentroot) |
+| `score()` | Record an evaluation result on a span, trace or session | [Evaluation & Scoring](/docs/agent-evals/evaluation/#online-evaluation-score) |
+| `evaluate()`, `defineScorer()` | Run a synchronous task over a test suite with scorers | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-evaluate) |
+| `Benchmark` | Log offline results for cases you ran yourself (async agents) | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-benchmark) |
+| `OpenSearchTraceRetriever` | Read stored traces back from OpenSearch | [This page](#opensearchtraceretriever) |
 | `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
-
-For evaluation concepts (scoring traces, running experiments, comparing agent versions), see [Evaluation & Scoring](/docs/agent-evals/evaluation/).
 
 ## Quick start
 
 ```typescript
-import { register, observe, Op, enrich, score } from "@opensearch-project/genai-observability-sdk-ts";
+import { context } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { register, observe, Op, enrich, markAgentRoot } from "@opensearch-project/genai-observability-sdk-ts";
 
-// Configure the OTEL pipeline once at startup (register is async)
-await register({ endpoint: "http://localhost:4318/v1/traces", serviceName: "my-agent" });
+// Async code keeps the active span only with a context manager.
+context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+
+// Configure the OTLP pipelines once at startup (register is async). Default: http://localhost:4318
+await register({ serviceName: "my-agent" });
 
 const getWeather = observe(
   { name: "get_weather", op: Op.EXECUTE_TOOL },
@@ -64,7 +72,8 @@ const getWeather = observe(
 const assistant = observe(
   { name: "assistant", op: Op.INVOKE_AGENT },
   (query: string) => {
-    enrich({ model: "gpt-4o", provider: "openai" });
+    markAgentRoot();
+    enrich({ model: "gpt-4o", provider: "openai", sessionId: "conversation-42" });
     const data = getWeather("Paris");
     return `${data.condition}, ${data.temp}C`;
   },
@@ -84,72 +93,60 @@ invoke_agent assistant
 
 ## `register()`
 
-Configures the OTEL tracing pipeline. Call once at startup before any tracing occurs. `register()` is **async** - `await` it (or chain `.then()`) so the exporter is ready before spans are created. It returns the configured `TracerProvider`.
+Configures two OTLP pipelines: traces, and logs for the `gen_ai.evaluation.result` events that `score()`, `evaluate()` and `Benchmark` emit. Call it once at startup, before the agent or framework is built. `register()` is **async**: `await` it so the exporters are ready before spans are created. It returns the configured `TracerProvider`; call `await provider.forceFlush()` before a script exits.
 
 ```typescript
 import { register } from "@opensearch-project/genai-observability-sdk-ts";
 
-await register({
-  endpoint: "http://localhost:4318/v1/traces",
+const provider = await register({
   serviceName: "my-app",
+  agentName: "travel_planner", // gen_ai.agent.name on every evaluation result
+  agentVersion: "v3",
 });
 ```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `endpoint` | `string` | `http://localhost:21890/opentelemetry/v1/traces` | OTLP endpoint URL. Falls back to `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT` (with `/v1/traces` appended). |
-| `protocol` | `"http"` \| `"grpc"` | inferred from URL | Force transport. `grpc://` / `grpcs://` -> gRPC, else HTTP. |
-| `serviceName` | `string` | `"unknown_service"` | Attached as `service.name`. |
-| `projectName` | `string` | | Alias for `serviceName` (used when `serviceName` is not set). |
-| `serviceVersion` | `string` | | Sets `service.version`. |
-| `batch` | `boolean` | `true` | `true` = `BatchSpanProcessor`, `false` = `SimpleSpanProcessor`. |
-| `autoInstrument` | `boolean` | `true` | Discover and activate installed OTel instrumentor packages. |
-| `exporter` | `SpanExporter` | | Custom exporter. Overrides `endpoint`, `protocol`, `headers`. |
-| `setGlobal` | `boolean` | `true` | Register as the global `TracerProvider`. |
-| `headers` | `Record<string, string>` | | Additional headers for the OTLP exporter. |
+| `endpoint` | `string` | `http://localhost:4318` | OTLP **base** URL for both signals (like `OTEL_EXPORTER_OTLP_ENDPOINT`). The SDK appends `/v1/traces` and `/v1/logs` over HTTP |
+| `tracesEndpoint`, `logsEndpoint` | `string` | | Full URLs, one per signal. Pass both |
+| `protocol` | `"http"` \| `"grpc"` | from the URL | `grpc://` is insecure gRPC, `grpcs://` gRPC with TLS |
+| `compression` | `"none"` \| `"gzip"` | `none` | Must match the receiving pipeline |
+| `sigv4` | `{ service?, region? }` | | Sign traces and logs with SigV4 (OTLP/HTTP only) |
+| `headers` | `Record<string, string>` | | Headers for every export |
+| `serviceName`, `serviceVersion` | `string` | `unknown_service` | Resource attributes |
+| `agentName`, `agentVersion` | `string` | | Default agent for evaluation results |
+| `batch` | `boolean` | `true` | Batch or simple processors |
+| `autoInstrument` | `boolean` | `true` | Discover installed instrumentor packages |
+| `exporter`, `logExporter` | | | Custom exporters, used as given |
+| `logs` | `boolean` | `true` | Set up the logs pipeline for evaluation events |
 
 ### Endpoint resolution
 
-The endpoint is resolved in priority order:
+Per signal, the first that is set wins: `tracesEndpoint` / `logsEndpoint`, then `endpoint`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
 
-1. `endpoint` parameter - full URL, used as-is
-2. `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` - full URL, used as-is
-3. `OTEL_EXPORTER_OTLP_ENDPOINT` - base URL, `/v1/traces` appended automatically
-4. `http://localhost:21890/opentelemetry/v1/traces` - Data Prepper default
-
-### Endpoint schemes
-
-| URL scheme | Transport |
-|---|---|
-| `http://` or `https://` | OTLP HTTP (default) |
-| `grpc://` | OTLP gRPC, insecure |
-| `grpcs://` | OTLP gRPC with TLS |
-
-Protocol can also be forced with the `protocol` option, or via `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` / `OTEL_EXPORTER_OTLP_PROTOCOL`.
+<Aside type="caution" title="Upgrading from 0.1.1 and earlier">
+`endpoint` used to be the full traces URL with a default of `http://localhost:21890/opentelemetry/v1/traces`. It is now the OTLP base URL. Remove a `/v1/traces` suffix, or pass `tracesEndpoint` and `logsEndpoint`.
+</Aside>
 
 ### Examples
 
 ```typescript
-// Self-hosted with Data Prepper (uses the default endpoint)
+// Local OTel Collector or the observability stack: nothing to set
 await register({ serviceName: "my-agent" });
 
-// OTel Collector on localhost
-await register({ endpoint: "http://localhost:4318/v1/traces", serviceName: "my-agent" });
-
-// gRPC
+// gRPC to a collector
 await register({ endpoint: "grpc://localhost:4317", serviceName: "my-agent" });
 
-// AWS OpenSearch Ingestion with SigV4
-import { AWSSigV4OTLPExporter } from "@opensearch-project/genai-observability-sdk-ts";
+// Separate traces and logs pipelines on OpenSearch Ingestion, signed with SigV4
 await register({
+  tracesEndpoint: "https://<traces-pipeline>.us-east-1.osis.amazonaws.com/v1/traces",
+  logsEndpoint: "https://<logs-pipeline>.us-east-1.osis.amazonaws.com/v1/logs",
+  sigv4: { service: "osis", region: "us-east-1" },
   serviceName: "my-agent",
-  exporter: new AWSSigV4OTLPExporter({
-    endpoint: "https://pipeline.us-east-1.osis.amazonaws.com/v1/traces",
-    service: "osis",
-    region: "us-east-1",
-  }),
 });
 ```
+
+Evaluation results travel as OTLP **logs**, so the logs path must reach Data Prepper too. Do not also call a framework's own tracer setup (for example Strands `setupTracer()`): `register()` owns the global tracer provider.
 
 ---
 
@@ -265,6 +262,42 @@ const data = await withObserve("fetch-data", async (span) => {
 
 ---
 
+## What Agent Traces needs
+
+[Agent Traces](/docs/ai-observability/agent-tracing/) builds its Traces, Spans and Sessions views from GenAI span attributes. The full table is on the [Python SDK page](/docs/send-data/ai-agents/python/#what-agent-traces-needs); the same rules apply here. In short:
+
+- Each user request is one trace, rooted at the **agent span** (`invoke_agent`) with `gen_ai.agent.name`, `gen_ai.agent.version`, `gen_ai.input.messages` and `gen_ai.output.messages`.
+- `gen_ai.conversation.id` (`enrich({ sessionId })`) on every turn groups the turns into one **session**.
+- `chat` spans carry `gen_ai.request.model` and `gen_ai.usage.*` tokens; `execute_tool` spans carry `gen_ai.tool.name` and the call's arguments and result.
+- `markAgentRoot()` marks the agent span (`derived.gen_ai.is_root`) when it runs inside an HTTP handler or another non-GenAI span. Data Prepper marks the outermost GenAI span for you otherwise.
+- **Never adopt a remote parent that is never exported.** If the incoming `traceparent` comes from a caller whose spans do not reach the same OpenSearch, start a new root: the trace would otherwise have no root in OpenSearch.
+
+```typescript
+import { ROOT_CONTEXT, context } from "@opentelemetry/api";
+import { Op, enrich, markAgentRoot, withObserve } from "@opensearch-project/genai-observability-sdk-ts";
+
+const text = (role: string, content: string) => [{ role, parts: [{ type: "text", content }] }];
+
+export function handleTurn(conversationId: string, question: string) {
+  // Run in the root context: the caller's traceparent is not exported to OpenSearch.
+  return context.with(ROOT_CONTEXT, () =>
+    withObserve("travel_planner", { op: Op.INVOKE_AGENT }, async (span) => {
+      markAgentRoot();
+      span.setAttribute("gen_ai.agent.version", "v3");
+      enrich({ sessionId: conversationId, inputMessages: text("user", question) });
+      const answer = await runAgent(question); // framework chat / execute_tool spans nest below
+      enrich({ outputMessages: text("assistant", answer) });
+      const { traceId, spanId } = span.spanContext(); // keep these for evaluations
+      return { answer, traceId, spanId };
+    }),
+  );
+}
+```
+
+Never put secrets or credentials in span attributes.
+
+---
+
 ## `enrich()`
 
 Adds GenAI semantic convention attributes to the currently active span. Call it inside an `observe()`-wrapped function or a `withObserve()` block.
@@ -329,117 +362,29 @@ Auto-instrumentation coverage in the TypeScript SDK is narrower than the Python 
 
 ---
 
-## `score()`
+## `markAgentRoot()`
 
-Attaches an evaluation score to a trace or span. Scores are emitted as OTEL spans through the same OTLP pipeline - no separate client or index needed. When `traceId` is provided, the score span is attached to that trace so it appears in the same trace waterfall.
+Marks the active span as its trace's agent root (`derived.gen_ai.is_root` = `true`). See [What Agent Traces needs](#what-agent-traces-needs).
+
+---
+
+## Evaluations
+
+`score()`, `evaluate()`, `defineScorer()` and `Benchmark` record evaluation results as `gen_ai.evaluation.result` log events, linked to these traces. `evaluate()` needs a synchronous task and scorers; for async agents run each case yourself and log it with `Benchmark`. See [Evaluation & Scoring](/docs/agent-evals/evaluation/) and the [Quickstart](/docs/agent-evals/quickstart/).
 
 ```typescript
 import { score } from "@opensearch-project/genai-observability-sdk-ts";
 
-// Span-level: score a specific span
-score({
-  name: "accuracy",
-  value: 0.95,
-  traceId: "6ebb9835f43af1552f2cebb9f5165e39",
-  spanId: "89829115c2128845",
-  explanation: "Weather data matches ground truth",
-});
-
-// Trace-level: attaches to the trace's root span
 score({
   name: "relevance",
   value: 0.92,
   traceId: "6ebb9835f43af1552f2cebb9f5165e39",
-  explanation: "Response addresses the user's query",
-});
-
-// Standalone: no trace linkage
-score({ name: "fluency", value: 0.88 });
-```
-
-| Parameter | Type | Description |
-|---|---|---|
-| `name` | `string` | Metric name, e.g. `"relevance"`, `"factuality"`. |
-| `value` | `number` | Numeric score. |
-| `traceId` | `string` | Hex trace ID to score. Omit for standalone scores. |
-| `spanId` | `string` | Hex span ID for span-level scoring. When omitted, attaches to the root span. |
-| `label` | `string` | Human-readable label, e.g. `"pass"`. |
-| `explanation` | `string` | Evaluator rationale (truncated to 500 chars). |
-| `responseId` | `string` | LLM completion ID for correlation. |
-| `attributes` | `Record<string, unknown>` | Additional span attributes (string/number/boolean values). |
-
----
-
-## `evaluate()`
-
-Runs a task against a dataset, scores each output, and records results as OTEL spans.
-
-```typescript
-import { evaluate } from "@opensearch-project/genai-observability-sdk-ts";
-import type { EvalScore } from "@opensearch-project/genai-observability-sdk-ts";
-
-function accuracy(input: unknown, output: unknown, expected: unknown): EvalScore {
-  return { name: "accuracy", value: String(output).includes(String(expected)) ? 1.0 : 0.0 };
-}
-
-const result = evaluate({
-  name: "rag-agent",
-  task: (input) => callMyAgent(input),
-  data: [
-    { input: "What is Python?", expected: "programming language" },
-    { input: "What causes rain?", expected: "water vapor" },
-  ],
-  scores: [accuracy],
-  metadata: { agentVersion: "v2" },
-  recordIo: true,
-});
-
-console.log(result.summary);
-```
-
-Produces:
-
-```
-test_suite_run rag-agent
-├── test_case
-└── test_case
-```
-
-| Parameter | Type | Description |
-|---|---|---|
-| `name` | `string` | Benchmark name (`test.suite.name`), stable across runs. |
-| `task` | `(input: unknown) => unknown` | Function that takes input and returns output. |
-| `data` | `Array<{ input, expected?, caseId?, caseName? }>` | Test cases. |
-| `scores` | `ScorerFn[]` | Scorers: `(input, output, expected)` returning `EvalScore`, `EvalScore[]`, or `number`. |
-| `metadata` | `Record<string, unknown>` | Attached to the root span (reserved keys are filtered). |
-| `recordIo` | `boolean` | Record input/output/expected as span attributes (default `false`). |
-
----
-
-## `Benchmark`
-
-Uploads pre-computed evaluation results from any framework as OTEL spans.
-
-```typescript
-import { Benchmark } from "@opensearch-project/genai-observability-sdk-ts";
-
-const bench = new Benchmark("nightly-eval", { metadata: { model: "gpt-4o" }, recordIo: true });
-
-bench.log({ input: "What is Python?", output: "A language", scores: { accuracy: 1.0 } });
-
-// Link to existing agent traces
-bench.log({
-  input: "query",
-  output: "answer",
-  scores: { accuracy: 0.9 },
-  traceId: "6ebb9835f43af1552f2cebb9f5165e39",
   spanId: "89829115c2128845",
+  threshold: 0.7,
+  evaluator: "relevance_judge",
+  evaluatorType: "llm_judge",
 });
-
-const summary = bench.close();
 ```
-
-For evaluation concepts and workflows, see [Evaluation & Scoring](/docs/agent-evals/evaluation/).
 
 ---
 
@@ -467,7 +412,7 @@ for (const trace of session.traces) {
 // List recent root spans
 const roots = await retriever.listRootSpans({ services: ["my-agent"], maxResults: 10 });
 
-// Check which traces already have evaluation spans
+// Check which traces already have evaluation results (gen_ai.evaluation.result)
 const evaluated = await retriever.findEvaluatedTraceIds(["trace-id-1", "trace-id-2"]);
 ```
 
@@ -482,44 +427,49 @@ const evaluated = await retriever.findEvaluatedTraceIds(["trace-id-1", "trace-id
 
 ## AWS authentication
 
-For AWS-hosted endpoints, use `AWSSigV4OTLPExporter` to sign OTLP requests with SigV4, and pass it to `register()`:
+For Amazon OpenSearch Ingestion, pass `sigv4` to `register()`. It signs the traces and the logs exporter (service `osis`, or `es` for OpenSearch Service directly) with credentials from the standard AWS provider chain, and needs the `@aws-sdk/credential-providers` and `aws4` packages. A region is required: pass `region`, or set `AWS_DEFAULT_REGION` / `AWS_REGION`.
 
 ```typescript
-import { register, AWSSigV4OTLPExporter } from "@opensearch-project/genai-observability-sdk-ts";
-
-const exporter = new AWSSigV4OTLPExporter({
-  endpoint: "https://pipeline.us-east-1.osis.amazonaws.com/v1/traces",
-  service: "osis",          // "osis" for OSIS pipelines, "es" for OpenSearch Service
-  region: "us-east-1",      // or set AWS_DEFAULT_REGION / AWS_REGION
+await register({
+  endpoint: "https://<host>/<pipeline>",
+  sigv4: { service: "osis", region: "us-east-1" },
+  serviceName: "my-agent",
 });
-await register({ serviceName: "my-agent", exporter });
 ```
 
-The exporter resolves credentials from the standard AWS provider chain (environment variables, shared credentials file, IAM role/IMDS) and requires the `@aws-sdk/credential-providers` and `aws4` packages. A region is required - pass `region`, or set `AWS_DEFAULT_REGION` / `AWS_REGION`.
+`AWSSigV4OTLPExporter` can still be passed as `exporter` for traces only; use `sigv4` so evaluation events are signed too. The process needs `osis:Ingest` on the pipelines.
 
 <Aside type="caution">
-`AWSSigV4OTLPExporter` signs HTTP (JSON) requests only. Use an `https://` endpoint for AWS; SigV4 over gRPC is not supported.
+OpenSearch Ingestion accepts OTLP over HTTP only. SigV4 over gRPC is not supported: use `https://` endpoints.
 </Aside>
 
 ---
 
 ## Environment variables
 
-| Variable | Description | Default |
-|---|---|---|
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Full OTLP traces endpoint URL (used as-is) | |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP endpoint URL (`/v1/traces` appended) | Data Prepper default |
-| `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL` | Protocol for traces (`http/protobuf`, `grpc`) | |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | Protocol for all signals (`http/protobuf`, `grpc`) | |
-| `AWS_DEFAULT_REGION` | AWS region for SigV4 signing | |
-| `AWS_REGION` | AWS region for SigV4 signing (fallback) | |
+| Variable | Description |
+|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP URL for both signals |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL per signal |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` and the per-signal variants | `http/protobuf` or `grpc` |
+| `OTEL_EXPORTER_OTLP_COMPRESSION` | `none` or `gzip` |
+| `AWS_DEFAULT_REGION`, `AWS_REGION` | Region for SigV4 signing |
+
+---
+
+## Prompt for your coding agent
+
+Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and Agent Evaluations:
+
+<Code code={codingAgentPrompt} lang="markdown" title="Prompt for your coding agent" />
 
 ---
 
 ## Related links
 
-- [AI Observability - Getting Started](/docs/ai-observability/getting-started/) - end-to-end walkthrough
-- [Python SDK reference](/docs/send-data/ai-agents/python/) - the Python counterpart
-- [Evaluation & Scoring](/docs/agent-evals/evaluation/) - score traces, run experiments
-- [Agent Traces](/docs/ai-observability/agent-tracing/) - viewing traces in OpenSearch Dashboards
-- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) - OTel spec reference
+- [AI Observability - Getting Started](/docs/ai-observability/getting-started/): end-to-end walkthrough
+- [Python SDK reference](/docs/send-data/ai-agents/python/): the Python counterpart
+- [Framework integrations](/docs/send-data/ai-agents/integrations/): Strands, LangGraph, CrewAI, OpenAI Agents, Bedrock
+- [Agent Evals Quickstart](/docs/agent-evals/quickstart/): first evaluation results
+- [Agent Traces](/docs/ai-observability/agent-tracing/): viewing traces in OpenSearch Dashboards
+- [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/): OTel spec reference

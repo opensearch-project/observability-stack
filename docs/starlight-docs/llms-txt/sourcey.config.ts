@@ -22,7 +22,7 @@ export default defineConfig({
         tab: "Agent Evals",
         slug: "agent-evals",
         source: markdown({
-          groups: [{ group: "agent-evals", pages: ["agent-evals","agent-evals/evaluation","agent-evals/evaluation-integrations"] }],
+          groups: [{ group: "agent-evals", pages: ["agent-evals","agent-evals/ci","agent-evals/data-model","agent-evals/evaluation","agent-evals/evaluation-integrations","agent-evals/quickstart"] }],
         }),
       },
       {
@@ -57,7 +57,7 @@ export default defineConfig({
         tab: "Application Monitoring",
         slug: "apm",
         source: markdown({
-          groups: [{ group: "apm", pages: ["apm","apm/configuring-apm","apm/configuring-telemetry-ingestion","apm/service-map","apm/services","apm/sizing-calculator"] }],
+          groups: [{ group: "apm", pages: ["apm","apm/configuring-apm","apm/configuring-telemetry-ingestion","apm/service-map","apm/services","apm/sizing-calculator","apm/troubleshooting"] }],
         }),
       },
       {
@@ -92,7 +92,7 @@ export default defineConfig({
         tab: "Get Started",
         slug: "get-started",
         source: markdown({
-          groups: [{ group: "get-started", pages: ["get-started/core-concepts","get-started/installation","get-started/overview","get-started/quickstart/first-dashboard","get-started/quickstart/first-traces"] }],
+          groups: [{ group: "get-started", pages: ["get-started/core-concepts","get-started/installation","get-started/overview","get-started/quickstart/application-monitoring","get-started/quickstart/first-dashboard","get-started/quickstart/first-traces","get-started/quickstart/otel-demo"] }],
         }),
       },
       {
@@ -113,14 +113,14 @@ export default defineConfig({
         tab: "PPL - Query Language",
         slug: "ppl",
         source: markdown({
-          groups: [{ group: "ppl", pages: ["ppl","ppl/commands","ppl/commands/dedup","ppl/commands/describe","ppl/commands/eval","ppl/commands/eventstats","ppl/commands/expand","ppl/commands/fields","ppl/commands/fillnull","ppl/commands/flatten","ppl/commands/grok","ppl/commands/head","ppl/commands/join","ppl/commands/lookup","ppl/commands/ml","ppl/commands/parse","ppl/commands/patterns","ppl/commands/rare","ppl/commands/rename","ppl/commands/rex","ppl/commands/search","ppl/commands/sort","ppl/commands/spath","ppl/commands/stats","ppl/commands/streamstats","ppl/commands/timechart","ppl/commands/top","ppl/commands/trendline","ppl/commands/where","ppl/dql-lucene-users","ppl/examples","ppl/functions","ppl/spl-users"] }],
+          groups: [{ group: "ppl", pages: ["ppl","ppl/commands","ppl/commands/dedup","ppl/commands/describe","ppl/commands/eval","ppl/commands/eventstats","ppl/commands/expand","ppl/commands/fields","ppl/commands/fillnull","ppl/commands/flatten","ppl/commands/grok","ppl/commands/head","ppl/commands/join","ppl/commands/lookup","ppl/commands/ml","ppl/commands/parse","ppl/commands/patterns","ppl/commands/rare","ppl/commands/rename","ppl/commands/rex","ppl/commands/search","ppl/commands/sort","ppl/commands/spath","ppl/commands/stats","ppl/commands/streamstats","ppl/commands/timechart","ppl/commands/top","ppl/commands/trendline","ppl/commands/where","ppl/dql-lucene-users","ppl/examples","ppl/functions","ppl/inspect-query","ppl/spl-users"] }],
         }),
       },
       {
         tab: "Send Data",
         slug: "send-data",
         source: markdown({
-          groups: [{ group: "send-data", pages: ["send-data","send-data/ai-agents","send-data/ai-agents/integrations","send-data/ai-agents/python","send-data/ai-agents/typescript","send-data/applications","send-data/applications/browser","send-data/applications/dotnet","send-data/applications/go","send-data/applications/java","send-data/applications/nodejs","send-data/applications/python","send-data/applications/ruby","send-data/data-pipeline","send-data/data-pipeline/batching","send-data/data-pipeline/data-prepper","send-data/data-pipeline/ingest-api","send-data/from-vendor","send-data/from-vendor/datadog","send-data/from-vendor/jaeger","send-data/from-vendor/splunk","send-data/infrastructure","send-data/infrastructure/aws","send-data/infrastructure/docker","send-data/infrastructure/fluentd","send-data/infrastructure/kubernetes","send-data/infrastructure/logstash","send-data/infrastructure/prometheus","send-data/opentelemetry","send-data/opentelemetry/auto-instrumentation","send-data/opentelemetry/collector","send-data/opentelemetry/manual-instrumentation","send-data/opentelemetry/sampling"] }],
+          groups: [{ group: "send-data", pages: ["send-data","send-data/ai-agents","send-data/ai-agents/integrations","send-data/ai-agents/python","send-data/ai-agents/typescript","send-data/applications","send-data/applications/browser","send-data/applications/dotnet","send-data/applications/go","send-data/applications/java","send-data/applications/nodejs","send-data/applications/python","send-data/applications/ruby","send-data/data-pipeline","send-data/data-pipeline/batching","send-data/data-pipeline/data-prepper","send-data/data-pipeline/ingest-api","send-data/from-vendor","send-data/from-vendor/datadog","send-data/from-vendor/jaeger","send-data/from-vendor/splunk","send-data/infrastructure","send-data/infrastructure/aws","send-data/infrastructure/docker","send-data/infrastructure/fluentd","send-data/infrastructure/kubernetes","send-data/infrastructure/logstash","send-data/infrastructure/prometheus","send-data/opentelemetry","send-data/opentelemetry/auto-instrumentation","send-data/opentelemetry/collector","send-data/opentelemetry/ebpf-instrumentation","send-data/opentelemetry/manual-instrumentation","send-data/opentelemetry/sampling"] }],
         }),
       },
       {
