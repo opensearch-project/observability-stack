@@ -29,7 +29,9 @@ AD_REINIT_AFTER_MINUTES (default 40) and then restarts any job it started that
 still hasn't trained. With 1-minute intervals, expect the first results about
 40 minutes after bring-up. Set AD_REINIT_AFTER_MINUTES=0 to exit right after
 setup. (Don't count on the plugins' own retry: it only resets during their
-periodic cache maintenance, which can take well over an hour.)
+periodic cache maintenance, which can take well over an hour.) This
+workaround can go once https://github.com/opensearch-project/anomaly-detection/issues/1801
+is fixed.
 
 Everything is idempotent by name: existing detectors, forecasters and monitors
 are left as they are (a stopped one is started again).
@@ -74,7 +76,8 @@ AD_RESULT_INDEX = ".opendistro-anomaly-results*"
 DATA_WAIT_SECONDS = int(os.getenv("AD_DATA_WAIT_SECONDS", "600"))
 RETRY_SLEEP_SECONDS = 10
 # Re-initialize jobs that still haven't trained once their source data covers
-# this many minutes (see the module docstring). 0 disables it.
+# this many minutes (see the module docstring). 0 disables it. Workaround for
+# https://github.com/opensearch-project/anomaly-detection/issues/1801.
 REINIT_AFTER_MINUTES = int(os.getenv("AD_REINIT_AFTER_MINUTES", "40"))
 REINIT_CHECK_SECONDS = 60
 # Error text the plugins return while the data isn't there yet.
