@@ -644,7 +644,7 @@ curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/otel-v1-genai-e
 Earlier versions of the stack stored evaluation results in the logs index (`logs-otel-v1-*`) or in daily indices. To move to the evaluation index:
 
 1. Create the evaluation index ([above](#the-evaluation-index)) and update your pipeline's routes, so new results go only to `otel-v1-genai-evaluation`.
-2. In OpenSearch Dashboards, open **Agent Monitoring > Evaluations**, select **Settings** (Agent evaluations settings), choose **Create evaluations dataset** for `otel-v1-genai-evaluation*` or select it, and select **Update**. The Evaluations pages and the Evaluations column in Agent Traces read the dataset from this setting.
+2. In OpenSearch Dashboards, open **Agent monitoring > Evaluations**, select **Settings** (Agent evaluations settings), choose **Create evaluations dataset** for `otel-v1-genai-evaluation*` or select it, and select **Update**. The Evaluations pages and the Evaluations column in Agent Traces read the dataset from this setting.
 3. Optional: copy the old results across, so their history stays on the pages:
 
     ```json

@@ -54,18 +54,23 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 ```python
 from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
 
-register(service_name="my-agent")  # OTLP to http://localhost:4318
+register(service_name="my-agent", agent_name="assistant")  # OTLP to http://localhost:4318
 
 @observe(op=Op.EXECUTE_TOOL)
 def get_weather(city: str) -> dict:
     return {"city": city, "temp": 22, "condition": "sunny"}
 
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
 @observe(name="assistant", op=Op.INVOKE_AGENT)
 def assistant(query: str) -> str:
     mark_agent_root()
-    enrich(model="gpt-4o", provider="openai", session_id="conversation-42")
+    enrich(session_id="conversation-42", input_messages=_messages("user", query))
     data = get_weather("Paris")
-    return f"{data['condition']}, {data['temp']}C"
+    answer = f"{data['condition']}, {data['temp']}C"
+    enrich(output_messages=_messages("assistant", answer))
+    return answer
 
 result = assistant("What's the weather?")
 ```
@@ -109,7 +114,7 @@ Returns the `TracerProvider`. Its `force_flush()` and `shutdown()` also flush th
 
 Per signal, the first that is set wins: `traces_endpoint=` / `logs_endpoint=`, then `endpoint=`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
 
-<Aside type="caution" title="Upgrading from 0.2.9 and earlier">
+<Aside type="caution" title="Upgrading from earlier releases">
 `endpoint=` used to be the full traces URL; it is now the OTLP base URL, and the default moved from `http://localhost:21890/opentelemetry` to `http://localhost:4318`. Remove a `/v1/traces` suffix, or pass `traces_endpoint=` and `logs_endpoint=`.
 </Aside>
 
@@ -188,7 +193,7 @@ Any custom string also works for `op`.
 
 In decorator mode, `observe()` automatically:
 
-- **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for tools). Skips `self`/`cls`.
+- **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for tools), as a JSON object of the function's arguments (for example `{"question": "..."}`), not GenAI chat messages. Skips `self`/`cls`. For the agent span, set `input_messages` / `output_messages` with `enrich()` in the GenAI format so Agent Traces and online evaluators can read them; `enrich()` values replace the captured ones.
 - **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools). Won't overwrite if already set.
 - **Records errors** as span status `ERROR` with an exception event.
 - **Sets entity attributes** - `gen_ai.agent.name` for agents, `gen_ai.tool.name` + `gen_ai.tool.type="function"` for tools.
