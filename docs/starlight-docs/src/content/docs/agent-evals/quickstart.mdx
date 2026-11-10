@@ -13,8 +13,8 @@ This quickstart takes you from an empty stack to evaluation results in OpenSearc
 <Aside type="caution" title="Preview">
 Agent Evaluations needs:
 
-- an SDK release after `opensearch-genai-observability-sdk-py` 0.2.9 or `@opensearch-project/genai-observability-sdk-ts` 0.1.1 (run names, judge context, `endpoint=` as an OTLP base URL). Until it is published, install the SDK from its GitHub repository.
-- an OpenSearch Dashboards build with **Agent Monitoring > Evaluations**, with `explore.agentTraces.enabled: true` and `explore.agentTraces.evaluations.enabled: true` in `opensearch_dashboards.yml`.
+- an SDK release with the evaluation APIs used here (`mark_agent_root` / `markAgentRoot`, `scorer` / `defineScorer`, run names, judge context, `endpoint=` as an OTLP base URL). Until it is published, install the SDK from its GitHub repository (see step 2). If an import such as `mark_agent_root` or `markAgentRoot` fails, you have an older release.
+- an OpenSearch Dashboards build with **Agent monitoring > Evaluations**, with `explore.agentTraces.enabled: true` and `explore.agentTraces.evaluations.enabled: true` in `opensearch_dashboards.yml`.
 </Aside>
 
 ## What you build
@@ -74,6 +74,9 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     ```bash
     npm install @opensearch-project/genai-observability-sdk-ts @opentelemetry/api @opentelemetry/context-async-hooks
+    # until the next release, build the SDK from GitHub and install the tarball:
+    # git clone https://github.com/opensearch-project/genai-observability-sdk-ts && (cd genai-observability-sdk-ts && npm ci && npm run build && npm pack)
+    # npm install ./genai-observability-sdk-ts/opensearch-project-genai-observability-sdk-ts-*.tgz
     ```
 
     Use ES modules (`"type": "module"` in `package.json`) and run the examples with `npx tsx`.
@@ -268,8 +271,12 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     <TabItem label="TypeScript">
 
     ```typescript
+    import { context } from "@opentelemetry/api";
+    import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
     import { Op, markAgentRoot, register, score, withObserve } from "@opensearch-project/genai-observability-sdk-ts";
 
+    // Without a context manager, score() cannot see the active span and the result is not linked to the trace.
+    context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
     const provider = await register({ serviceName: "quickstart-agent", agentName: "quickstart_agent", agentVersion: "v1" });
 
     await withObserve("quickstart_agent", { op: Op.INVOKE_AGENT }, async () => {
@@ -298,14 +305,14 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     curl -sk -u "admin:$OPENSEARCH_PASSWORD" \
       'https://localhost:9200/otel-v1-genai-evaluation/_search?size=0' \
       -H 'Content-Type: application/json' \
-      -d '{"aggs":{"runs":{"terms":{"field":"attributes.test.suite.run.id","missing":"(online)"}}}}'
+      -d '{"query":{"term":{"attributes.gen_ai.agent.name":"quickstart_agent"}},"aggs":{"runs":{"terms":{"field":"attributes.test.suite.run.id","missing":"(online)"}}}}'
     ```
 
-    You see one bucket for the run with 8 results and an `(online)` bucket with 1. If the results are in `logs-otel-v1-*` instead, the route is missing: see [Route results with Data Prepper](/docs/agent-evals/data-model/#route-results-with-data-prepper).
+    You see one bucket per run with 8 results each (one run per language you ran) and an `(online)` bucket with 1 per online run. If the results are in `logs-otel-v1-*` instead, the route is missing: see [Route results with Data Prepper](/docs/agent-evals/data-model/#route-results-with-data-prepper).
 
 7. **Set up Agent Evaluations in Dashboards**
 
-    Open [http://localhost:5601](http://localhost:5601), sign in as `admin`, and go to **Agent Monitoring > Evaluations**. The first time, the page offers **Set up evaluations**. The setup has four steps:
+    Open [http://localhost:5601](http://localhost:5601), sign in as `admin`, and go to **Agent monitoring > Evaluations**. The first time, the page offers **Set up evaluations**. The setup has four steps:
 
     1. **Overview**: what Agent Evaluations shows.
     2. **Evaluation results**: it detects the results, for example "Found 9 evaluation results in otel-v1-genai-evaluation*". If nothing is found yet, you can still finish: the pages fill in as results arrive.

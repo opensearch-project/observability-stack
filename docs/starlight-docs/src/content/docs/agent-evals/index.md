@@ -5,7 +5,7 @@ description: Measure the quality of your AI agents with online and offline evalu
 
 **Agent Evals** measure whether your AI agents do a good job: not just whether they ran, but whether their answers are correct, grounded, safe and on-task. Where [Agent Observability](/docs/ai-observability/) shows *what an agent did* (traces, spans, the execution graph), Agent Evals put a verdict on that behavior so you can track it per agent version, compare test runs, and catch regressions before and after a release.
 
-Each score is one OpenTelemetry `gen_ai.evaluation.result` log event, linked to the agent trace it judged. Results travel the same OTLP pipeline as your traces, Data Prepper routes them to their own index (`otel-v1-genai-evaluation`), and **Agent Monitoring > Evaluations** in OpenSearch Dashboards shows them next to the traces.
+Each score is one OpenTelemetry `gen_ai.evaluation.result` log event, linked to the agent trace it judged. Results travel the same OTLP pipeline as your traces, Data Prepper routes them to their own index (`otel-v1-genai-evaluation`), and **Agent monitoring > Evaluations** in OpenSearch Dashboards shows them next to the traces.
 
 ## Two ways to evaluate
 

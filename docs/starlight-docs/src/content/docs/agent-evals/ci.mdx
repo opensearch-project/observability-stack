@@ -114,7 +114,7 @@ jobs:
 For an OTel Collector, a Data Prepper `otlp` source or one OpenSearch Ingestion pipeline with both paths, pass a single OTLP base URL as `endpoint` instead and leave `aws-region` empty (unless the endpoint needs SigV4). Store the URLs as secrets or variables. Give the job's role `osis:Ingest` on the pipelines.
 
 <Aside type="note">
-The action needs an SDK release after 0.2.9. Until it is on PyPI, set the action's `install` input to a git requirement pinned to a commit, for example `git+https://github.com/opensearch-project/genai-observability-sdk-py@<commit-sha>`.
+The action needs an SDK release with the evaluation APIs used on this page. Until that release is on PyPI, set the action's `install` input to a git requirement pinned to a commit, for example `git+https://github.com/opensearch-project/genai-observability-sdk-py@<commit-sha>`.
 </Aside>
 
 ### Inputs
@@ -127,7 +127,7 @@ The action needs an SDK release after 0.2.9. Until it is on PyPI, set the action
 | `aws-region` | | Signs both exporters with SigV4 when set |
 | `aws-service` | `osis` | SigV4 service: `osis` or `es` |
 | `service-name` | `agent-evals-ci` | `service.name` of the CI process |
-| `dashboards-url` | | OpenSearch Dashboards base URL, for the run link |
+| `dashboards-url` | | OpenSearch Dashboards base URL, for the run link. With workspaces, include `/w/<workspaceId>` |
 | `fail-on-regression` | | Gates, see below |
 | `pass-threshold` | `0.5` | Fallback for scores without a verdict, for the summary table only |
 | `working-directory` | `.` | Directory to run the suite from |
@@ -191,7 +191,7 @@ Flush before you exit, or the last results never leave the process.
 
 ## CI/CD attributes
 
-Inside CI, the SDK stamps the OTel `cicd.pipeline.*` attributes on every evaluation result and on the agent root spans, from the job's environment. Outside CI nothing is added.
+Inside CI, the SDK stamps the OTel `cicd.pipeline.*` attributes on every evaluation result, from the job's environment, and `evaluate()` also stamps them on the agent root spans it starts (`Benchmark` only on results). Outside CI nothing is added.
 
 | CI system | Detected by | `cicd.pipeline.name` | `cicd.pipeline.run.id` | `cicd.pipeline.run.url.full` |
 |---|---|---|---|---|

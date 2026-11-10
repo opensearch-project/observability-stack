@@ -338,7 +338,7 @@ await provider.forceFlush();
 </TabItem>
 </Tabs>
 
-`scores` is a list of `EvalScore` or a `{name: value}` map. `log(error_type="TimeoutError", ...)` sends every listed score as an error result.
+`scores` is a list of `EvalScore` or a `{name: value}` map. `log(error_type="TimeoutError", ...)` sends every listed score as an error result. `EvalScore` has no evaluator fields yet, so Benchmark results carry no evaluator name or type. `Benchmark` stamps `test.*` and `cicd.pipeline.*` on the results only, not on your agent spans; results still link to the agent run by `trace_id` / `span_id`.
 
 ## Cases, expected output and runs
 

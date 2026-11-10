@@ -112,7 +112,7 @@ flowchart LR
     from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
 
     # One-line setup - connects to the local OTel Collector
-    register(service_name="my-agent")  # OTLP to http://localhost:4318
+    register(service_name="my-agent", agent_name="my_agent")  # OTLP to http://localhost:4318
 
     @observe(op=Op.EXECUTE_TOOL)
     def search_docs(query: str) -> list[dict]:
@@ -135,16 +135,16 @@ flowchart LR
     This produces a trace with:
     - A root span `invoke_agent my_agent` with model, token, and session attributes
     - A child span `execute_tool search_docs` with tool name and arguments
-    - Auto-captured input/output on both spans
+    - Auto-captured input/output on both spans (the function arguments and return value as JSON; use `enrich(input_messages=..., output_messages=...)` for chat-format messages, see [What Agent Traces needs](/docs/send-data/ai-agents/python/#what-agent-traces-needs))
 
 4. **View traces in OpenSearch Dashboards**
 
-    Open [http://localhost:5601](http://localhost:5601) and navigate to **Observability > Agent Traces**.
+    Open [http://localhost:5601](http://localhost:5601) and navigate to **Agent monitoring > Traces**.
 
     You'll see your agent trace with the full span tree, token usage, latency, and input/output content. Expand the trace to see the tool call nested under the agent invocation.
 
     <Aside type="tip">
-    Traces take 2-5 seconds to appear after the `BatchSpanProcessor` flushes. Use `register(batch=False)` during development to see spans immediately.
+    Traces can take up to a minute to appear: the SDK batches spans, then the OTel Collector and Data Prepper batch again. Use `register(batch=False)` during development to skip the SDK's batching, and call `provider.force_flush()` before a short script exits.
     </Aside>
 
 5. **Score agent quality**
@@ -163,7 +163,7 @@ flowchart LR
     )
     ```
 
-    Each score is a `gen_ai.evaluation.result` event linked to the trace. It shows in the trace's **Evaluations** tab in Agent Traces and in **Agent Monitoring > Evaluations**. See the [Agent Evals Quickstart](/docs/agent-evals/quickstart/).
+    Each score is a `gen_ai.evaluation.result` event linked to the trace. It shows in the trace's **Evaluations** tab in Agent Traces and in **Agent monitoring > Evaluations**. See the [Agent Evals Quickstart](/docs/agent-evals/quickstart/).
 
 6. **Run an experiment** (optional)
 
@@ -174,7 +174,7 @@ flowchart LR
 
     def relevance_scorer(input, output, expected) -> EvalScore:
         is_match = expected.lower() in output.lower()
-        return EvalScore(name="relevance", value=1.0 if is_match else 0.0)
+        return EvalScore(name="relevance", value=1.0 if is_match else 0.0, passed=is_match)
 
     result = evaluate(
         name="my_agent_v1",
@@ -185,7 +185,7 @@ flowchart LR
         ],
         scores=[relevance_scorer],
     )
-    print(result.summary)  # avg, min, max per metric
+    # evaluate() prints the summary; result.summary holds it (avg, min, max per metric)
     ```
 
 </Steps>

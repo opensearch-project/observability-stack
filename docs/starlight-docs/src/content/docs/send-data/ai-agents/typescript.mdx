@@ -33,6 +33,10 @@ npm install @aws-sdk/credential-providers aws4
 npm install @opentelemetry/context-async-hooks
 ```
 
+<Aside type="caution" title="Frameworks on OpenTelemetry JS 2.x">
+The SDK uses OpenTelemetry JS 1.x. With a framework that peers on 2.x (for example Strands Agents for TypeScript), npm stops with ERESOLVE: add `legacy-peer-deps=true` to `.npmrc`, install `@opentelemetry/api@~1.9.0` and `@opentelemetry/context-async-hooks@^1`, and add back any peer the framework needs that npm then skips (Strands: `@modelcontextprotocol/client`).
+</Aside>
+
 ## API overview
 
 The SDK exports these functions and classes. This page covers the full API surface.
@@ -124,7 +128,7 @@ const provider = await register({
 
 Per signal, the first that is set wins: `tracesEndpoint` / `logsEndpoint`, then `endpoint`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
 
-<Aside type="caution" title="Upgrading from 0.1.1 and earlier">
+<Aside type="caution" title="Upgrading from earlier releases">
 `endpoint` used to be the full traces URL with a default of `http://localhost:21890/opentelemetry/v1/traces`. It is now the OTLP base URL. Remove a `/v1/traces` suffix, or pass `tracesEndpoint` and `logsEndpoint`.
 </Aside>
 
