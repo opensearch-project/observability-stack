@@ -27,7 +27,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: obs-stack-observability-stack-otel-demo-anomaly-detection-init-3
+          value: obs-stack-observability-stack-otel-demo-ad-init-3
       - matchRegex:
           path: spec.template.spec.containers[0].command[2]
           pattern: "python /scripts/init-anomaly-detectors.py otel-demo"
@@ -65,7 +65,7 @@ tests:
     asserts:
       - equal:
           path: metadata.name
-          value: obs-stack-observability-stack-examples-anomaly-detection-init-3
+          value: obs-stack-observability-stack-examples-ad-init-3
       - notExists:
           path: metadata.annotations["helm.sh/hook"]
       - matchRegex:
@@ -98,3 +98,21 @@ tests:
               secretKeyRef:
                 name: opensearch-credentials
                 key: password
+
+  - it: Job names stay within the 63-character label limit for long release names
+    release:
+      name: a-very-long-release-name-for-the-observability-stack
+      revision: 12345
+    set:
+      opentelemetry-demo.enabled: true
+    documentSelector:
+      path: kind
+      value: Job
+      matchMany: true
+    asserts:
+      - matchRegex:
+          path: metadata.name
+          pattern: "^.{1,63}$"
+      - matchRegex:
+          path: metadata.name
+          pattern: "-ad-init-12345$"
