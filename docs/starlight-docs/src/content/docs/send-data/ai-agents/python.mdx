@@ -15,21 +15,21 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 ## Installation
 
 ```bash
-pip install opensearch-genai-observability-sdk-py
+pip install "opensearch-genai-observability-sdk-py>=0.3.0"
 ```
 
 Auto-instrumentation for LLM providers is opt-in:
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[openai]"
-pip install "opensearch-genai-observability-sdk-py[anthropic]"
-pip install "opensearch-genai-observability-sdk-py[bedrock]"
-pip install "opensearch-genai-observability-sdk-py[google]"
-pip install "opensearch-genai-observability-sdk-py[langchain]"
-pip install "opensearch-genai-observability-sdk-py[llamaindex]"
-pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]"  # all providers
-pip install "opensearch-genai-observability-sdk-py[opensearch]"          # trace retrieval
-pip install "opensearch-genai-observability-sdk-py[all]"                 # SDK development: instrumentors + pytest, ruff, mypy, ...
+pip install "opensearch-genai-observability-sdk-py[openai]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[anthropic]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[bedrock]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[google]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[langchain]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[llamaindex]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]>=0.3.0"  # all providers
+pip install "opensearch-genai-observability-sdk-py[opensearch]>=0.3.0"          # trace retrieval
+pip install "opensearch-genai-observability-sdk-py[all]>=0.3.0"                 # SDK development: instrumentors + pytest, ruff, mypy, ...
 ```
 
 Quote the extra: zsh treats unquoted brackets as a glob. An extra installs only the OpenTelemetry instrumentor, not the library it instruments: install that yourself (for example `boto3`, `anthropic[bedrock]`, `langgraph langchain-aws`, `llama-index-core llama-index-llms-bedrock-converse`). `[all]` is meant for SDK development and also installs pytest, ruff, mypy, bandit, safety and pre-commit; applications should use single extras or `[otel-instrumentors]`.
@@ -116,8 +116,8 @@ Returns the `TracerProvider`. Its `force_flush()` and `shutdown()` also flush th
 
 Per signal, the first that is set wins: `traces_endpoint=` / `logs_endpoint=`, then `endpoint=`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
 
-<Aside type="caution" title="Upgrading from earlier releases">
-`endpoint=` used to be the full traces URL; it is now the OTLP base URL, and the default moved from `http://localhost:21890/opentelemetry` to `http://localhost:4318`. Remove a `/v1/traces` suffix, or pass `traces_endpoint=` and `logs_endpoint=`.
+<Aside type="caution" title="Upgrading to 0.3.0">
+Before 0.3.0, `endpoint=` was the full traces URL; it is now the OTLP base URL, and the default moved from `http://localhost:21890/opentelemetry` to `http://localhost:4318`. Remove a `/v1/traces` suffix, or pass `traces_endpoint=` and `logs_endpoint=`.
 </Aside>
 
 ### Examples
@@ -198,7 +198,7 @@ In decorator mode, `observe()` automatically:
 - **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for tools), as a JSON object of the function's arguments (for example `{"question": "..."}`), not GenAI chat messages. Skips `self`/`cls`. For the agent span, set `input_messages` / `output_messages` with `enrich()` in the GenAI format so Agent Traces and online evaluators can read them; `enrich()` values replace the captured ones.
 - **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools). Won't overwrite if already set.
 - **Records errors** as span status `ERROR` with an exception event.
-- **Sets entity attributes** - `gen_ai.agent.name` for agents, `gen_ai.tool.name` + `gen_ai.tool.type="function"` for tools.
+- **Sets entity attributes** - `gen_ai.agent.name` only for `Op.INVOKE_AGENT` and `Op.CREATE_AGENT`, `gen_ai.tool.name` + `gen_ai.tool.type="function"` for tools. Chat, retrieval and tool spans do not carry `gen_ai.agent.name`, so Agent Traces never lists them (for example a traced LLM judge call) as an agent; set it yourself with `enrich(**{"gen_ai.agent.name": ...})` if a span needs it.
 
 All values truncated at 10,000 characters.
 

@@ -9,8 +9,8 @@ The GenAI Observability SDK works with any agent framework. Use `@observe` to wr
 
 Each framework section below is a complete, runnable example that does the same things end to end: it traces a two-turn conversation with one tool, scores each turn online and the whole conversation once, and runs a small offline test suite twice so the runs can be compared. Every example ran against a real model on Amazon Bedrock and was checked in OpenSearch, in [Agent Traces](/docs/ai-observability/agent-tracing/) and in [Agent Evaluations](/docs/agent-evals/). All examples assume the [observability stack is running locally](/docs/get-started/installation/); `register()` sends to `http://localhost:4318` by default.
 
-<Aside type="caution" title="Preview">
-The examples need an SDK release that includes the evaluation APIs (`mark_agent_root`, `scorer`, `score(level="session")`, evaluator names and types) and the instrumentor detection in `register()`. If an import such as `mark_agent_root` fails, you have an older release.
+<Aside type="note" title="SDK versions">
+The examples need the Python SDK 0.3.0 or later (`pip install "opensearch-genai-observability-sdk-py>=0.3.0"`) and the TypeScript SDK 0.2.0 or later (`npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"`). If an import such as `mark_agent_root` fails, upgrade.
 </Aside>
 
 ## The rules every framework follows
@@ -18,7 +18,7 @@ The examples need an SDK release that includes the evaluation APIs (`mark_agent_
 Whatever the framework, the same rules make the traces work in Agent Traces and Agent Evaluations:
 
 - **Call `register()` once, before the framework builds its agent.** It owns the global tracer provider; most frameworks trace through it. Don't also set up the framework's own OTLP exporter. `register(service_name=..., agent_name=..., agent_version=...)` sets the service name of the spans and stamps the agent name and version on every evaluation result.
-- **Install the extra and the library.** An SDK extra (for example `[bedrock]`) installs only the OpenTelemetry instrumentor, not the library it instruments. `register()` activates an instrumentor only when its library is installed. Quote the extra (`"opensearch-genai-observability-sdk-py[bedrock]"`): zsh treats unquoted brackets as a glob.
+- **Install the extra and the library.** An SDK extra (for example `[bedrock]`) installs only the OpenTelemetry instrumentor, not the library it instruments. `register()` activates an instrumentor only when its library is installed. Quote the extra (`"opensearch-genai-observability-sdk-py[bedrock]>=0.3.0"`): zsh treats unquoted brackets as a glob.
 - **One trace per turn, rooted at your agent span.** Wrap each turn in `@observe(op=Op.INVOKE_AGENT)` and call `mark_agent_root()` inside it. Agent Traces lists as a trace's agent the span marked with `mark_agent_root()` (`derived.gen_ai.is_root`) or, without a mark, a GenAI span that has no parent. Most frameworks add their own `invoke_agent` spans below yours; the mark keeps your span the agent of the trace. Never continue an incoming `traceparent` whose parent is not exported to the same OpenSearch. See [One trace per turn](/docs/send-data/ai-agents/python/#one-trace-per-turn-rooted-at-the-agent).
 - **Sessions:** set `gen_ai.conversation.id` on every turn with `enrich(session_id=...)`, stable for the whole conversation. The Sessions tab and session-level results group turns by it.
 - **Messages:** record the question and answer as `gen_ai.input.messages` / `gen_ai.output.messages` with `enrich(input_messages=..., output_messages=...)`, so Agent Traces, the run page and online evaluators can read them back. Once `enrich()` sets the output messages, `@observe` no longer records the function's return value as the output.
@@ -122,7 +122,7 @@ The screenshots come from the test runs of these examples, under other service n
 [Strands Agents](https://github.com/strands-agents/sdk-python) traces with the global OpenTelemetry tracer provider and emits `invoke_agent`, `execute_event_loop_cycle`, `chat` and `execute_tool` spans with GenAI attributes. After `register()`, those spans are exported with yours: no SDK extra is needed.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
 ```
 
 ```python
@@ -208,7 +208,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 [Strands Agents for TypeScript](https://github.com/strands-agents/sdk-typescript) follows the same rules with `withObserve()`, `markAgentRoot()` and `enrich()`. This is the full example, including the conversation and the evaluations.
 
 ```bash
-npm install @opensearch-project/genai-observability-sdk-ts @strands-agents/sdk @modelcontextprotocol/client @opentelemetry/api@~1.9.0 @opentelemetry/context-async-hooks@^1 zod
+npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0" @strands-agents/sdk @modelcontextprotocol/client @opentelemetry/api@~1.9.0 @opentelemetry/context-async-hooks@^1 zod
 export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only
 ```
 
@@ -341,7 +341,7 @@ await provider.forceFlush();
 [LangGraph](https://langchain-ai.github.io/langgraph/) builds stateful agent workflows. The LangChain instrumentor in the `[langchain]` extra traces each model call as a `chat` span with model, token usage and messages, and each tool call as an `execute_tool` span.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[langchain]" langgraph langchain-aws
+pip install "opensearch-genai-observability-sdk-py[langchain]>=0.3.0" langgraph langchain-aws
 ```
 
 ```python
@@ -441,7 +441,7 @@ llm = ChatOpenAI(model=MODEL_ID).bind_tools([weather])  # any LangChain chat mod
 [CrewAI](https://www.crewai.com/) orchestrates role-playing agents. There is no `[crewai]` extra: `[otel-instrumentors]` includes the CrewAI instrumentor, and the Bedrock instrumentor for CrewAI's native Bedrock provider.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]" "crewai[bedrock]"
+pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]>=0.3.0" "crewai[bedrock]"
 ```
 
 ```python
@@ -521,7 +521,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 The [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) is traced by the OpenAI Agents instrumentor in the `[openai]` extra. The example runs it on Amazon Bedrock through LiteLLM.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[openai]" "openai-agents[litellm]" boto3
+pip install "opensearch-genai-observability-sdk-py[openai]>=0.3.0" "openai-agents[litellm]" boto3
 ```
 
 ```python
@@ -598,7 +598,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 For direct Bedrock `converse` calls, the Bedrock instrumentor in the `[bedrock]` extra traces each call as a `chat` span with model, tokens and messages. You write the tool loop yourself.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[bedrock]" boto3
+pip install "opensearch-genai-observability-sdk-py[bedrock]>=0.3.0" boto3
 ```
 
 ```python
@@ -678,7 +678,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 For the [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), the Anthropic instrumentor in the `[anthropic]` extra traces each `messages.create()` call as an `anthropic.chat` span with model, tokens and messages. The example uses Claude on Amazon Bedrock with `AnthropicBedrock`; `Anthropic()` for the Claude API works the same way.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[anthropic]" "anthropic[bedrock]"
+pip install "opensearch-genai-observability-sdk-py[anthropic]>=0.3.0" "anthropic[bedrock]"
 ```
 
 ```python
@@ -759,7 +759,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 [LlamaIndex](https://www.llamaindex.ai/) agent workflows are traced by the LlamaIndex instrumentor in the `[llamaindex]` extra. The example runs a `FunctionAgent` on Bedrock with `BedrockConverse`.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[llamaindex]" llama-index-core llama-index-llms-bedrock-converse
+pip install "opensearch-genai-observability-sdk-py[llamaindex]>=0.3.0" llama-index-core llama-index-llms-bedrock-converse
 ```
 
 ```python
@@ -848,7 +848,7 @@ Then append [the conversation and evaluation part](#the-conversation-and-evaluat
 If your app is already traced with [Langfuse](https://langfuse.com/) (Python SDK v3 or later, which is built on OpenTelemetry), keep Langfuse and add OpenSearch as a second destination. Both backends then receive the same spans with the same trace and span ids, which is what lets you mirror Langfuse scores later (see [Evaluation Integrations: Langfuse](/docs/agent-evals/evaluation-integrations/#langfuse)).
 
 ```bash
-pip install opensearch-genai-observability-sdk-py langfuse
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" langfuse
 export LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... LANGFUSE_BASE_URL=https://<your-langfuse-host>
 ```
 

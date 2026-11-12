@@ -133,7 +133,7 @@ jobs:
 For an OTel Collector, a Data Prepper `otlp` source or one OpenSearch Ingestion pipeline with both paths, pass a single OTLP base URL as `endpoint` instead and leave `aws-region` empty (unless the endpoint needs SigV4). Store the URLs as secrets or variables. Give the job's role `osis:Ingest` on the pipelines.
 
 <Aside type="note">
-The action needs an SDK release with the evaluation APIs used on this page. Until that release is on PyPI, set the action's `install` input to a git requirement pinned to a commit, for example `git+https://github.com/opensearch-project/genai-observability-sdk-py@<commit-sha>`.
+The action needs the Python SDK 0.3.0 or later; its `install` input defaults to `opensearch-genai-observability-sdk-py>=0.3.0`. If you set `install` (for example to add your suite's own packages), keep that requirement in it.
 </Aside>
 
 ### Inputs
@@ -150,7 +150,7 @@ The action needs an SDK release with the evaluation APIs used on this page. Unti
 | `fail-on-regression` | | Gates, see below |
 | `pass-threshold` | `0.5` | Fallback for scores without a verdict, for the summary table only |
 | `working-directory` | `.` | Directory to run the suite from |
-| `install` | the SDK | pip requirement(s) installed first |
+| `install` | `opensearch-genai-observability-sdk-py>=0.3.0` | pip requirement(s) installed first, space separated |
 
 Outputs: `run-id` (the `test.suite.run.id`) and `run-url` (the run page in Dashboards). The run shows up in Dashboards once Data Prepper has written it, usually 60 to 90 seconds after the job sent it, so the link can open an empty run page for the first minute.
 
