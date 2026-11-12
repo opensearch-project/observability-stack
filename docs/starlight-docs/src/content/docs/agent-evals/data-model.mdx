@@ -44,7 +44,7 @@ Test suite  "travel-planner-golden"                 test.suite.name
 | Expected output | `opensearch.test.case.expected`, when the case has one | None |
 | Linked to | The root span of the agent run for that case | The span, trace or session it judged |
 
-A result without `test.suite.run.id` is online. The **Online** source filter on the Evaluations pages shows exactly those.
+A result without `test.suite.run.id` is online. The **Online** source filter on the Evaluations pages shows exactly those. When each offline case runs in its own conversation id (as in the [framework examples](/docs/send-data/ai-agents/integrations/#how-the-examples-are-built), so cases don't share history), the Agent Traces **Sessions** tab shows every case as a one-turn session next to your real conversations.
 
 ### Levels
 
@@ -84,11 +84,13 @@ Data Prepper stores the attributes under `attributes` with their dotted OTel nam
 
 **Index type** is how the [evaluation index template](#the-index-template) stores the field. **Explicit** fields are mapped by the template; **dynamic** fields take the template's dynamic rules (strings become `keyword` with `ignore_above` 256, whole numbers `long`, other numbers `double`, booleans `boolean`). **Required** means the Evaluations pages need it; recommended fields make the pages more useful.
 
+The template maps every field the Evaluations pages query explicitly, so each new index (a fresh install, or a rollover) can be queried before its first document carries the field. Without the template, a query that references a field no index behind `otel-v1-genai-evaluation*` has mapped yet fails with `Field [...] not found`, so on a fresh install create the template before the first result arrives.
+
 #### Document fields
 
 | Field | Index type | Mapping | Required | Meaning |
 |---|---|---|---|---|
-| `eventName` | string, default dynamic mapping | dynamic | Required | `gen_ai.evaluation.result`. Routing matches this field |
+| `eventName` | `text` with a `keyword` (256) subfield | explicit | Required | `gen_ai.evaluation.result`. Routing matches this field |
 | `time` | `date_nanos` | explicit | Required | When the result was recorded |
 | `@timestamp` | `date_nanos` | explicit | Required | Copy of `time` made by the pipeline. The Evaluations dataset's time field |
 | `traceId` | `keyword` (32) | explicit | Optional | Trace that was judged. Online: the evaluated trace; offline: the agent run of the case |
@@ -100,14 +102,14 @@ Data Prepper stores the attributes under `attributes` with their dotted OTel nam
 
 | Attribute | Index type | Mapping | Required | Meaning |
 |---|---|---|---|---|
-| `gen_ai.evaluation.name` | `keyword` (256) | dynamic | Required | Evaluation (metric) name, for example `answer_quality`. Results are grouped by it |
+| `gen_ai.evaluation.name` | `keyword` (256) | explicit | Required | Evaluation (metric) name, for example `answer_quality`. Results are grouped by it |
 | `gen_ai.evaluation.score.value` | `double` | explicit | One of value, label or `error.type` | Numeric score. Absent on error results |
-| `gen_ai.evaluation.score.label` | `keyword` (256) | dynamic | One of value, label or `error.type` | `pass` / `fail` is the verdict; any other value is a category |
+| `gen_ai.evaluation.score.label` | `keyword` (256) | explicit | One of value, label or `error.type` | `pass` / `fail` is the verdict; any other value is a category |
 | `gen_ai.evaluation.explanation` | `text` | explicit | Optional | The evaluator's rationale, up to 8192 characters. Searchable, not aggregatable |
-| `error.type` | `keyword` (256) | dynamic | Optional | The evaluator or the task failed, for example `TimeoutError`. No value or label |
-| `gen_ai.agent.name` | `keyword` (256) | dynamic | Recommended | Agent that was judged. Results without it show as "(no agent name)" |
+| `error.type` | `keyword` (256) | explicit | Optional | The evaluator or the task failed, for example `TimeoutError`. No value or label |
+| `gen_ai.agent.name` | `keyword` (256) | explicit | Recommended | Agent that was judged. Results without it show as "(no agent name)" |
 | `gen_ai.agent.version` | `keyword` (256) | explicit | Recommended | Its version. Pinned to `keyword` so a version like `2` never becomes a number |
-| `gen_ai.conversation.id` | `keyword` (256) | dynamic | Optional | Session that was judged (session-level results) |
+| `gen_ai.conversation.id` | `keyword` (256) | explicit | Optional | Session that was judged (session-level results) |
 | `gen_ai.response.id` | `keyword` (256) | dynamic | Optional | Completion that was judged |
 | `gen_ai.request.model` | `keyword` (256) | dynamic | Optional | Model the LLM judge used |
 | `gen_ai.prompt.name` | `keyword` (256) | dynamic | Optional | Name of the judge prompt |
@@ -119,7 +121,7 @@ OTel does not define these yet. They mirror the OTel names under `opensearch.`.
 
 | Attribute | Index type | Mapping | Required | Meaning |
 |---|---|---|---|---|
-| `opensearch.gen_ai.evaluation.level` | `keyword` (256) | dynamic | Optional | `span`, `trace`, `session` or `tool_call` |
+| `opensearch.gen_ai.evaluation.level` | `keyword` (256) | explicit | Optional | `span`, `trace`, `session` or `tool_call` |
 | `opensearch.gen_ai.evaluation.evaluator.name` | `keyword` (256) | dynamic | Recommended | Evaluator that produced the result. One evaluator can produce several evaluations |
 | `opensearch.gen_ai.evaluation.evaluator.version` | `keyword` (256) | explicit | Optional | Evaluator version. Pinned to `keyword` |
 | `opensearch.gen_ai.evaluation.evaluator.type` | `keyword` (256) | dynamic | Recommended | `llm_judge`, `code`, `human` or `external` |
@@ -127,7 +129,7 @@ OTel does not define these yet. They mirror the OTel names under `opensearch.`.
 | `opensearch.gen_ai.evaluation.score.min` | `double` | explicit | Optional | Lower bound of the scale |
 | `opensearch.gen_ai.evaluation.score.max` | `double` | explicit | Optional | Upper bound of the scale |
 | `opensearch.gen_ai.evaluation.score.threshold` | `double` | explicit | Optional | Pass threshold the verdict was computed from |
-| `opensearch.gen_ai.evaluation.score.direction` | `keyword` (256) | dynamic | Optional | `maximize` (default) or `minimize`, for example for latency or cost |
+| `opensearch.gen_ai.evaluation.score.direction` | `keyword` (256) | explicit | Optional | `maximize` (default) or `minimize`, for example for latency or cost |
 | `opensearch.gen_ai.evaluation.judge_label` | `keyword` (256) | dynamic | Optional | The judge's own category when the result also has a verdict |
 | `opensearch.gen_ai.evaluation.judge.trace_id` | `keyword` (256) | dynamic | Optional | Trace of the judge's own run, when the judge is traced |
 
@@ -137,7 +139,7 @@ OTel does not define these yet. They mirror the OTel names under `opensearch.`.
 
 | Attribute | Index type | Mapping | Required | Meaning |
 |---|---|---|---|---|
-| `test.suite.name` | `keyword` (256) | dynamic | Required offline | Test suite, stable across runs |
+| `test.suite.name` | `keyword` (256) | explicit | Required offline | Test suite, stable across runs |
 | `test.suite.run.id` | `keyword` (256) | explicit | Required offline | One run of the suite. Pinned to `keyword` |
 | `test.case.id` | `keyword` (256) | explicit | Required offline | One case. Pinned to `keyword`. See [Case identity](#case-identity) |
 | `test.case.name` | `keyword` (256) | dynamic | Optional | Readable case name |
@@ -361,6 +363,15 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
           "type": "keyword",
           "ignore_above": 16
         },
+        "eventName": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
         "flags": {
           "type": "long"
         },
@@ -374,11 +385,19 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
                       "properties": {
                         "value": {
                           "type": "double"
+                        },
+                        "label": {
+                          "type": "keyword",
+                          "ignore_above": 256
                         }
                       }
                     },
                     "explanation": {
                       "type": "text"
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
                 },
@@ -387,12 +406,24 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
                     "version": {
                       "type": "keyword",
                       "ignore_above": 256
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
                 },
                 "prompt": {
                   "properties": {
                     "version": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "conversation": {
+                  "properties": {
+                    "id": {
                       "type": "keyword",
                       "ignore_above": 256
                     }
@@ -416,6 +447,10 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
                             },
                             "threshold": {
                               "type": "double"
+                            },
+                            "direction": {
+                              "type": "keyword",
+                              "ignore_above": 256
                             }
                           }
                         },
@@ -426,6 +461,10 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
                               "ignore_above": 256
                             }
                           }
+                        },
+                        "level": {
+                          "type": "keyword",
+                          "ignore_above": 256
                         }
                       }
                     }
@@ -452,8 +491,20 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
                           "ignore_above": 256
                         }
                       }
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
+                }
+              }
+            },
+            "error": {
+              "properties": {
+                "type": {
+                  "type": "keyword",
+                  "ignore_above": 256
                 }
               }
             }

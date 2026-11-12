@@ -60,30 +60,35 @@ The SDK exports these functions and classes. This page covers the full API surfa
 ```typescript
 import { context } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import { register, observe, Op, enrich, markAgentRoot } from "@opensearch-project/genai-observability-sdk-ts";
+import { register, observe, withObserve, Op, enrich, markAgentRoot } from "@opensearch-project/genai-observability-sdk-ts";
 
 // Async code keeps the active span only with a context manager.
 context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
 
 // Configure the OTLP pipelines once at startup (register is async). Default: http://localhost:4318
-await register({ serviceName: "my-agent" });
+const provider = await register({ serviceName: "my-agent", agentName: "assistant" });
 
 const getWeather = observe(
   { name: "get_weather", op: Op.EXECUTE_TOOL },
-  (city: string) => ({ city, temp: 22, condition: "sunny" }),
-);
-
-const assistant = observe(
-  { name: "assistant", op: Op.INVOKE_AGENT },
-  (query: string) => {
-    markAgentRoot();
-    enrich({ model: "gpt-4o", provider: "openai", sessionId: "conversation-42" });
-    const data = getWeather("Paris");
-    return `${data.condition}, ${data.temp}C`;
+  function getWeather(city: string) {
+    return { city, temp: 22, condition: "sunny" };
   },
 );
 
+const text = (role: string, content: string) => [{ role, parts: [{ type: "text", content }] }];
+
+const assistant = (query: string) =>
+  withObserve("assistant", { op: Op.INVOKE_AGENT }, () => {
+    markAgentRoot();
+    enrich({ sessionId: "conversation-42", inputMessages: text("user", query) });
+    const data = getWeather("Paris");
+    const answer = `${data.condition}, ${data.temp}C`;
+    enrich({ outputMessages: text("assistant", answer) });
+    return answer;
+  });
+
 const result = assistant("What's the weather?");
+await provider.forceFlush(); // spans are batched: flush before a short script exits
 ```
 
 This produces the span tree:
@@ -202,7 +207,7 @@ Any custom string also works for `op`. For well-known ops the span name is prefi
 `observe()` automatically:
 
 - **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for `Op.EXECUTE_TOOL`). Argument names are used as keys when available.
-- **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools).
+- **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools), unless `enrich()` already set the output messages inside the function.
 - **Records errors** as span status `ERROR` with an exception event, then re-throws.
 - **Sets entity attributes** - `gen_ai.agent.name` for non-tool ops; `gen_ai.tool.name` + `gen_ai.tool.type="function"` for `Op.EXECUTE_TOOL`.
 

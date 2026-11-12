@@ -31,28 +31,44 @@ The Python SDK ships a reusable composite action in [`examples/github-action`](h
 
 ### 1. Expose the suite as a function
 
-A suite is a function with no arguments that calls `evaluate()` and returns its result (or a list of results). The action calls `register()` before it imports the file, so `@observe` spans and evaluation events go to the configured endpoints.
+A suite is a function with no arguments that calls `evaluate()` and returns its result (or a list of results). The action calls `register()` before it imports the file, so `@observe` spans and evaluation events go to the configured endpoints. The example runs the real agent from [The agent under test](/docs/agent-evals/evaluation-integrations/#the-agent-under-test) (`my_agent.py`, whose `ask()` returns the answer with its trace ids) and names each run after the pull request and commit.
 
 ```python
-# evals/suite.py
+# evals/suite.py: the suite the GitHub Action runs (it calls register() before importing this file)
+import os
+
+from my_agent import AGENT_NAME, AGENT_VERSION, ask
 from opensearch_genai_observability_sdk_py import evaluate, scorer
 
-from my_agent import agent  # decorated with @observe(op=Op.INVOKE_AGENT)
+CASES = [
+    {"case_id": "opensearch", "case_name": "What is OpenSearch", "input": "What is OpenSearch?", "expected": "search"},
+    {"case_id": "otlp", "case_name": "What OTLP does", "input": "What does OTLP do?", "expected": "telemetry"},
+    {"case_id": "rag", "case_name": "How RAG works", "input": "How does RAG work?", "expected": "retriev"},
+    {"case_id": "data-prepper", "case_name": "What Data Prepper is", "input": "What is Data Prepper?", "expected": "OpenSearch"},
+]
 
 
-@scorer(name="contains_expected", evaluator_type="code")
+@scorer(name="contains_expected", evaluator_type="code", description="The answer contains the expected term")
 def contains_expected(input, output, expected) -> bool:
-    return expected.lower() in output.lower()
+    return expected.lower() in output.answer.lower()
+
+
+@scorer(name="response_length", threshold=500, direction="minimize", evaluator_type="code",
+        description="At most 500 characters")
+def response_length(input, output, expected) -> float:
+    return float(len(output.answer))
 
 
 def suite():
+    pr, sha = os.environ.get("PR_NUMBER", "main"), os.environ.get("GITHUB_SHA", "local")[:7]
     return evaluate(
         name="my-agent-suite",
-        task=agent,
-        data=[{"case_id": "paris", "input": "Capital of France?", "expected": "Paris"}],
-        scores=[contains_expected],
-        agent_name="my_agent",
-        agent_version="v3",
+        task=ask,
+        data=CASES,
+        scores=[contains_expected, response_length],
+        agent_name=AGENT_NAME,
+        agent_version=AGENT_VERSION,
+        run_name=f"PR {pr} @ {sha}",
     )
 ```
 
@@ -74,6 +90,8 @@ permissions:
 jobs:
   evals:
     runs-on: ubuntu-latest
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || 'main' }} # used in the run name
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -103,6 +121,7 @@ jobs:
           dashboards-url: ${{ vars.OPENSEARCH_DASHBOARDS_URL }}
           fail-on-regression: |
             contains_expected=0.75
+            response_length<=500
 
       - name: Print run link
         if: always()
@@ -133,7 +152,7 @@ The action needs an SDK release with the evaluation APIs used on this page. Unti
 | `working-directory` | `.` | Directory to run the suite from |
 | `install` | the SDK | pip requirement(s) installed first |
 
-Outputs: `run-id` (the `test.suite.run.id`) and `run-url` (the run page in Dashboards).
+Outputs: `run-id` (the `test.suite.run.id`) and `run-url` (the run page in Dashboards). The run shows up in Dashboards once Data Prepper has written it, usually 60 to 90 seconds after the job sent it, so the link can open an empty run page for the first minute.
 
 ## Threshold gates
 
@@ -141,6 +160,8 @@ There are two kinds of thresholds, and they do different jobs:
 
 - **Per result**, in the scorer: `@scorer(threshold=4, direction="maximize")` (or a `bool` / `pass` / `fail` label) decides each result's verdict. The verdict is stored on the result (`gen_ai.evaluation.score.label`) and drives the pass rates in Dashboards.
 - **Per run**, in CI: `fail-on-regression` fails the job when an evaluation's **mean** over the run misses its bar.
+
+The job's gate result is not stored on the run. A run whose job failed on a mean looks all green in Dashboards when every per-result verdict passed. If Dashboards should show the failure, give the scorer a per-result threshold at the same bar.
 
 `fail-on-regression` takes one gate per line or comma, keyed by evaluation name (`gen_ai.evaluation.name`):
 

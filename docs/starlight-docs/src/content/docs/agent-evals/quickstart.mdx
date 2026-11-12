@@ -8,7 +8,7 @@ sidebar:
 import { Aside, Steps, Tabs, TabItem, Code } from '@astrojs/starlight/components';
 import codingAgentPrompt from '../../../snippets/coding-agent-prompt.md?raw';
 
-This quickstart takes you from an empty stack to evaluation results in OpenSearch Dashboards. You run a small offline test suite against a mock agent (no model or API key needed), score one live trace online, set up **Agent Evaluations** in Dashboards, and open the run.
+This quickstart takes you from an empty stack to evaluation results in OpenSearch Dashboards. You run a small offline test suite against a real agent (a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock), score one live trace online, set up **Agent Evaluations** in Dashboards, open the run, then change the agent and compare the two runs.
 
 <Aside type="caution" title="Preview">
 Agent Evaluations needs:
@@ -37,6 +37,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
 - Docker with Docker Compose
 - Python 3.10+ or Node.js 20+
+- For the Python agent: AWS credentials (the default chain) with access to a Claude model on Amazon Bedrock. Any other Strands model provider works the same way. The TypeScript tab uses a mock agent and needs no model.
 
 <Steps>
 
@@ -64,8 +65,9 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     ```bash
     python -m venv .venv && source .venv/bin/activate
-    pip install opensearch-genai-observability-sdk-py
-    # until the next release:
+    pip install opensearch-genai-observability-sdk-py strands-agents
+    export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
+    # until the release is published:
     # pip install "git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
     ```
 
@@ -126,29 +128,44 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
 4. **Run an offline test suite**
 
-    A test suite is data, scorers are functions, and one `evaluate()` call is one run. Save this as `quickstart_evals.py` (or `quickstart_evals.ts`). The mock agent answers four questions; the last case fails on purpose.
+    A test suite is data, scorers are functions, and one `evaluate()` call is one run. Save this as `quickstart_evals.py` (or `quickstart_evals.ts`). The Python agent answers four questions with the `v1` prompt "Answer in as few words as possible.", so a one-word answer can fail `answer_length`. The TypeScript mock agent answers from a table, and its last case fails on purpose.
 
     <Tabs syncKey="sdk-lang">
     <TabItem label="Python">
 
     ```python
-    """Agent evaluations quickstart: a mock agent, two scorers, one offline run."""
-    from opensearch_genai_observability_sdk_py import Op, evaluate, mark_agent_root, observe, register, scorer
+    """Agent evaluations quickstart: a Strands agent on Amazon Bedrock, two scorers, one offline run.
 
-    provider = register(service_name="quickstart-agent", agent_name="quickstart_agent", agent_version="v1")
+    pip install opensearch-genai-observability-sdk-py strands-agents
+    export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
+    """
+    import os
 
-    ANSWERS = {
-        "What is OpenSearch?": "OpenSearch is an open source search and analytics suite.",
-        "What does OTLP stand for?": "OpenTelemetry Protocol.",
-        "Capital of France?": "Paris is the capital of France.",
-        "Who wrote Hamlet?": "I am not sure.",
-    }
+    from strands import Agent
+    from strands.models.bedrock import BedrockModel
+
+    from opensearch_genai_observability_sdk_py import Op, enrich, evaluate, mark_agent_root, observe, register, scorer
+
+    AGENT_NAME = "quickstart_agent"
+    AGENT_VERSION = os.environ.get("AGENT_VERSION", "v1")
+    PROMPTS = {"v1": "Answer in as few words as possible.", "v2": "Answer in one complete sentence."}
+
+    provider = register(service_name="quickstart-agent", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
 
-    @observe(name="quickstart_agent", op=Op.INVOKE_AGENT)
+    def text(role: str, content: str) -> list[dict]:
+        return [{"role": role, "parts": [{"type": "text", "content": content}]}]
+
+
+    @observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
     def agent(question: str) -> str:
         mark_agent_root()  # this span is the agent run in Agent Traces
-        return ANSWERS.get(question, "I don't know.")
+        enrich(input_messages=text("user", question), **{"gen_ai.agent.version": AGENT_VERSION})
+        model = BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-west-2")
+        answer = str(Agent(name=AGENT_NAME, model=model, system_prompt=PROMPTS[AGENT_VERSION],
+                           callback_handler=None)(question)).strip()
+        enrich(output_messages=text("assistant", answer))
+        return answer
 
 
     @scorer(name="contains_expected", evaluator_type="code", description="The answer contains the expected text")
@@ -156,9 +173,10 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
         return expected.lower() in output.lower()  # a bool is a pass / fail verdict
 
 
-    @scorer(name="answer_length", threshold=0.5, score_min=0, score_max=1, evaluator_type="code")
+    @scorer(name="answer_length", threshold=0.5, score_min=0, score_max=1, evaluator_type="code",
+            description="The answer is a sentence, not a single word")
     def answer_length(input, output, expected) -> float:
-        return min(len(output) / 40.0, 1.0)  # passes at 0.5 or more
+        return min(len(output) / 40.0, 1.0)  # passes at 20 characters or more
 
 
     result = evaluate(
@@ -171,7 +189,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
             {"case_id": "hamlet", "case_name": "Author of Hamlet", "input": "Who wrote Hamlet?", "expected": "Shakespeare"},
         ],
         scores=[contains_expected, answer_length],
-        run_name="v1 baseline",
+        run_name=f"{AGENT_VERSION} {PROMPTS[AGENT_VERSION].lower().rstrip('.')}",
     )
     print("run id:", result.summary.run_id)
     provider.force_flush()  # export spans and evaluation events before exit
@@ -232,7 +250,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     Run it (`python quickstart_evals.py`, or `npx tsx quickstart_evals.ts`). `evaluate()` prints a summary with the run id. The run sends:
 
     - 4 agent traces (`invoke_agent quickstart_agent`). Each root span carries `test.suite.name`, `test.suite.run.id` and `test.case.id`.
-    - 8 `gen_ai.evaluation.result` events, one per case per scorer, each parented to its case's agent root span, with the expected output in `opensearch.test.case.expected`. The `hamlet` case fails both scorers.
+    - 8 `gen_ai.evaluation.result` events, one per case per scorer, each parented to its case's agent root span, with the expected output in `opensearch.test.case.expected`. With the Python agent, `france` usually answers "Paris." and fails `answer_length`; with the TypeScript mock, `hamlet` fails both scorers.
 
     Keep `case_id` stable: Compare matches cases by it. Without one, the SDK derives the id from a hash of the input, so editing a question makes a new case.
 
@@ -244,16 +262,29 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     <TabItem label="Python">
 
     ```python
-    from opensearch_genai_observability_sdk_py import Op, mark_agent_root, observe, register, score
+    """Score live traffic online: the result joins the active agent span."""
+    from strands import Agent
+    from strands.models.bedrock import BedrockModel
 
-    provider = register(service_name="quickstart-agent", agent_name="quickstart_agent", agent_version="v1")
+    from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register, score
+
+    AGENT_NAME, AGENT_VERSION = "quickstart_agent", "v2"
+    provider = register(service_name="quickstart-agent", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
 
-    @observe(name="quickstart_agent", op=Op.INVOKE_AGENT)
+    def text(role: str, content: str) -> list[dict]:
+        return [{"role": role, "parts": [{"type": "text", "content": content}]}]
+
+
+    @observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
     def agent(question: str) -> str:
         mark_agent_root()
-        answer = "Paris is the capital of France."
-        score(
+        enrich(input_messages=text("user", question), **{"gen_ai.agent.version": AGENT_VERSION})
+        model = BedrockModel(model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0", region_name="us-west-2")
+        answer = str(Agent(name=AGENT_NAME, model=model, system_prompt="Answer in one complete sentence.",
+                           callback_handler=None)(question)).strip()
+        enrich(output_messages=text("assistant", answer))
+        score(  # inline: the active span (this agent run) is judged
             "answer_mentions_city",
             1.0 if "Paris" in answer else 0.0,
             threshold=1,
@@ -263,7 +294,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
         return answer
 
 
-    agent("Capital of France?")
+    print(agent("What is the capital of France?"))
     provider.force_flush()
     ```
 
@@ -299,7 +330,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
 6. **Check that the results arrived** (optional)
 
-    Data Prepper batches writes, so results show up within about 30 seconds:
+    Data Prepper batches writes, so results usually show up within 60 to 90 seconds:
 
     ```bash
     curl -sk -u "admin:$OPENSEARCH_PASSWORD" \
@@ -325,15 +356,23 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     The time range defaults to a recent window; widen it if your run is older.
 
-    - **Agents** (home): one row per agent, with the pass rate per agent version. `quickstart_agent` `v1` shows the suite's and the online results.
-    - **Eval runs**: one row per run. `v1 baseline` of `quickstart-suite` has 3 of 4 cases passing.
-    - **Run page**: select the run to see its cases. Expand `hamlet` to see each evaluator's result, the expected output, and **View trace**, which opens the agent trace in Agent Traces. Inside CI, the run header also links to the CI run.
+    - **Agents** (home): one row per agent, with the pass rate per agent version. `quickstart_agent` `v1` shows the suite's results; the Python online example records version `v2`, so its result shows under `v2`.
+    - **Eval runs**: one row per run. The Python run `v1 answer in as few words as possible` of `quickstart-suite` typically has 3 of 4 cases passing (the TypeScript run is `v1 baseline`).
+    - **Run page**: select the run to see its cases. Expand a case (for example `france`) to see the agent's input and output, the expected output, each evaluator's result, and **View trace**, which opens the agent trace in Agent Traces. Inside CI, the run header also links to the CI run.
     - **Eval results**: every result in the range. Select one to open the result flyout: score, verdict, explanation, evaluator, what the judge saw (the judged span's input and output), and the judge's own trace when recorded.
     - **Agent Traces**: traces with results show them in the **Evaluations** column and in the **Evaluations** tab of the trace flyout.
 
 9. **Run again and compare**
 
-    Change the answer to `"Who wrote Hamlet?"` to `"William Shakespeare wrote Hamlet."`, set `agent_version="v2"` and `run_name="v2 fixed hamlet"`, and run the suite again. Open the new run from **Eval runs** and choose **Compare with run before**: `hamlet` shows as **Fixed** and no case shows as **Regressed**. Compare matches cases by `test.case.id`; run A is the baseline.
+    Python: run the suite again with the `v2` prompt ("Answer in one complete sentence."):
+
+    ```bash
+    AGENT_VERSION=v2 python quickstart_evals.py
+    ```
+
+    Open the new run (`v2 answer in one complete sentence`) from **Eval runs** and choose **Compare with run before**: in the tested run `france` showed as **Fixed** (it now answers in a sentence) and no case as **Regressed**. A real model's answers vary, so your cases can differ. Compare matches cases by `test.case.id`; run A is the baseline.
+
+    TypeScript: change the mock answer to `"Who wrote Hamlet?"` to `"William Shakespeare wrote Hamlet."`, set `agentVersion: "v2"` and `runName: "v2 fixed hamlet"`, and run the suite again: `hamlet` shows as **Fixed**.
 
 </Steps>
 
