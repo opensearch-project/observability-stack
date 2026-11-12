@@ -13,7 +13,7 @@ This quickstart takes you from an empty stack to evaluation results in OpenSearc
 <Aside type="caution" title="Preview">
 Agent Evaluations needs:
 
-- an SDK release with the evaluation APIs used here (`mark_agent_root` / `markAgentRoot`, `scorer` / `defineScorer`, run names, judge context, `endpoint=` as an OTLP base URL). Until it is published, install the SDK from its GitHub repository (see step 2). If an import such as `mark_agent_root` or `markAgentRoot` fails, you have an older release.
+- the Python SDK 0.3.0 or later, or the TypeScript SDK 0.2.0 or later (step 2). If an import such as `mark_agent_root` or `markAgentRoot` fails, upgrade.
 - an OpenSearch Dashboards build with **Agent monitoring > Evaluations**, with `explore.agentTraces.enabled: true` and `explore.agentTraces.evaluations.enabled: true` in `opensearch_dashboards.yml`.
 </Aside>
 
@@ -65,20 +65,15 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     ```bash
     python -m venv .venv && source .venv/bin/activate
-    pip install opensearch-genai-observability-sdk-py strands-agents
+    pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
     export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
-    # until the release is published:
-    # pip install "git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
     ```
 
     </TabItem>
     <TabItem label="TypeScript">
 
     ```bash
-    npm install @opensearch-project/genai-observability-sdk-ts @opentelemetry/api @opentelemetry/context-async-hooks
-    # until the next release, build the SDK from GitHub and install the tarball:
-    # git clone https://github.com/opensearch-project/genai-observability-sdk-ts && (cd genai-observability-sdk-ts && npm ci && npm run build && npm pack)
-    # npm install ./genai-observability-sdk-ts/opensearch-project-genai-observability-sdk-ts-*.tgz
+    npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0" @opentelemetry/api @opentelemetry/context-async-hooks
     ```
 
     Use ES modules (`"type": "module"` in `package.json`) and run the examples with `npx tsx`.
@@ -136,7 +131,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     ```python
     """Agent evaluations quickstart: a Strands agent on Amazon Bedrock, two scorers, one offline run.
 
-    pip install opensearch-genai-observability-sdk-py strands-agents
+    pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
     export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
     """
     import os

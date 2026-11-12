@@ -15,9 +15,9 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 ## Installation
 
 ```bash
-npm install @opensearch-project/genai-observability-sdk-ts
-# or: pnpm add @opensearch-project/genai-observability-sdk-ts
-# or: yarn add @opensearch-project/genai-observability-sdk-ts
+npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
+# or: pnpm add "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
+# or: yarn add "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
 ```
 
 Some features rely on optional peer dependencies, installed only when you need them:
@@ -133,8 +133,8 @@ const provider = await register({
 
 Per signal, the first that is set wins: `tracesEndpoint` / `logsEndpoint`, then `endpoint`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
 
-<Aside type="caution" title="Upgrading from earlier releases">
-`endpoint` used to be the full traces URL with a default of `http://localhost:21890/opentelemetry/v1/traces`. It is now the OTLP base URL. Remove a `/v1/traces` suffix, or pass `tracesEndpoint` and `logsEndpoint`.
+<Aside type="caution" title="Upgrading to 0.2.0">
+Before 0.2.0, `endpoint` was the full traces URL with a default of `http://localhost:21890/opentelemetry/v1/traces`. It is now the OTLP base URL. Remove a `/v1/traces` suffix, or pass `tracesEndpoint` and `logsEndpoint`.
 </Aside>
 
 ### Examples
@@ -209,14 +209,14 @@ Any custom string also works for `op`. For well-known ops the span name is prefi
 - **Captures input** as `gen_ai.input.messages` (or `gen_ai.tool.call.arguments` for `Op.EXECUTE_TOOL`). Argument names are used as keys when available.
 - **Captures output** as `gen_ai.output.messages` (or `gen_ai.tool.call.result` for tools), unless `enrich()` already set the output messages inside the function.
 - **Records errors** as span status `ERROR` with an exception event, then re-throws.
-- **Sets entity attributes** - `gen_ai.agent.name` for non-tool ops; `gen_ai.tool.name` + `gen_ai.tool.type="function"` for `Op.EXECUTE_TOOL`.
+- **Sets entity attributes** - `gen_ai.agent.name` only for `Op.INVOKE_AGENT` and `Op.CREATE_AGENT`; `gen_ai.tool.name` + `gen_ai.tool.type="function"` for `Op.EXECUTE_TOOL`. Chat, retrieval and tool spans do not carry `gen_ai.agent.name`, so Agent Traces never lists them (for example a traced LLM judge call) as an agent; set it yourself (`span.setAttribute("gen_ai.agent.name", ...)`) if a span needs it.
 
 All captured values are truncated at 10,000 characters.
 
 | Attribute | When set |
 |---|---|
 | `gen_ai.operation.name` | When `op` is provided |
-| `gen_ai.agent.name` | All ops except `execute_tool` |
+| `gen_ai.agent.name` | `op=Op.INVOKE_AGENT` or `Op.CREATE_AGENT` only |
 | `gen_ai.tool.name` | When `op=Op.EXECUTE_TOOL` |
 | `gen_ai.tool.type` | When `op=Op.EXECUTE_TOOL` (set to `"function"`) |
 | `gen_ai.input.messages` / `gen_ai.output.messages` | All ops except `execute_tool` |

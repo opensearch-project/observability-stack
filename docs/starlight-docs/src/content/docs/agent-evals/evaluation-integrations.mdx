@@ -30,7 +30,7 @@ Third-party evaluation APIs change often. The examples were run with DeepEval 4.
 All examples evaluate the same agent: a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock with one retrieval tool, `search_docs`, over a small in-memory doc set. Save it as `my_agent.py` next to the examples.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
 export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
 ```
 
@@ -116,7 +116,7 @@ def ask(question: str) -> AgentRun:
 [DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection. Wrap each metric in a `@scorer` and run the suite with `evaluate()`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents deepeval aiobotocore
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
 ```
 
 Install `aiobotocore` in the same command: DeepEval's Bedrock model needs it, and installing it later can leave mismatched `boto3` and `botocore` versions.
@@ -124,7 +124,7 @@ Install `aiobotocore` in the same command: DeepEval's Bedrock model needs it, an
 ```python
 """deepeval_suite.py: an offline suite run, with DeepEval metrics on an Amazon Bedrock judge.
 
-pip install opensearch-genai-observability-sdk-py strands-agents deepeval aiobotocore
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
 """
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.models import AmazonBedrockModel
@@ -224,13 +224,13 @@ provider.force_flush()
 [RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness. RAGAS judges a dataset, so run the agent on each case first, build the dataset from its answers and retrieved passages, then log each case with `Benchmark`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents ragas datasets "langchain-community<0.4" langchain-aws
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
 ```
 
 ```python
 """ragas_suite.py: an offline suite run, with RAGAS metrics on an Amazon Bedrock judge.
 
-pip install opensearch-genai-observability-sdk-py strands-agents ragas datasets "langchain-community<0.4" langchain-aws
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
 """
 from datasets import Dataset
 from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
@@ -333,13 +333,13 @@ provider.force_flush()
 [MLflow](https://mlflow.org/) 3 evaluates GenAI apps with `mlflow.genai.evaluate()` and built-in LLM judges (scorers). Run it with your agent as `predict_fn`, then log each case's judgments with `Benchmark`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents "mlflow>=3"
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
 ```
 
 ```python
 """mlflow_suite.py: an offline suite run, with MLflow 3 built-in judges on Amazon Bedrock.
 
-pip install opensearch-genai-observability-sdk-py strands-agents "mlflow>=3"
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
 The bedrock:/ judge provider reads AWS keys from environment variables (AWS_ACCESS_KEY_ID, ...).
 """
 import mlflow
@@ -448,7 +448,7 @@ provider.force_flush()
 Use `evaluate()` in your test suite and gate the test on the run's summary:
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents pytest
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents pytest
 ```
 
 ```python
