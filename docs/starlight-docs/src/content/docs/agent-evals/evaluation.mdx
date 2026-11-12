@@ -167,7 +167,7 @@ retriever = OpenSearchTraceRetriever(host="https://localhost:9200", auth=("admin
 
 since = datetime.now(timezone.utc) - timedelta(minutes=60)
 roots = retriever.list_root_spans(services=["my-agent"], since=since, max_results=50)
-done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots])
+done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots], evaluator="answer_quality_judge")
 
 for root in roots:
     if root.trace_id in done or random.random() > 0.5:  # skip scored traces, sample 50%
@@ -178,7 +178,7 @@ for root in roots:
     score("answer_quality", verdict["score"], trace_id=root.trace_id, span_id=root.span_id,
           explanation=verdict["reason"], threshold=4, score_min=1, score_max=5,
           evaluator="answer_quality_judge", evaluator_type="llm_judge",
-          agent_name=root.agent_name)
+          agent_name=root.agent_name, agent_version=root.agent_version)
 ```
 
 </TabItem>
@@ -196,14 +196,15 @@ const retriever = new OpenSearchTraceRetriever({
 
 const since = new Date(Date.now() - 60 * 60 * 1000);
 const roots = await retriever.listRootSpans({ services: ["my-agent"], since, maxResults: 50 });
-const done = await retriever.findEvaluatedTraceIds(roots.map((r) => r.traceId));
+const done = await retriever.findEvaluatedTraceIds(roots.map((r) => r.traceId), { evaluator: "answer_quality_judge" });
 
 for (const root of roots) {
   if (done.has(root.traceId) || Math.random() > 0.5) continue;
   const verdict = await judge(root.inputMessages[0]?.content ?? "", root.outputMessages.at(-1)?.content ?? "");
   score({ name: "answer_quality", value: verdict.score, traceId: root.traceId, spanId: root.spanId,
           explanation: verdict.reason, threshold: 4, scoreMin: 1, scoreMax: 5,
-          evaluator: "answer_quality_judge", evaluatorType: "llm_judge", agentName: root.agentName });
+          evaluator: "answer_quality_judge", evaluatorType: "llm_judge",
+          agentName: root.agentName, agentVersion: root.agentVersion });
 }
 await provider.forceFlush();
 ```
@@ -211,7 +212,7 @@ await provider.forceFlush();
 </TabItem>
 </Tabs>
 
-Run it on a schedule. `find_evaluated_trace_ids()` makes it safe to re-run. The stack's eval canary (`docker-compose/agent-eval-canary/`) is a working example with deterministic checks.
+Run it on a schedule. `find_evaluated_trace_ids(..., evaluator=...)` makes it safe to re-run: it skips traces this judge already scored, while results from other evaluators don't count. Pass the agent version from the span record too, or the judge's results group under "(no version)" on the agent page. The stack's eval canary (`docker-compose/agent-eval-canary/`) is a working example with deterministic checks.
 
 ---
 
@@ -338,7 +339,7 @@ await provider.forceFlush();
 </TabItem>
 </Tabs>
 
-`scores` is a list of `EvalScore` or a `{name: value}` map. `log(error_type="TimeoutError", ...)` sends every listed score as an error result. `EvalScore` has no evaluator fields yet, so Benchmark results carry no evaluator name or type. `Benchmark` stamps `test.*` and `cicd.pipeline.*` on the results only, not on your agent spans; results still link to the agent run by `trace_id` / `span_id`.
+`scores` is a list of `EvalScore` or a `{name: value}` map. `log(error_type="TimeoutError", ...)` sends every listed score as an error result. Set `evaluator` and `evaluator_type` on an `EvalScore` (`evaluator` / `evaluatorType` in TypeScript), or as defaults on `log()`; a score's own value wins. `Benchmark` stamps `test.*` and `cicd.pipeline.*` on the results only, not on your agent spans; results still link to the agent run by `trace_id` / `span_id`.
 
 ## Cases, expected output and runs
 
@@ -357,11 +358,11 @@ Reads stored agent traces back from OpenSearch, for evaluator jobs and trace-bas
 
 | Method (Python / TypeScript) | Returns |
 |---|---|
-| `list_root_spans(services=, since=, max_results=)` / `listRootSpans({...})` | One `SpanRecord` per recent trace: the root span with its agent name, messages and token counts |
+| `list_root_spans(services=, since=, max_results=)` / `listRootSpans({...})` | One `SpanRecord` per recent trace: its agent root (the marked agent span, else the span without a parent, as in Agent Traces) with its agent name and version, messages and token counts |
 | `get_traces(identifier)` / `getTraces(id)` | A `SessionRecord`: all traces of a conversation id (`gen_ai.conversation.id`) or of one trace id, with their spans |
-| `find_evaluated_trace_ids(trace_ids)` / `findEvaluatedTraceIds(ids)` | The ids that already have a `gen_ai.evaluation.result` |
+| `find_evaluated_trace_ids(trace_ids, evaluator=None, evaluation_name=None)` / `findEvaluatedTraceIds(ids, { evaluator, evaluationName })` | The ids that already have a `gen_ai.evaluation.result`, from any evaluator or only from the given evaluator or evaluation |
 
-`SpanRecord` carries `trace_id`, `span_id`, `parent_span_id`, `operation_name`, `agent_name`, `model`, `input_messages`, `output_messages`, `tool_name`, `tool_call_arguments`, `tool_call_result`, `input_tokens`, `output_tokens` and the raw document. For Amazon OpenSearch Service, pass a SigV4 `auth` (Python: `RequestsAWSV4SignerAuth`).
+`SpanRecord` carries `trace_id`, `span_id`, `parent_span_id`, `operation_name`, `agent_name`, `agent_version`, `model`, `input_messages`, `output_messages`, `tool_name`, `tool_call_arguments`, `tool_call_result`, `input_tokens`, `output_tokens` and the raw document. For Amazon OpenSearch Service, pass a SigV4 `auth` (Python: `RequestsAWSV4SignerAuth`).
 
 Spans are exported in batches and ingested a few seconds later. In a trace-based scorer, call `force_flush()` on the provider first and poll until the span count is stable.
 
