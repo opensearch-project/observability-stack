@@ -1234,6 +1234,26 @@ describe('evaluationTemplateContent', () => {
     assert.equal(t.version, 1);
     assert.equal(t.priority, 100);
   });
+
+  it('maps every field the Agent Evaluations UI queries from index creation', () => {
+    const fields = {};
+    const flatten = (props, prefix) => {
+      for (const [k, v] of Object.entries(props)) {
+        if (v.properties) flatten(v.properties, `${prefix}${k}.`);
+        else fields[`${prefix}${k}`] = v;
+      }
+    };
+    flatten(JSON.parse(evaluationTemplateContent()).template.mappings.properties, '');
+    const keyword = { type: 'keyword', ignore_above: 256 };
+    assert.deepEqual(fields.eventName, { type: 'text', fields: { keyword } });
+    for (const f of [
+      'error.type', 'gen_ai.evaluation.name', 'gen_ai.evaluation.score.label', 'gen_ai.agent.name',
+      'gen_ai.agent.version', 'gen_ai.conversation.id', 'test.suite.name', 'test.suite.run.id', 'test.case.id',
+      'opensearch.gen_ai.evaluation.level', 'opensearch.gen_ai.evaluation.score.direction',
+    ]) assert.deepEqual(fields[`attributes.${f}`], keyword, f);
+    assert.deepEqual(fields['attributes.gen_ai.evaluation.score.value'], { type: 'double' });
+    assert.deepEqual(fields['attributes.gen_ai.evaluation.explanation'], { type: 'text' });
+  });
 });
 
 /** Fake domain: a map of "METHOD path" -> [status, body], recording every call. */

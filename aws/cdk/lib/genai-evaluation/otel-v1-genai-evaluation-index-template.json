@@ -164,6 +164,15 @@
           "type": "keyword",
           "ignore_above": 16
         },
+        "eventName": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
         "flags": {
           "type": "long"
         },
@@ -177,11 +186,19 @@
                       "properties": {
                         "value": {
                           "type": "double"
+                        },
+                        "label": {
+                          "type": "keyword",
+                          "ignore_above": 256
                         }
                       }
                     },
                     "explanation": {
                       "type": "text"
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
                 },
@@ -190,12 +207,24 @@
                     "version": {
                       "type": "keyword",
                       "ignore_above": 256
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
                 },
                 "prompt": {
                   "properties": {
                     "version": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "conversation": {
+                  "properties": {
+                    "id": {
                       "type": "keyword",
                       "ignore_above": 256
                     }
@@ -219,6 +248,10 @@
                             },
                             "threshold": {
                               "type": "double"
+                            },
+                            "direction": {
+                              "type": "keyword",
+                              "ignore_above": 256
                             }
                           }
                         },
@@ -229,6 +262,10 @@
                               "ignore_above": 256
                             }
                           }
+                        },
+                        "level": {
+                          "type": "keyword",
+                          "ignore_above": 256
                         }
                       }
                     }
@@ -255,8 +292,20 @@
                           "ignore_above": 256
                         }
                       }
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
                     }
                   }
+                }
+              }
+            },
+            "error": {
+              "properties": {
+                "type": {
+                  "type": "keyword",
+                  "ignore_above": 256
                 }
               }
             }
