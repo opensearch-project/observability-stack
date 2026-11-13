@@ -10,6 +10,7 @@ import {
   createOsiPipeline,
   mapOsiRoleInDomain,
   mapOsiRoleViaOpenSearchUI,
+  setupEvaluationIndex,
   createAossDataAccessPolicy,
   setupDashboards,
   createConnectedDataSourceRole,
@@ -143,6 +144,13 @@ export async function executePipeline(cfg) {
   // Map OSI role in managed domain FGAC (skip for serverless — IAM-only)
   if (cfg.opensearchType !== 'serverless' && cfg.opensearchEndpoint && cfg.iamRoleArn) {
     await mapOsiRoleInDomain(cfg);
+    console.error();
+  }
+
+  // Evaluation index (managed only): rollover policy, template and write alias. Runs before the
+  // OSIS pipeline is created, since the pipeline's sink otherwise creates a plain index first.
+  if (cfg.opensearchType !== 'serverless' && cfg.opensearchEndpoint) {
+    await setupEvaluationIndex(cfg);
     console.error();
   }
 

@@ -1,247 +1,841 @@
 ---
 title: "Evaluation Integrations"
-description: "Bridge external evaluation frameworks like DeepEval, RAGAS, MLflow, and pytest into the observability stack"
+description: "Send results from DeepEval, RAGAS, MLflow, Langfuse, pytest or any other evaluation library to Agent Evaluations, offline with evaluate() or Benchmark and online with score()"
+sidebar:
+  order: 5
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-The `Benchmark` class bridges any evaluation framework into the observability stack. Run your evaluations with your preferred tool, then upload the results as OTel spans so everything is queryable in one place.
+Keep the evaluation library you already use. Run it as usual, then send its numbers with the SDK, so they land as `gen_ai.evaluation.result` events next to your agent traces and show up in **Agent monitoring > Evaluations**:
+
+- **Offline** (a dataset run): `evaluate()` with a `@scorer` around the library's metric, or `Benchmark` with one `log()` per case when the library runs the agent itself. Each case gets `test.suite.name`, `test.suite.run.id` and `test.case.id`, and each result links to the case's agent trace.
+- **Online** (scoring live traces): `score()` with the trace and span ids of the judged agent run.
+
+For every result, declare:
+
+- a pass rule (`threshold`, or a `pass` / `fail` label), so results get a verdict instead of a neutral "Scored";
+- the evaluator: `evaluator` (for example `deepeval.AnswerRelevancyMetric`) and `evaluator_type` (`llm_judge`, `code`, `human` or `external`), on the `@scorer`, on each `EvalScore`, or once per case on `b.log()` (a score's own value wins). The result flyout shows which library and metric produced it;
+- a stable `case_id`, so runs can be compared case by case;
+- the agent: `agent_name` and `agent_version` on `register()` (or on `evaluate()` / `Benchmark`), or the results show as "(no agent name)" or "(no version)".
+
+Results are routed and stored as described in [Data Model & Ingestion](/docs/agent-evals/data-model/). Every example on this page ran against a real agent and real LLM judges on Amazon Bedrock and was checked in OpenSearch and in the Evaluations pages.
 
 <Aside type="note">
-Third-party framework APIs change frequently. The examples below show the integration pattern — adapt imports and method calls to your installed version. The SDK side (`Benchmark`, `b.log()`, `evaluate()`, `EvalScore`) is stable.
+Third-party evaluation APIs change often. The examples were run with DeepEval 4.3, RAGAS 0.4, MLflow 3.18 and pytest 9.2; adapt imports and method calls to your installed version. The SDK side (`evaluate()`, `scorer`, `Benchmark`, `log()`, `score()`, `EvalScore`) is what this page documents.
 </Aside>
+
+## The agent under test
+
+All examples evaluate the same agent: a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock with one retrieval tool, `search_docs`, over a small in-memory doc set. Save it as `my_agent.py` next to the examples.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
+export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
+```
+
+```python
+"""my_agent.py: the agent under test.
+
+A Strands agent on Amazon Bedrock with one retrieval tool. ask() is the agent run: an @observe span
+marked as the agent root, with the question and answer recorded as its input and output messages.
+"""
+import os
+from dataclasses import dataclass
+
+from opentelemetry import trace
+from strands import Agent, tool
+from strands.models.bedrock import BedrockModel
+
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe
+
+AGENT_NAME = "my_agent"
+AGENT_VERSION = os.environ.get("AGENT_VERSION", "v1")
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+REGION = "us-west-2"
+SYSTEM_PROMPT = (
+    "You answer questions about OpenSearch and observability. Call search_docs first and answer "
+    "only from the passages it returns, in at most two sentences. If it finds nothing, say so."
+)
+
+DOCS = {
+    "opensearch": "OpenSearch is a community-driven, open-source search and analytics suite "
+                  "derived from Elasticsearch 7.10.2 and Kibana 7.10.2.",
+    "otlp": "OTLP, the OpenTelemetry Protocol, encodes and transports telemetry (traces, metrics, logs) "
+            "between sources, collectors and backends.",
+    "rag": "Retrieval-augmented generation (RAG) retrieves documents relevant to a question, then "
+           "passes them to an LLM so the answer is grounded in them.",
+    "data prepper": "Data Prepper is a server-side data collector that filters, enriches, transforms "
+                    "and routes logs and traces to OpenSearch.",
+}
+_retrieved: list[str] = []  # passages search_docs returned during the current ask()
+
+
+@tool
+def search_docs(query: str) -> str:
+    """Search the product docs and return the matching passages."""
+    hits = [text for key, text in DOCS.items() if key in query.lower()]
+    _retrieved.extend(hits)
+    return "\n".join(hits) or "No matching passages."
+
+
+@dataclass
+class AgentRun:
+    answer: str
+    contexts: list[str]  # the passages the agent retrieved
+    trace_id: str        # the agent run, to link results to it
+    span_id: str
+
+
+def _text(role: str, text: str) -> list[dict]:
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(question: str) -> AgentRun:
+    mark_agent_root()  # this span, not Strands' inner invoke_agent span, is the agent run
+    enrich(input_messages=_text("user", question), **{"gen_ai.agent.version": AGENT_VERSION})
+    _retrieved.clear()
+    agent = Agent(name=AGENT_NAME, model=BedrockModel(model_id=MODEL_ID, region_name=REGION),
+                  tools=[search_docs], system_prompt=SYSTEM_PROMPT, callback_handler=None)
+    answer = str(agent(question)).strip()
+    enrich(output_messages=_text("assistant", answer))  # the agent's output in Agent Traces and on the run page
+    ctx = trace.get_current_span().get_span_context()
+    return AgentRun(answer, list(_retrieved), format(ctx.trace_id, "032x"), format(ctx.span_id, "016x"))
+```
+
+- `ask()` is one agent run: an `@observe` span marked as the agent root, with the question and answer as its input and output messages. Because `enrich()` sets the output messages, `@observe` does not record the returned `AgentRun` as the agent's output.
+- `AgentRun` carries the answer, the passages the agent retrieved (so RAG metrics judge the real retrieval context) and the agent span's `trace_id` and `span_id` (so results logged with `Benchmark` or `score()` link to it).
+- `AGENT_VERSION` comes from the environment, so the same scripts produce a `v1` and a `v2` run: `python <example>.py`, then `AGENT_VERSION=v2 python <example>.py`.
+- Replace `ask()` with your own agent: keep the `@observe` span, `mark_agent_root()`, the messages and the version.
 
 ---
 
 ## DeepEval
 
-[DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection.
+[DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection. Wrap each metric in a `@scorer` and run the suite with `evaluate()`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py deepeval
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
 ```
+
+Install `aiobotocore` in the same command: DeepEval's Bedrock model needs it, and installing it later can leave mismatched `boto3` and `botocore` versions.
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Benchmark
+"""deepeval_suite.py: an offline suite run, with DeepEval metrics on an Amazon Bedrock judge.
+
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
+"""
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
+from deepeval.models import AmazonBedrockModel
 from deepeval.test_case import LLMTestCase
 
-register(service_name="deepeval-eval")
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, REGION, ask
+from opensearch_genai_observability_sdk_py import EvalScore, evaluate, register, scorer
 
-# Define your test cases
-test_cases = [
-    {
-        "input": "What is OpenSearch?",
-        "output": "OpenSearch is an open-source search and analytics engine.",
-        "expected": "OpenSearch is a search and analytics engine.",
-        "context": ["OpenSearch is an open-source search and analytics suite."],
-    },
-    {
-        "input": "How does RAG work?",
-        "output": "RAG retrieves relevant documents and uses them to generate answers.",
-        "expected": "Retrieval-augmented generation combines retrieval with generation.",
-        "context": ["RAG first retrieves documents, then feeds them to an LLM."],
-    },
-]
+provider = register(service_name="deepeval-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
-# Run DeepEval metrics and upload results
-relevancy = AnswerRelevancyMetric(model="gpt-4o")
-faithfulness = FaithfulnessMetric(model="gpt-4o")
+judge = AmazonBedrockModel(model=MODEL_ID, region=REGION)  # any DeepEval model, for example "gpt-4o"
+relevancy = AnswerRelevancyMetric(model=judge, threshold=0.7)
+faithfulness = FaithfulnessMetric(model=judge, threshold=0.7)
 
-with Benchmark("deepeval_run", metadata={"framework": "deepeval"}) as b:
-    for case in test_cases:
-        tc = LLMTestCase(
-            input=case["input"],
-            actual_output=case["output"],
-            expected_output=case["expected"],
-            retrieval_context=case["context"],
-        )
-        relevancy.measure(tc)
-        faithfulness.measure(tc)
-        b.log(
-            input=case["input"],
-            output=case["output"],
-            expected=case["expected"],
-            scores={
-                "answer_relevancy": relevancy.score,
-                "faithfulness": faithfulness.score,
-            },
-            case_name=case["input"][:50],
-        )
+
+def test_case(input, output, expected) -> LLMTestCase:
+    return LLMTestCase(input=input, actual_output=output.answer, expected_output=expected,
+                       retrieval_context=output.contexts or None)  # None when the agent retrieved nothing
+
+
+@scorer(name="answer_relevancy", threshold=0.7, score_min=0, score_max=1,
+        evaluator="deepeval.AnswerRelevancyMetric", evaluator_type="llm_judge", judge_model=MODEL_ID)
+def answer_relevancy(input, output, expected) -> EvalScore:
+    relevancy.measure(test_case(input, output, expected))
+    return EvalScore(name="answer_relevancy", value=relevancy.score, explanation=relevancy.reason)
+
+
+@scorer(name="faithfulness", threshold=0.7, score_min=0, score_max=1,
+        evaluator="deepeval.FaithfulnessMetric", evaluator_type="llm_judge", judge_model=MODEL_ID)
+def faithful(input, output, expected) -> EvalScore:
+    faithfulness.measure(test_case(input, output, expected))  # raises without a retrieval context
+    return EvalScore(name="faithfulness", value=faithfulness.score, explanation=faithfulness.reason)
+
+
+result = evaluate(
+    name="my-agent-deepeval",
+    task=ask,
+    data=[
+        {"case_id": "opensearch", "case_name": "What is OpenSearch", "input": "What is OpenSearch?",
+         "expected": "An open-source search and analytics suite."},
+        {"case_id": "otlp", "case_name": "What OTLP does", "input": "What does OTLP do?",
+         "expected": "It transports traces, metrics and logs."},
+        {"case_id": "rag", "case_name": "How RAG works", "input": "How does RAG work?",
+         "expected": "It retrieves documents, then generates an answer grounded in them."},
+        {"case_id": "greeting", "case_name": "Greeting, nothing to retrieve", "input": "Hi there!",
+         "expected": "A short greeting."},
+    ],
+    scores=[answer_relevancy, faithful],
+    run_name=f"{AGENT_VERSION} deepeval judges",
+)
+print("run id:", result.summary.run_id)
+provider.force_flush()
 ```
 
-<Aside type="tip">
-DeepEval also has a `deepeval.evaluate()` function that runs all metrics at once. You can use either approach — the key is extracting the numeric scores and passing them to `b.log()`.
-</Aside>
+- `evaluate()` runs `ask()` per case, stamps `test.*` on each case's agent span and links every result to it, without passing ids.
+- A metric that raises becomes an evaluator error result. In this suite, the `greeting` case retrieves nothing, so `FaithfulnessMetric` raises `MissingTestCaseParamsError`: the run gets one result with `error.type = MissingTestCaseParamsError` and no value or label, the run page counts it under **Evaluator errors**, and the summary prints `Errors: 1`. The error message stays local.
+- Set `DEEPEVAL_TELEMETRY_OPT_OUT=YES` if you don't want DeepEval's own telemetry.
+
+Online, score a live agent run with the same metric:
+
+```python
+"""deepeval_online.py: score a live agent run with a DeepEval metric (online, no suite)."""
+from deepeval.metrics import AnswerRelevancyMetric
+from deepeval.models import AmazonBedrockModel
+from deepeval.test_case import LLMTestCase
+
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, REGION, ask
+from opensearch_genai_observability_sdk_py import register, score
+
+provider = register(service_name="deepeval-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+relevancy = AnswerRelevancyMetric(model=AmazonBedrockModel(model=MODEL_ID, region=REGION), threshold=0.7)
+
+question = "What is Data Prepper used for?"
+run = ask(question)  # a live request
+relevancy.measure(LLMTestCase(input=question, actual_output=run.answer))
+score(
+    "answer_relevancy",
+    relevancy.score,
+    trace_id=run.trace_id,  # the judged agent run
+    span_id=run.span_id,
+    explanation=relevancy.reason,
+    evaluator="deepeval.AnswerRelevancyMetric",
+    evaluator_type="llm_judge",
+    judge_model=MODEL_ID,
+    threshold=0.7,
+    score_min=0,
+    score_max=1,
+)  # agent_name / agent_version come from register()
+print(run.answer, "->", relevancy.score)
+provider.force_flush()
+```
 
 ---
 
 ## RAGAS
 
-[RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness.
+[RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness. RAGAS judges a dataset, so run the agent on each case first, build the dataset from its answers and retrieved passages, then log each case with `Benchmark`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py ragas datasets
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Benchmark
-from ragas import evaluate as ragas_evaluate
-from ragas.metrics import faithfulness, answer_correctness, context_precision
+"""ragas_suite.py: an offline suite run, with RAGAS metrics on an Amazon Bedrock judge.
+
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
+"""
 from datasets import Dataset
+from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
+from ragas import evaluate as ragas_evaluate
+from ragas.embeddings import LangchainEmbeddingsWrapper
+from ragas.llms import LangchainLLMWrapper
+from ragas.metrics import answer_correctness, context_precision, faithfulness
 
-register(service_name="ragas-eval")
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, REGION, ask
+from opensearch_genai_observability_sdk_py import Benchmark, EvalScore, register
 
-# Prepare your RAG evaluation dataset
-data = {
-    "question": ["What is OpenSearch?", "How does RAG work?"],
-    "answer": [
-        "OpenSearch is an open-source search and analytics engine.",
-        "RAG retrieves documents and generates answers from them.",
-    ],
-    "contexts": [
-        ["OpenSearch is a community-driven, open-source search and analytics suite."],
-        ["RAG combines information retrieval with text generation."],
-    ],
-    "ground_truth": [
-        "OpenSearch is a search and analytics engine.",
-        "Retrieval-augmented generation retrieves then generates.",
-    ],
-}
-dataset = Dataset.from_dict(data)
+provider = register(service_name="ragas-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
-# Run RAGAS evaluation
-ragas_result = ragas_evaluate(
+# RAGAS uses OpenAI by default; pass llm= and embeddings= for another provider (here Amazon Bedrock).
+llm = LangchainLLMWrapper(ChatBedrockConverse(model=MODEL_ID, region_name=REGION))
+embeddings = LangchainEmbeddingsWrapper(BedrockEmbeddings(model_id="amazon.titan-embed-text-v2:0", region_name=REGION))
+
+cases = [
+    {"case_id": "opensearch", "input": "What is OpenSearch?",
+     "expected": "OpenSearch is an open-source search and analytics suite."},
+    {"case_id": "otlp", "input": "What does OTLP do?",
+     "expected": "OTLP transports traces, metrics and logs between sources, collectors and backends."},
+    {"case_id": "rag", "input": "How does RAG work?",
+     "expected": "RAG retrieves relevant documents and gives them to an LLM to ground the answer."},
+]
+runs = [ask(c["input"]) for c in cases]  # run the agent: one trace per case
+
+dataset = Dataset.from_dict({
+    "question": [c["input"] for c in cases],
+    "answer": [r.answer for r in runs],
+    "contexts": [r.contexts for r in runs],  # the passages the agent actually retrieved
+    "ground_truth": [c["expected"] for c in cases],
+})
+df = ragas_evaluate(
     dataset=dataset,
     metrics=[faithfulness, answer_correctness, context_precision],
-)
+    llm=llm,
+    embeddings=embeddings,
+    raise_exceptions=True,  # by default a failed judge call becomes NaN
+).to_pandas()
 
-# Upload results to OpenSearch via Benchmark
-df = ragas_result.to_pandas()
-with Benchmark("ragas_eval", metadata={"framework": "ragas"}) as b:
-    for i, row in df.iterrows():
+THRESHOLDS = {"faithfulness": 0.7, "answer_correctness": 0.6, "context_precision": 0.7}  # your pass rules
+with Benchmark("my-agent-ragas", run_name=f"{AGENT_VERSION} ragas judges", metadata={"framework": "ragas"}) as b:
+    for case, run, (_, row) in zip(cases, runs, df.iterrows()):
         b.log(
-            input=data["question"][i],
-            output=data["answer"][i],
-            expected=data["ground_truth"][i],
-            scores={col: row[col] for col in df.columns if col not in data},
-            case_name=data["question"][i][:50],
+            case_id=case["case_id"], case_name=case["input"],
+            input=case["input"], output=run.answer, expected=case["expected"],
+            trace_id=run.trace_id, span_id=run.span_id,  # link the results to the agent run
+            scores=[EvalScore(name=m, value=float(row[m]), threshold=t, score_min=0, score_max=1,
+                              evaluator=f"ragas.{m}", evaluator_type="llm_judge")
+                    for m, t in THRESHOLDS.items()],
         )
+provider.force_flush()
 ```
 
-<Aside type="note">
-RAGAS v0.2+ changed its dataset format and metric API. If you're on v0.2+, check the [RAGAS migration guide](https://docs.ragas.io/) for the updated `evaluate()` signature. The SDK-side `Benchmark.log()` call stays the same — only the RAGAS imports and `evaluate()` call change.
-</Aside>
+- Pass `raise_exceptions=True`. By default RAGAS turns a failed judge call into `NaN`, which would be sent as a score.
+- Pass `trace_id` and `span_id` from the agent run to `b.log()`, or the results have no **View trace** link and the result flyout cannot show what the judge saw.
+- RAGAS returns no reason text, so these results have no explanation. On RAGAS 0.4 the `ragas.metrics` imports and the Langchain wrappers print deprecation warnings; they are harmless.
+- `Benchmark` logs all results at the end, so the run page shows a duration of a few milliseconds, not the time the agent and judges took.
+
+Online, give the metric its judge first: outside `ragas.evaluate()` a metric has no LLM.
+
+```python
+"""ragas_online.py: score a live agent run with a RAGAS metric (online, no suite)."""
+from langchain_aws import ChatBedrockConverse
+from ragas.dataset_schema import SingleTurnSample
+from ragas.llms import LangchainLLMWrapper
+from ragas.metrics import faithfulness
+
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, REGION, ask
+from opensearch_genai_observability_sdk_py import register, score
+
+provider = register(service_name="ragas-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+faithfulness.llm = LangchainLLMWrapper(ChatBedrockConverse(model=MODEL_ID, region_name=REGION))  # outside evaluate()
+
+question = "What is Data Prepper used for?"
+run = ask(question)  # a live request
+value = faithfulness.single_turn_score(
+    SingleTurnSample(user_input=question, response=run.answer, retrieved_contexts=run.contexts))
+score(
+    "faithfulness",
+    value,
+    trace_id=run.trace_id,  # the judged agent run
+    span_id=run.span_id,
+    evaluator="ragas.faithfulness",
+    evaluator_type="llm_judge",
+    judge_model=MODEL_ID,
+    threshold=0.7,
+    score_min=0,
+    score_max=1,
+)
+print(run.answer, "->", value)
+provider.force_flush()
+```
 
 ---
 
 ## MLflow
 
-[MLflow](https://mlflow.org/) tracks ML experiments. Export MLflow evaluation results into the observability stack:
+[MLflow](https://mlflow.org/) 3 evaluates GenAI apps with `mlflow.genai.evaluate()` and built-in LLM judges (scorers). Run it with your agent as `predict_fn`, then log each case's judgments with `Benchmark`.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py mlflow
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, Benchmark
+"""mlflow_suite.py: an offline suite run, with MLflow 3 built-in judges on Amazon Bedrock.
+
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
+The bedrock:/ judge provider reads AWS keys from environment variables (AWS_ACCESS_KEY_ID, ...).
+"""
 import mlflow
-import pandas as pd
+from mlflow.genai.scorers import Correctness, RelevanceToQuery
 
-register(service_name="mlflow-eval")
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, ask
+from opensearch_genai_observability_sdk_py import Benchmark, EvalScore, register
 
-# Prepare evaluation data as a DataFrame
-eval_df = pd.DataFrame([
-    {"inputs": "What is OpenSearch?", "ground_truth": "search engine"},
-    {"inputs": "What is OTEL?", "ground_truth": "observability framework"},
-])
+provider = register(service_name="mlflow-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+JUDGE = f"bedrock:/{MODEL_ID}"  # any MLflow judge provider, for example "openai:/gpt-4o"
+SCORERS = {"correctness": "Correctness", "relevance_to_query": "RelevanceToQuery"}
 
-# Run MLflow evaluation
-with mlflow.start_run():
-    mlflow_result = mlflow.evaluate(
-        model="openai:/gpt-4o",
-        data=eval_df,
-        targets="ground_truth",
-        model_type="question-answering",
-    )
+cases = [
+    {"case_id": "opensearch", "input": "What is OpenSearch?",
+     "expected": "OpenSearch is an open-source search and analytics suite."},
+    {"case_id": "otlp", "input": "What does OTLP do?",
+     "expected": "OTLP transports traces, metrics and logs."},
+    {"case_id": "data-prepper", "input": "What is Data Prepper?",
+     "expected": "A server-side collector that routes logs and traces to OpenSearch."},
+]
+runs = {}  # question -> AgentRun
 
-# Upload to observability stack
-results_df = mlflow_result.tables["eval_results_table"]
-with Benchmark("mlflow_eval", metadata={"framework": "mlflow"}) as b:
-    for _, row in results_df.iterrows():
+
+def predict_fn(question):
+    runs[question] = ask(question)
+    return runs[question].answer
+
+
+result = mlflow.genai.evaluate(
+    data=[{"inputs": {"question": c["input"]}, "expectations": {"expected_response": c["expected"]}} for c in cases],
+    predict_fn=predict_fn,
+    scorers=[Correctness(model=JUDGE), RelevanceToQuery(model=JUDGE)],
+)
+df = result.result_df
+errors = {n: df[f"{n}/error_message"].dropna().tolist() for n in SCORERS if f"{n}/error_message" in df}
+if any(errors.values()):  # MLflow records judge failures in the table instead of raising
+    raise RuntimeError(f"MLflow judges failed: {errors}")
+
+
+def rationale(row, name):
+    for a in row.get("assessments") or []:
+        if a.get("assessment_name") == name:
+            return a.get("rationale")
+
+
+with Benchmark("my-agent-mlflow", run_name=f"{AGENT_VERSION} mlflow judges", metadata={"framework": "mlflow"}) as b:
+    for _, row in df.iterrows():
+        case = next(c for c in cases if c["expected"] == row["expected_response/value"])  # match by expectations
+        run = runs[case["input"]]
         b.log(
-            input=row.get("inputs", ""),
-            output=row.get("outputs", ""),
-            expected=row.get("ground_truth", ""),
-            scores={
-                k: v for k, v in mlflow_result.metrics.items()
-                if isinstance(v, (int, float))
-            },
+            case_id=case["case_id"], case_name=case["input"],
+            input=case["input"], output=run.answer, expected=case["expected"],
+            trace_id=run.trace_id, span_id=run.span_id,  # link the results to the agent run
+            scores=[
+                EvalScore(name=n, value=1.0 if row[f"{n}/value"] == "yes" else 0.0,
+                          label="pass" if row[f"{n}/value"] == "yes" else "fail",  # yes / no -> verdict
+                          explanation=rationale(row, n), evaluator=f"mlflow.{cls}", evaluator_type="llm_judge")
+                for n, cls in SCORERS.items()
+            ],
         )
+provider.force_flush()
 ```
 
-<Aside type="note">
-MLflow's `evaluate()` API varies across versions. The `model_type` parameter was deprecated in MLflow 2.12+ in favor of `evaluators`. Check [MLflow evaluate docs](https://mlflow.org/docs/latest/llms/llm-evaluate/index.html) for your version.
-</Aside>
+- MLflow records judge failures in the result table instead of raising. Keep the check above: without it, a run whose judges all failed sends no results and still looks successful locally.
+- The `bedrock:/` judge provider reads AWS keys from environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`), not from `AWS_PROFILE` or the shared credentials file.
+- MLflow's built-in judges return `yes` / `no`, which map to `pass` / `fail`, with the judge's rationale as the explanation. `result_df` does not keep your inputs as given, so match rows by their expectations, as above.
+- MLflow may call `predict_fn` once more than there are cases, which records one extra agent trace without results.
+- MLflow writes `mlruns/` and `mlflow.db` in the working directory. Set `MLFLOW_DISABLE_AGENT_HINT=1` to silence its hint about its own trace skill.
+
+Online, call a judge directly on a live agent run:
+
+```python
+"""mlflow_online.py: score a live agent run with an MLflow judge (online, no suite)."""
+from mlflow.genai.scorers import RelevanceToQuery
+
+from my_agent import AGENT_NAME, AGENT_VERSION, MODEL_ID, ask
+from opensearch_genai_observability_sdk_py import register, score
+
+provider = register(service_name="mlflow-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+
+question = "What is Data Prepper used for?"
+run = ask(question)  # a live request
+feedback = RelevanceToQuery(model=f"bedrock:/{MODEL_ID}")(inputs={"question": question}, outputs=run.answer)
+if feedback.error:  # a failed judge call returns an error instead of raising
+    raise RuntimeError(f"MLflow judge failed: {feedback.error}")
+ok = feedback.value == "yes"
+score(
+    "relevance_to_query",
+    1.0 if ok else 0.0,
+    trace_id=run.trace_id,  # the judged agent run
+    span_id=run.span_id,
+    label="pass" if ok else "fail",
+    explanation=feedback.rationale,
+    evaluator="mlflow.RelevanceToQuery",
+    evaluator_type="llm_judge",
+    judge_model=MODEL_ID,
+)
+print(run.answer, "->", feedback.value)
+provider.force_flush()
+```
 
 ---
 
 ## pytest
 
-Use `evaluate()` directly in your test suite for CI/CD integration:
+Use `evaluate()` in your test suite and gate the test on the run's summary:
 
 ```bash
-pip install opensearch-genai-observability-sdk-py pytest
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents pytest
 ```
 
 ```python
-# conftest.py — initialize tracing once for all tests
+# conftest.py: set up tracing once for the test session
 import pytest
+
+from my_agent import AGENT_NAME, AGENT_VERSION
 from opensearch_genai_observability_sdk_py import register
 
+
 @pytest.fixture(scope="session", autouse=True)
-def _init_tracing():
-    register(service_name="pytest-eval")
+def _tracing():
+    provider = register(service_name="pytest-evals", agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+    yield
+    provider.force_flush()  # export the last spans and results before pytest exits
 ```
 
 ```python
-# test_agent.py
-from opensearch_genai_observability_sdk_py import evaluate, EvalScore
+# test_agent.py: one evaluate() run per pytest session, gated with asserts
+import boto3
 
-def accuracy_scorer(input, output, expected) -> EvalScore:
-    is_correct = expected.lower() in output.lower()
-    return EvalScore(
-        name="accuracy",
-        value=1.0 if is_correct else 0.0,
-        label="pass" if is_correct else "fail",
-    )
+from my_agent import AGENT_VERSION, MODEL_ID, REGION, ask
+from opensearch_genai_observability_sdk_py import EvalScore, evaluate, scorer
 
-def response_length_scorer(input, output, expected) -> EvalScore:
-    return EvalScore(name="response_length", value=float(len(output)))
+bedrock = boto3.client("bedrock-runtime", region_name=REGION)
 
-def my_agent(input: str) -> str:
-    # Replace with your agent logic
-    return f"Answer to: {input}"
+
+@scorer(name="mentions_expected", evaluator_type="code", description="The answer contains the expected term")
+def mentions_expected(input, output, expected) -> bool:
+    return expected.lower() in output.answer.lower()
+
+
+@scorer(name="response_length", threshold=500, direction="minimize", evaluator_type="code",
+        description="At most two sentences, at most 500 characters")
+def response_length(input, output, expected) -> float:
+    return float(len(output.answer))
+
+
+@scorer(name="grounded", evaluator_type="llm_judge", judge_model=MODEL_ID,
+        description="The answer only states what the retrieved passages say")
+def grounded(input, output, expected) -> EvalScore:
+    prompt = (f"Passages:\n{chr(10).join(output.contexts) or '(none)'}\n\nAnswer:\n{output.answer}\n\n"
+              "Does the answer only state facts found in the passages? Reply PASS or FAIL, then one sentence why.")
+    reply = bedrock.converse(modelId=MODEL_ID, messages=[{"role": "user", "content": [{"text": prompt}]}],
+                             inferenceConfig={"maxTokens": 200, "temperature": 0})
+    text = reply["output"]["message"]["content"][0]["text"].strip()
+    ok = text.upper().startswith("PASS")
+    return EvalScore(name="grounded", value=1.0 if ok else 0.0, label="pass" if ok else "fail", explanation=text)
+
 
 def test_agent_quality():
     result = evaluate(
-        name="ci_regression_test",
-        task=my_agent,
+        name="my-agent-pytest",
+        task=ask,
         data=[
-            {"input": "What is OpenSearch?", "expected": "search"},
-            {"input": "What is OTEL?", "expected": "opentelemetry"},
+            {"case_id": "opensearch", "case_name": "What is OpenSearch", "input": "What is OpenSearch?", "expected": "search"},
+            {"case_id": "otlp", "case_name": "What OTLP does", "input": "What does OTLP do?", "expected": "telemetry"},
+            {"case_id": "rag", "case_name": "How RAG works", "input": "How does RAG work?", "expected": "retriev"},
         ],
-        scores=[accuracy_scorer, response_length_scorer],
+        scores=[mentions_expected, response_length, grounded],
+        run_name=f"{AGENT_VERSION} pytest",
     )
-    avg_accuracy = result.summary.scores["accuracy"].avg
-    assert avg_accuracy >= 0.8, f"Accuracy dropped to {avg_accuracy}"
+    s = result.summary
+    assert s.error_count == 0, "a task or scorer raised"
+    assert s.scores["mentions_expected"].avg >= 0.8, f"mentions_expected fell to {s.scores['mentions_expected'].avg:.2f}"
+    assert s.scores["response_length"].avg <= 500, f"answers average {s.scores['response_length'].avg:.0f} characters"
 ```
 
-Run with: `pytest test_agent.py` — results are recorded as OTel benchmark spans and available in OpenSearch Dashboards.
+Run it with `pytest test_agent.py`. Each test run is one eval run of the suite in OpenSearch Dashboards.
+
+- The scorers show the three kinds of verdict: a `bool` (`mentions_expected`), a number with a threshold and `direction="minimize"` (`response_length`), and an LLM judge that returns a `pass` / `fail` label with its reply as the explanation (`grounded`).
+- The asserts gate on **means** over the run; the Evaluations pages show each result's own verdict. A case can therefore fail (for example `grounded` on one case) while the test passes.
+- Pick realistic bars: two-sentence answers from a real model ran 200 to 420 characters, so a 400-character rule failed now and then, and 500 did not.
+- The session fixture flushes the provider at the end, so the last results are exported before pytest exits. For CI gates and links back to the CI job, see [Run evaluations in CI](/docs/agent-evals/ci/).
+
+---
+
+## Langfuse
+
+[Langfuse](https://langfuse.com/) stores scores (from your code, from human annotation, and from its managed LLM-as-a-judge evaluators) and runs experiments over datasets. Export the app's spans to both Langfuse and OpenSearch first ([Integrations: Langfuse](/docs/send-data/ai-agents/integrations/#langfuse)). A Langfuse trace id is the OpenTelemetry trace id and an observation id is the span id, so every score can be linked to the same span in OpenSearch.
+
+Pick one way per score, so no result is counted twice:
+
+| Langfuse | In Agent Evaluations | How |
+|---|---|---|
+| Scores your app writes | Online results | Write each score to both, in the app |
+| Managed evaluators, human annotation, scores from other jobs | Online results | A sync job that reads the Langfuse scores API |
+| Dataset experiments (`run_experiment`) | Test suite, run and cases | `Benchmark` in the experiment script |
+
+### Scores your app writes
+
+Mark the Langfuse span as the agent root and send each score to both backends with the same trace and span ids. `agent` is your agent (for example a Strands `Agent`) and `conversation_id` the conversation's id:
+
+```python
+from opensearch_genai_observability_sdk_py import enrich, mark_agent_root, register, score
+
+provider = register(service_name="travel-agent", agent_name="travel_assistant", agent_version="v1")
+
+from langfuse import get_client, observe, propagate_attributes
+
+langfuse = get_client()
+
+
+@observe(name="travel_assistant")
+def ask(question: str) -> str:
+    with propagate_attributes(session_id=conversation_id):
+        mark_agent_root()
+        enrich(session_id=conversation_id,
+               input_messages=[{"role": "user", "parts": [{"type": "text", "content": question}]}],
+               **{"gen_ai.operation.name": "invoke_agent", "gen_ai.agent.name": "travel_assistant",
+                  "gen_ai.agent.version": "v1"})
+        answer = str(agent(question))
+        enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": answer}]}])
+        trace_id, span_id = langfuse.get_current_trace_id(), langfuse.get_current_observation_id()
+
+    ok = "Lisbon" in answer
+    langfuse.create_score(name="mentions_city", value=1.0 if ok else 0.0, data_type="BOOLEAN",
+                          trace_id=trace_id, observation_id=span_id,
+                          metadata={"opensearch_mirrored": True})  # the sync job below skips it
+    score("mentions_city", 1.0 if ok else 0.0, trace_id=trace_id, span_id=span_id,
+          label="pass" if ok else "fail", evaluator="mentions_city", evaluator_type="code",
+          conversation_id=conversation_id)
+    return answer
+```
+
+### Sync job: managed evaluators, annotations and other scores
+
+Scores you do not write yourself, such as the results of a Langfuse LLM-as-a-judge evaluator, live only in Langfuse. A small job reads them from the Langfuse public API (`/api/public/v3/scores` and `/api/public/v2/observations`) and posts each one with `score()`:
+
+- It links an observation score to that span, and a trace score to the trace's outermost `AGENT` observation, which is the span Agent Traces lists. A session score becomes a session-level result (`gen_ai.conversation.id`).
+- `BOOLEAN` scores become `pass` / `fail`, `CATEGORICAL` scores become a label, and `NUMERIC` scores get a verdict when you pass `--threshold name=value`.
+- For managed evaluators it adds the judge model, the evaluator description and the scale from the evaluator definition. The judge's reasoning becomes the explanation.
+- It skips scores already mirrored, scores the app marked `opensearch_mirrored`, and scores of experiment traces (report those with `Benchmark`, below).
+- The original Langfuse score id and time are kept as `langfuse.score.id` and `langfuse.score.timestamp`. The result's own time is the time the job sent it.
+
+```python
+"""langfuse_scores_to_opensearch.py: mirror Langfuse scores as gen_ai.evaluation.result events."""
+import argparse, base64, datetime as dt, json, os, urllib.parse, urllib.request
+
+from opensearch_genai_observability_sdk_py import register, score
+
+AUTH = "Basic " + base64.b64encode(
+    f"{os.environ['LANGFUSE_PUBLIC_KEY']}:{os.environ['LANGFUSE_SECRET_KEY']}".encode()).decode()
+BASE = os.environ["LANGFUSE_BASE_URL"].rstrip("/")
+EVALUATOR_TYPES = {"EVAL": "llm_judge", "ANNOTATION": "human", "API": "external"}
+EXPERIMENT_ENVIRONMENTS = ("sdk-experiment", "langfuse-prompt-experiment")
+_cache, _experiment_traces = {}, set()
+
+
+def get(path, **params):
+    query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
+    req = urllib.request.Request(f"{BASE}{path}?{query}", headers={"Authorization": AUTH})
+    with urllib.request.urlopen(req) as r:
+        return json.load(r)
+
+
+def cached(path):
+    if path not in _cache:
+        try:
+            _cache[path] = get(path)
+        except Exception:
+            _cache[path] = {}
+    return _cache[path]
+
+
+def scores_since(since):
+    cursor = None
+    while True:
+        page = get("/api/public/v3/scores", limit=100, cursor=cursor, fields="details,subject",
+                   fromTimestamp=since.isoformat().replace("+00:00", "Z"))
+        yield from page["data"]
+        cursor = (page.get("meta") or {}).get("cursor")
+        if not cursor:
+            return
+
+
+def agent_observation(trace_id):
+    """The outermost AGENT observation of a trace (the span Agent Traces lists), else the root."""
+    key = f"trace:{trace_id}"
+    if key not in _cache:
+        obs = get("/api/public/v2/observations", traceId=trace_id, fields="core,basic,metadata", limit=1000)["data"]
+        if any(o.get("environment") in EXPERIMENT_ENVIRONMENTS for o in obs):
+            _experiment_traces.add(trace_id)
+        by_id = {o["id"]: o for o in obs}
+
+        def depth(o):
+            d = 0
+            while o.get("parentObservationId") in by_id:
+                o, d = by_id[o["parentObservationId"]], d + 1
+            return d
+
+        agents = sorted((o for o in obs if o.get("type") == "AGENT"), key=depth)
+        roots = [o for o in obs if not o.get("parentObservationId")]
+        _cache[key] = agents[0] if agents else (roots[0] if roots else None)
+    return _cache[key]
+
+
+def agent_name(obs):
+    if not obs:
+        return None
+    meta = obs.get("metadata") or {}
+    attrs = meta.get("attributes") if isinstance(meta.get("attributes"), dict) else {}
+    name = attrs.get("gen_ai.agent.name") or meta.get("attributes.gen_ai.agent.name")
+    return name or obs["name"].removeprefix("invoke_agent ").strip()
+
+
+def mirror(s, thresholds):
+    subject, trace_id, span_id, conversation_id = s.get("subject") or {}, None, None, None
+    kind = subject.get("kind")
+    if kind == "observation":
+        trace_id, span_id, level = subject.get("traceId"), subject["id"], "span"
+    elif kind == "trace":
+        trace_id, level = subject["id"], "trace"
+    elif kind == "session":
+        conversation_id, level = subject["id"], "session"
+    else:
+        return f"skipped ({kind} score)"
+    obs = agent_observation(trace_id) if trace_id else None
+    if kind == "session":
+        found = get("/api/public/v2/observations", sessionId=conversation_id, type="AGENT",
+                    fields="core,basic,metadata", limit=1)["data"]
+        obs = found[0] if found else None
+    if trace_id in _experiment_traces:
+        return "skipped (experiment score: report the run with Benchmark)"
+    if kind == "trace" and obs:
+        span_id = obs["id"]
+    if obs and not conversation_id:
+        conversation_id = obs.get("sessionId")
+
+    value, label, data_type = s.get("value"), None, s.get("dataType")
+    if data_type == "BOOLEAN":
+        value, label = (1.0 if value else 0.0), ("pass" if value else "fail")
+    elif data_type == "CATEGORICAL":
+        value, label = None, str(value)
+    elif data_type == "NUMERIC":
+        value = float(value)
+    else:
+        return f"skipped ({data_type})"
+
+    meta = s.get("metadata") or {}
+    cfg = cached(f"/api/public/score-configs/{s['configId']}") if s.get("configId") else {}
+    ev = cached(f"/api/public/v2/evaluators/{meta['evaluator_id']}") if meta.get("evaluator_id") else {}
+    out_def = ev.get("outputDefinition") or {}
+    extra = {"langfuse.score.id": s["id"], "langfuse.score.source": s.get("source"),
+             "langfuse.score.timestamp": s.get("timestamp"), "langfuse.evaluator.id": meta.get("evaluator_id")}
+    score(
+        s["name"], value, trace_id=trace_id, span_id=span_id, label=label,
+        explanation=s.get("comment") or None, level=level,
+        evaluator=s["name"], evaluator_type=EVALUATOR_TYPES.get(s.get("source"), "external"),
+        evaluator_version=meta.get("evaluator_version_id"),
+        evaluator_description=ev.get("description") or cfg.get("description"),
+        judge_model=(ev.get("modelConfig") or {}).get("model"),
+        score_min=cfg.get("minValue", out_def.get("minValue")),
+        score_max=cfg.get("maxValue", out_def.get("maxValue")),
+        threshold=thresholds.get(s["name"]) if label is None else None,
+        conversation_id=conversation_id,
+        agent_name=agent_name(obs), agent_version=(obs or {}).get("version"),
+        attributes={k: v for k, v in extra.items() if v is not None},
+    )
+    return f"{level} -> {trace_id}/{span_id or '-'}"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--since-minutes", type=int, default=60)
+    ap.add_argument("--state", default="langfuse-synced-scores.json", help="score ids already sent")
+    ap.add_argument("--threshold", action="append", default=[], metavar="NAME=VALUE")
+    args = ap.parse_args()
+    thresholds = {k: float(v) for k, v in (t.split("=", 1) for t in args.threshold)}
+    done = set(json.load(open(args.state))) if os.path.exists(args.state) else set()
+    provider = register(service_name="langfuse-score-sync", auto_instrument=False)
+    since = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=args.since_minutes)
+    for s in scores_since(since):
+        if s["id"] in done or (s.get("metadata") or {}).get("opensearch_mirrored"):
+            continue
+        print(s["name"], s.get("dataType"), s.get("value"), "->", mirror(s, thresholds))
+        done.add(s["id"])
+    provider.force_flush()
+    json.dump(sorted(done), open(args.state, "w"))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Save it as `langfuse_scores_to_opensearch.py`, with the same `LANGFUSE_*` environment variables as the app, and run it on a schedule, keeping the state file between runs:
+
+```bash
+python langfuse_scores_to_opensearch.py --since-minutes 60 --threshold helpfulness=0.5
+```
+
+<Aside type="note">
+Langfuse evaluators run after the trace ends, typically within a minute. If an evaluator shows as paused in Langfuse (for example because its model connection cannot authenticate), it produces no scores; fix and reactivate it in Langfuse first.
+</Aside>
+
+### Datasets and experiments
+
+A Langfuse experiment over a dataset maps to one eval run: the dataset is the test suite, the experiment is the run, and each dataset item is a case. Run the experiment as usual (the dataset items exist in Langfuse), open one OpenSearch agent span inside the task so the case has its own agent root (Langfuse's `experiment-item-*` spans are not agent spans), then report the run with `Benchmark`:
+
+```python
+from opensearch_genai_observability_sdk_py import Benchmark, EvalScore, Op, enrich, observe, register
+
+provider = register(service_name="travel-agent", agent_name="travel_assistant", agent_version="v1")
+
+from langfuse import Evaluation, get_client
+from opentelemetry import trace
+
+langfuse = get_client()
+DATASET, RUN_NAME = "travel-golden", "prompt v5"  # use a new run name for every execution
+spans = {}  # dataset item id -> (trace id, span id) of the agent span
+
+
+def task(*, item, **kwargs):
+    attrs = getattr(trace.get_current_span(), "attributes", {}) or {}  # Langfuse's experiment span
+    with observe(name="travel_assistant", op=Op.INVOKE_AGENT) as span:
+        enrich(input_messages=[{"role": "user", "parts": [{"type": "text", "content": item.input}]}],
+               **{"gen_ai.agent.version": "v1", "test.suite.name": DATASET,
+                  "test.suite.run.id": attrs.get("langfuse.experiment.id"),
+                  "test.case.id": item.id, "test.case.name": item.input[:50]})
+        answer = str(agent(item.input))
+        enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": answer}]}])
+        ctx = span.get_span_context()
+        spans[item.id] = (format(ctx.trace_id, "032x"), format(ctx.span_id, "016x"))
+    return answer
+
+
+def mentions_expected(*, output, expected_output, **kwargs):
+    ok = expected_output.lower() in output.lower()
+    return Evaluation(name="mentions_expected", value=1.0 if ok else 0.0, data_type="BOOLEAN")
+
+
+result = langfuse.get_dataset(DATASET).run_experiment(
+    name="travel_assistant", run_name=RUN_NAME, task=task, evaluators=[mentions_expected])
+
+with Benchmark(DATASET, run_id=result.experiment_id, run_name=RUN_NAME) as bench:
+    for r in result.item_results:
+        trace_id, span_id = spans[r.item.id]
+        bench.log(
+            input=r.item.input, output=r.output, expected=r.item.expected_output,
+            scores=[EvalScore(name=e.name, value=float(e.value), label="pass" if e.value else "fail",
+                              explanation=e.comment) for e in r.evaluations],
+            case_id=r.item.id,  # the dataset item id: stable across runs
+            case_name=r.item.input[:50], trace_id=trace_id, span_id=span_id,
+        )
+provider.force_flush()
+```
+
+- Map each Langfuse evaluation to an `EvalScore` with the verdict rule you want: a `pass` / `fail` label for boolean checks, `threshold` (and `direction="minimize"` for "lower is better") for numbers.
+- Give each dataset item an explicit id (`create_dataset_item(id=...)`) so runs compare case by case.
+- Langfuse derives the experiment id from the dataset and the run name. Reusing a run name adds the new results to the earlier run, in Langfuse and here.
+- The results are logged after the experiment finishes, so the run's duration on the run page is not the experiment's duration.
+
+---
+
+## Online: score live traces with any library
+
+Run the library's metric on a live or stored agent run and post the value with `score()`, as in the DeepEval, RAGAS and MLflow online examples above. The SDK has no dependency on any evaluation library.
+
+```python
+from opensearch_genai_observability_sdk_py import score
+
+score(
+    "answer_relevancy",
+    value,                  # the library's score
+    trace_id=trace_id,      # the judged agent run
+    span_id=span_id,
+    explanation=reason,
+    evaluator="deepeval.AnswerRelevancyMetric",
+    evaluator_type="llm_judge",
+    threshold=0.7,
+    score_min=0,
+    score_max=1,
+    agent_name="my_agent",  # or set agent_name / agent_version on register()
+    agent_version="v1",     # without it the result groups under "(no version)"
+)
+```
+
+An evaluator job that scores stored traces reads them with `OpenSearchTraceRetriever` and takes the agent name and version from each span record (`root.agent_name`, `root.agent_version`); see [An online evaluator job](/docs/agent-evals/evaluation/#an-online-evaluator-job).
+
+Any other OpenTelemetry producer works too: send an OTLP log record with the event name `gen_ai.evaluation.result` and the attributes in [Data Model & Ingestion](/docs/agent-evals/data-model/#attributes).
 
 ---
 
 ## Related links
 
-- [Evaluation & Scoring](/docs/agent-evals/evaluation/) - core `score()`, `evaluate()`, `Benchmark` API
-- [Python SDK reference](/docs/send-data/ai-agents/python/) - full SDK documentation
+- [Evaluation & Scoring](/docs/agent-evals/evaluation/): `score()`, `evaluate()` and `Benchmark`
+- [Run evaluations in CI](/docs/agent-evals/ci/): gates and CI links
+- [Integrations](/docs/send-data/ai-agents/integrations/): trace and evaluate agents built with Strands, LangGraph, CrewAI, the OpenAI Agents SDK, Bedrock, Anthropic and LlamaIndex
+- [Python SDK reference](/docs/send-data/ai-agents/python/): full SDK documentation
+- [Integrations: Langfuse](/docs/send-data/ai-agents/integrations/#langfuse): export Langfuse-traced apps to OpenSearch

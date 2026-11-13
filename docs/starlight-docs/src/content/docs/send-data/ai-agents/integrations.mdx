@@ -1,265 +1,1004 @@
 ---
 title: "Integrations"
-description: "Instrument popular AI agent frameworks with the GenAI Observability SDK"
+description: "Instrument Strands Agents, LangGraph, CrewAI, the OpenAI Agents SDK, Amazon Bedrock, the Anthropic SDK and LlamaIndex with the GenAI Observability SDK, then evaluate them online and offline"
 ---
 
-The GenAI Observability SDK works with any Python agent framework. Use `@observe` to wrap your agent's entry points and tools, and `enrich()` to capture model details. Auto-instrumentation handles LLM calls automatically.
+import { Aside } from '@astrojs/starlight/components';
 
-Each example below shows a complete, runnable integration. All examples assume the [observability stack is running locally](/docs/get-started/installation/).
+The GenAI Observability SDK works with any agent framework. Use `@observe` to wrap your agent's entry points and tools, and `enrich()` to capture model details. Auto-instrumentation handles LLM calls automatically.
+
+Each framework section below is a complete, runnable example that does the same things end to end: it traces a two-turn conversation with one tool, scores each turn online and the whole conversation once, and runs a small offline test suite twice so the runs can be compared. Every example ran against a real model on Amazon Bedrock and was checked in OpenSearch, in [Agent Traces](/docs/ai-observability/agent-tracing/) and in [Agent Evaluations](/docs/agent-evals/). All examples assume the [observability stack is running locally](/docs/get-started/installation/); `register()` sends to `http://localhost:4318` by default.
+
+<Aside type="note" title="SDK versions">
+The examples need the Python SDK 0.3.0 or later (`pip install "opensearch-genai-observability-sdk-py>=0.3.0"`) and the TypeScript SDK 0.2.0 or later (`npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"`). If an import such as `mark_agent_root` fails, upgrade.
+</Aside>
+
+## The rules every framework follows
+
+Whatever the framework, the same rules make the traces work in Agent Traces and Agent Evaluations:
+
+- **Call `register()` once, before the framework builds its agent.** It owns the global tracer provider; most frameworks trace through it. Don't also set up the framework's own OTLP exporter. `register(service_name=..., agent_name=..., agent_version=...)` sets the service name of the spans and stamps the agent name and version on every evaluation result.
+- **Install the extra and the library.** An SDK extra (for example `[bedrock]`) installs only the OpenTelemetry instrumentor, not the library it instruments. `register()` activates an instrumentor only when its library is installed. Quote the extra (`"opensearch-genai-observability-sdk-py[bedrock]>=0.3.0"`): zsh treats unquoted brackets as a glob.
+- **One trace per turn, rooted at your agent span.** Wrap each turn in `@observe(op=Op.INVOKE_AGENT)` and call `mark_agent_root()` inside it. Agent Traces lists as a trace's agent the span marked with `mark_agent_root()` (`derived.gen_ai.is_root`) or, without a mark, a GenAI span that has no parent. Most frameworks add their own `invoke_agent` spans below yours; the mark keeps your span the agent of the trace. Never continue an incoming `traceparent` whose parent is not exported to the same OpenSearch. See [One trace per turn](/docs/send-data/ai-agents/python/#one-trace-per-turn-rooted-at-the-agent).
+- **Sessions:** set `gen_ai.conversation.id` on every turn with `enrich(session_id=...)`, stable for the whole conversation. The Sessions tab and session-level results group turns by it.
+- **Messages:** record the question and answer as `gen_ai.input.messages` / `gen_ai.output.messages` with `enrich(input_messages=..., output_messages=...)`, so Agent Traces, the run page and online evaluators can read them back. Once `enrich()` sets the output messages, `@observe` no longer records the function's return value as the output.
+- **Agent version on the span:** `register(agent_version=...)` stamps the version on results, not on spans. Put it on the agent span with `enrich(**{"gen_ai.agent.version": AGENT_VERSION})`.
+- **Evaluations:** `score()` inside the agent span judges that span; `evaluate()` starts one agent span per case and links each result to it. See [Evaluation & Scoring](/docs/agent-evals/evaluation/).
+
+## How the examples are built
+
+Each Python example has two parts:
+
+1. **The framework part** (different per framework, shown in each section): `register()`, the framework's agent and tool, and `ask(conversation_id, question, online_eval=True)`, which is one agent turn:
+   - `@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)` and `mark_agent_root()`: this span is the turn's agent root.
+   - `enrich(session_id=..., input_messages=..., **{"gen_ai.agent.version": AGENT_VERSION})`, then the framework call, then `enrich(output_messages=...)` with the answer.
+   - The online evaluation: `score()` while the agent span is active, with `evaluator`, `evaluator_type` and `agent_version`. The result is linked to this span.
+2. **The conversation and evaluation part** (the same in every Python example, shown once below): append it to the framework part and run the file.
+
+The examples use Claude Haiku 4.5 on Amazon Bedrock (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, region `us-west-2`) with AWS credentials from the default chain. Use any model id and region you have access to. Where a framework defaults to OpenAI, the section also shows the OpenAI variant.
+
+### The conversation and evaluation part
+
+```python
+# 1. A two-turn conversation: both turns share gen_ai.conversation.id.
+conversation_id = f"conv-{uuid.uuid4().hex[:8]}"
+print(ask(conversation_id, "What's the weather in Seattle?"))
+answer = ask(conversation_id, "Should I pack sunglasses there?")
+print(answer)
+# Session-level online evaluation: judges the whole conversation, linked by its id.
+ok = "seattle" in answer.lower()
+score("remembers_city", 1.0 if ok else 0.0, label="pass" if ok else "fail", level="session",
+      conversation_id=conversation_id, explanation="turn 2 names the city from turn 1" if ok else "city lost",
+      evaluator="context_check", evaluator_type="code", agent_version=AGENT_VERSION)
+
+
+# 2. Offline evaluation: a small suite, run twice so the runs can be compared.
+@scorer(name="mentions_expected", evaluator="expected_terms_check", evaluator_type="code",
+        threshold=1.0, score_min=0, score_max=1,
+        description="Share of the expected answer's key terms found in the answer")
+def mentions_expected(input, output, expected):
+    terms = re.findall(r"[a-z]{4,}|\d+", expected.lower())
+    found = [t for t in terms if t in output.lower()]
+    return EvalScore(name="mentions_expected", value=len(found) / len(terms),
+                     explanation=f"found {found} of {terms}")
+
+
+CASES = [
+    {"case_id": "lisbon-weather", "case_name": "Weather in Lisbon",
+     "input": "What's the weather in Lisbon?", "expected": "Lisbon: 72F and sunny"},
+    {"case_id": "tokyo-weather", "case_name": "Weather in Tokyo",
+     "input": "What's the weather in Tokyo?", "expected": "Tokyo: 72F and sunny"},
+    {"case_id": "portugal-capital", "case_name": "Capital of Portugal",
+     "input": "What is the capital of Portugal?", "expected": "Lisbon is the capital of Portugal"},
+]
+
+for run_name in ("baseline", "rerun"):
+    evaluate(  # prints a summary per run
+        f"{AGENT_NAME}-suite",
+        task=lambda question: ask(f"eval-{uuid.uuid4().hex[:8]}", question, online_eval=False),
+        data=CASES,
+        scores=[mentions_expected],
+        agent_name=AGENT_NAME, agent_version=AGENT_VERSION,
+        run_name=run_name,
+    )
+
+provider.force_flush()
+```
+
+- **Two turns, one conversation.** Both turns share `gen_ai.conversation.id`; the second turn needs the first one's answer, so the framework must keep the conversation's history (each section shows how).
+- **Online, per turn:** `concise_answer` from the `length_check` code evaluator, on each turn's agent span.
+- **Online, per session:** `score(..., level="session", conversation_id=...)` judges the whole conversation. It carries `gen_ai.conversation.id` and no trace context.
+- **Offline:** the `@scorer` declares the evaluator name and type, the pass threshold, the scale and a description. `evaluate()` runs the three cases of the suite `<agent>-suite`, once as `baseline` and once as `rerun`, stamps `test.suite.name`, `test.suite.run.id` and `test.case.id` on each case's agent span, links each result to it, and prints a summary per run. Each case gets its own conversation id, so cases don't share history, and `online_eval=False` keeps the online scores off the case traces.
+- `provider.force_flush()` exports the last spans and results before a short script exits.
+
+### What you see
+
+Data Prepper batches writes: the spans and results usually show up within 60 to 90 seconds. Then, with the agent's service in the Agent Traces query (for example `serviceName = "strands-travel-agent"`):
+
+- **Traces tab:** 8 traces, one per turn and one per case, each listed by your agent span with its input, output, tokens and `Pass: 1` in the **Evaluations** column.
+- **Spans tab:** the agent mark only on your agent span; the framework's own spans below it.
+- **Sessions tab:** the two-turn conversation, plus one one-turn session per offline case (`eval-...`), because each case runs in its own conversation.
+- **Trace flyout:** the framework's spans in the trace tree, the tool span with its arguments and result, and the online result in the **Evaluations** tab.
+
+![Agent Traces: the eight traces of an example, each with its evaluation](/docs/images/agent-evals/framework-traces.png)
+
+![Trace flyout: the tool span with its arguments and result](/docs/images/agent-evals/framework-trace-tool-span.png)
+
+In **Agent monitoring > Evaluations**:
+
+- **Agent page:** the agent with version `v1`, three evaluations (`concise_answer`, `remembers_city`, `mentions_expected`) and 9 results.
+- **Result flyout of `remembers_city`:** "What the judge saw: the whole session (2 turns)", with the conversation's first input and last output, and the evaluator `context_check` (`code`).
+- **Run page** of `baseline` or `rerun`: 3 cases with Input, Output and Expected, the scorer's description under "What the evaluations check", and **View trace** per case.
+- **Compare with run before:** the two runs case by case (`mentions_expected` per case in run A and run B).
+
+![Result flyout of the session-level result: the whole session with its first input and last output](/docs/images/agent-evals/framework-session-result.png)
+
+![Run page: cases with input, output, expected output and results](/docs/images/agent-evals/framework-run-page.png)
+
+The screenshots come from the test runs of these examples, under other service names.
 
 ## Strands Agents
 
-[Strands Agents](https://github.com/strands-agents/sdk-python) is a model-driven agent framework from AWS. The SDK's auto-instrumentation captures Bedrock/OpenAI calls automatically - add `@observe` for agent-level visibility.
+[Strands Agents](https://github.com/strands-agents/sdk-python) traces with the global OpenTelemetry tracer provider and emits `invoke_agent`, `execute_event_loop_cycle`, `chat` and `execute_tool` spans with GenAI attributes. After `register()`, those spans are exported with yours: no SDK extra is needed.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[bedrock]" strands-agents
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
-from strands import Agent
-from strands.models.bedrock import BedrockModel
+import os
+import re
+import uuid
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
-    service_name="strands-agent",
+# Strands reads the opt-in when it builds its tracer: set it before importing Strands.
+# Latest GenAI names, messages as span attributes, per-turn token usage on Strands' own agent span.
+os.environ.setdefault(
+    "OTEL_SEMCONV_STABILITY_OPT_IN",
+    "gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens",
 )
 
-@observe(op=Op.EXECUTE_TOOL)
-def weather_tool(city: str) -> str:
+from strands import Agent, tool  # noqa: E402
+from strands.models.bedrock import BedrockModel  # noqa: E402
+
+from opensearch_genai_observability_sdk_py import (  # noqa: E402
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
+)
+
+AGENT_NAME, AGENT_VERSION = "strands-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# Strands traces through the global tracer provider that register() installs: no Strands exporter setup.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+
+
+@tool
+def weather(city: str) -> str:
     """Get weather for a city."""
-    return f"72°F and sunny in {city}"
+    return f"72F and sunny in {city}"
 
-@observe(op=Op.INVOKE_AGENT)
-def run_agent(query: str) -> str:
-    model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
-    agent = Agent(
-        model=model,
-        tools=[weather_tool],
-        system_prompt="You are a helpful travel assistant.",
-    )
-    enrich(model="claude-sonnet-4-20250514", provider="bedrock")
-    result = agent(query)
-    return str(result)
 
-run_agent("What's the weather in Seattle?")
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+_agents: dict[str, Agent] = {}  # one Strands agent per conversation keeps its history
+
+
+def agent_for(conversation_id: str) -> Agent:
+    if conversation_id not in _agents:
+        _agents[conversation_id] = Agent(
+            name=AGENT_NAME,
+            model=BedrockModel(model_id=MODEL_ID),
+            tools=[weather],
+            system_prompt="You are a helpful travel assistant. Answer in one or two sentences.",
+            trace_attributes={"gen_ai.conversation.id": conversation_id},
+            callback_handler=None,  # no streaming to stdout
+        )
+    return _agents[conversation_id]
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()  # this span, not Strands' inner invoke_agent, is the agent run
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           **{"gen_ai.agent.version": AGENT_VERSION})
+    answer = str(agent_for(conversation_id)(question)).strip()
+    enrich(output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
 ```
 
-### Using Strands built-in telemetry
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
 
-Strands Agents has native OpenTelemetry support via `StrandsTelemetry`. It automatically emits spans for agent invocations, tool executions, and LLM calls following GenAI semantic conventions. Point it at the OTel collector, then use `@observe` from the SDK to add spans for any custom logic that Strands doesn't instrument automatically.
+- Don't call `StrandsTelemetry().setup_otlp_exporter()`: it would install a second exporter.
+- Set `OTEL_SEMCONV_STABILITY_OPT_IN` before importing Strands (the example sets it with `os.environ.setdefault`, so the file runs without an export). `gen_ai_latest_experimental` alone writes the `chat` and `execute_tool` messages as span events; `gen_ai_span_attributes_only` makes them span attributes, which Agent Traces reads. With the agent reused, `gen_ai_use_latest_invocation_tokens` keeps each turn's token usage per turn instead of cumulative.
+- Keep one `Agent` per conversation: a new `Agent` per turn forgets the earlier turns. `trace_attributes={"gen_ai.conversation.id": ...}` puts the id on Strands' own spans too, and `callback_handler=None` stops Strands from streaming the answer to stdout.
+- Strands' own `invoke_agent` span sits under your agent span, with the same per-turn token usage. The agent span's `gen_ai.provider.name` is copied from it (`strands-agents`); add `provider="aws.bedrock"` to `enrich()` if you want the OTel provider name.
+- Strands may print `Attempting to instrument while already instrumented` once at startup. It is harmless.
+
+**In Agent Traces**, a turn that calls the tool has 7 spans: your `invoke_agent strands-travel-agent`, Strands' `invoke_agent`, two `execute_event_loop_cycle`, two `chat` (with model, tokens and messages) and `execute_tool weather`. A turn without a tool call has 4.
+
+## Strands Agents (TypeScript)
+
+[Strands Agents for TypeScript](https://github.com/strands-agents/sdk-typescript) follows the same rules with `withObserve()`, `markAgentRoot()` and `enrich()`. This is the full example, including the conversation and the evaluations.
 
 ```bash
-pip install opensearch-genai-observability-sdk-py strands-agents
+npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0" @strands-agents/sdk @modelcontextprotocol/client @opentelemetry/api@~1.9.0 @opentelemetry/context-async-hooks@^1 zod
+export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only
 ```
 
-```python
-from opensearch_genai_observability_sdk_py import observe, Op
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from strands import Agent
-from strands.models.bedrock import BedrockModel
-from strands.telemetry import StrandsTelemetry
+The SDK uses OpenTelemetry JS 1.x and Strands peers on 2.x, so add `legacy-peer-deps=true` to `.npmrc` before you install. With it, npm skips Strands' peer `@modelcontextprotocol/client`, which is why the install line names it. See [Installation](/docs/send-data/ai-agents/typescript/#installation). Use ES modules (`"type": "module"`) and run the file with `npx tsx app.ts`.
 
-# Initialize Strands' built-in telemetry - automatically creates spans for:
-#   invoke_agent, execute_tool, chat (LLM calls)
-telemetry = StrandsTelemetry()
+```typescript
+import { ROOT_CONTEXT, context, trace } from "@opentelemetry/api";
+import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
+import { Agent, BedrockModel, tool } from "@strands-agents/sdk";
+import {
+  Benchmark, type EvalScore, Op, enrich, markAgentRoot, register, score, withObserve,
+} from "@opensearch-project/genai-observability-sdk-ts";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
 
-# Point the exporter at the OTel collector (gRPC on port 4317)
-exporter = OTLPSpanExporter(endpoint="localhost:4317", insecure=True)
-telemetry.tracer_provider.add_span_processor(BatchSpanProcessor(exporter))
+const AGENT_NAME = "strands-ts-travel-agent";
+const AGENT_VERSION = "v1";
+const MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 
-# Use @observe for custom logic that Strands doesn't auto-instrument
-@observe(op=Op.EXECUTE_TOOL)
-def fetch_hotel_ratings(city: str) -> str:
-    """Fetch hotel ratings from an external API."""
-    # Custom API call - not covered by Strands auto-instrumentation
-    return f"4.5 stars average in {city}"
+// Async code keeps the active span (and score()'s link to it) only with a context manager.
+context.setGlobalContextManager(new AsyncLocalStorageContextManager().enable());
+const provider = await register({ serviceName: AGENT_NAME, agentName: AGENT_NAME, agentVersion: AGENT_VERSION });
 
-model = BedrockModel(model_id="us.anthropic.claude-sonnet-4-20250514-v1:0")
-agent = Agent(
-    model=model,
-    tools=[fetch_hotel_ratings],
-    system_prompt="You are a helpful travel assistant.",
-)
+const weather = tool({
+  name: "weather",
+  description: "Get weather for a city.",
+  inputSchema: z.object({ city: z.string() }),
+  callback: ({ city }) => `72F and sunny in ${city}`,
+});
 
-agent("Find top-rated hotels in Seattle")
+const agents = new Map<string, Agent>(); // one Strands agent per conversation keeps its history
+function agentFor(conversationId: string): Agent {
+  let agent = agents.get(conversationId);
+  if (!agent) {
+    agent = new Agent({
+      name: AGENT_NAME,
+      model: new BedrockModel({ modelId: MODEL_ID }),
+      tools: [weather],
+      systemPrompt: "You are a helpful travel assistant. Answer in one or two sentences.",
+      printer: false,
+      traceAttributes: { "gen_ai.conversation.id": conversationId },
+    });
+    agents.set(conversationId, agent);
+  }
+  return agent;
+}
+
+const text = (role: string, content: string) => [{ role, parts: [{ type: "text", content }] }];
+
+// One turn = one trace, rooted at this span. Returns the span ids so offline results can link to it.
+function ask(conversationId: string, question: string, onlineEval = true) {
+  return context.with(ROOT_CONTEXT, () =>
+    withObserve(AGENT_NAME, { op: Op.INVOKE_AGENT }, async (span) => {
+      markAgentRoot();
+      span.setAttribute("gen_ai.agent.version", AGENT_VERSION);
+      enrich({ sessionId: conversationId, inputMessages: text("user", question) });
+      const result = await agentFor(conversationId).invoke(question);
+      const answer = String(result).trim();
+      // Strands reports lifetime totals on its own span: record this turn's usage on the agent span.
+      const usage = result.metrics?.agentInvocations.at(-1)?.usage;
+      enrich({ outputMessages: text("assistant", answer), inputTokens: usage?.inputTokens, outputTokens: usage?.outputTokens });
+      if (onlineEval) {
+        // Online evaluation: score() inside the agent span is linked to this span.
+        const ok = answer.length <= 400;
+        score({ name: "concise_answer", value: ok ? 1 : 0, label: ok ? "pass" : "fail",
+                explanation: `${answer.length} characters`, evaluator: "length_check",
+                evaluatorType: "code", agentVersion: AGENT_VERSION });
+      }
+      const { traceId, spanId } = trace.getActiveSpan()!.spanContext();
+      return { answer, traceId, spanId };
+    }),
+  );
+}
+
+// 1. A two-turn conversation: both turns share gen_ai.conversation.id.
+const conversationId = `conv-${randomUUID().slice(0, 8)}`;
+console.log((await ask(conversationId, "What's the weather in Seattle?")).answer);
+const { answer } = await ask(conversationId, "Should I pack sunglasses there?");
+console.log(answer);
+// Session-level online evaluation: judges the whole conversation, linked by its id.
+const remembers = answer.toLowerCase().includes("seattle");
+score({ name: "remembers_city", value: remembers ? 1 : 0, label: remembers ? "pass" : "fail", level: "session",
+        conversationId, explanation: remembers ? "turn 2 names the city from turn 1" : "city lost",
+        evaluator: "context_check", evaluatorType: "code", agentVersion: AGENT_VERSION });
+
+// 2. Offline evaluation: a small suite, run twice so the runs can be compared.
+// evaluate() needs a synchronous task, so an async agent logs each case with Benchmark.
+function mentionsExpected(output: string, expected: string): EvalScore {
+  const terms = expected.toLowerCase().match(/[a-z]{4,}|\d+/g) ?? [];
+  const found = terms.filter((t) => output.toLowerCase().includes(t));
+  return { name: "mentions_expected", value: found.length / terms.length, threshold: 1, scoreMin: 0, scoreMax: 1,
+           explanation: `found ${JSON.stringify(found)} of ${JSON.stringify(terms)}` };
+}
+
+const CASES = [
+  { caseId: "lisbon-weather", caseName: "Weather in Lisbon", input: "What's the weather in Lisbon?", expected: "Lisbon: 72F and sunny" },
+  { caseId: "tokyo-weather", caseName: "Weather in Tokyo", input: "What's the weather in Tokyo?", expected: "Tokyo: 72F and sunny" },
+  { caseId: "portugal-capital", caseName: "Capital of Portugal", input: "What is the capital of Portugal?", expected: "Lisbon is the capital of Portugal" },
+];
+
+for (const runName of ["baseline", "rerun"]) {
+  const bench = new Benchmark(`${AGENT_NAME}-suite`, { runName, agentName: AGENT_NAME, agentVersion: AGENT_VERSION });
+  for (const c of CASES) {
+    const { answer, traceId, spanId } = await ask(`eval-${randomUUID().slice(0, 8)}`, c.input, false);
+    bench.log({
+      caseId: c.caseId, caseName: c.caseName, input: c.input, output: answer, expected: c.expected,
+      traceId, spanId, // links each result to the case's agent span
+      scores: [mentionsExpected(answer, c.expected)],
+      evaluator: "expected_terms_check", evaluatorType: "code",
+    });
+  }
+  bench.close(); // prints the run summary
+}
+
+await provider.forceFlush();
 ```
 
-> **Tip:** `StrandsTelemetry` handles agent, tool, and LLM spans automatically. Use `@observe` only for custom functions (API calls, database queries, post-processing) where you need visibility that Strands doesn't provide out of the box.
+- Set up the `AsyncLocalStorageContextManager` before `register()`. Without it, `score()` inside `withObserve()` has no active span and the result has no trace link.
+- `context.with(ROOT_CONTEXT, ...)` makes every turn its own trace.
+- **Offline:** in TypeScript `evaluate()` takes a synchronous task, and a Strands agent is async, so the example logs each case with `Benchmark`, passing the `traceId` and `spanId` that `ask()` returns. `Benchmark` stamps `test.*` on the results, not on the agent spans: the run page, Compare and the result flyout work (they link by span id), but Agent Traces cannot filter the case traces by suite or run.
+- Without the opt-in, Strands for TypeScript writes older attribute names (`gen_ai.system` instead of `gen_ai.provider.name`), puts messages on span events, and records no tool arguments or results.
+- Strands for TypeScript reports lifetime token totals on its own `invoke_agent` span once the agent is reused across turns, and has no opt-in to change that. The example records each turn's usage (`result.metrics.agentInvocations.at(-1).usage`) on your agent span.
+- The TypeScript `EvalScore` has no evaluator description, so the result flyout has no "What it checks" for these results.
+- `BedrockModel` warns about the default `maxTokens`. It is harmless.
+
+**In Agent Traces**, a tool turn has 7 spans: your agent span, Strands' `invoke_agent`, two `execute_agent_loop_cycle`, two `chat` and `execute_tool weather`. The `execute_agent_loop_cycle` spans have no `gen_ai.operation.name`, so the summary's **Total Spans** does not count them.
 
 ## LangGraph
 
-[LangGraph](https://langchain-ai.github.io/langgraph/) builds stateful, multi-step agent workflows. Install the LangChain auto-instrumentor for automatic LLM tracing.
+[LangGraph](https://langchain-ai.github.io/langgraph/) builds stateful agent workflows. The LangChain instrumentor in the `[langchain]` extra traces each model call as a `chat` span with model, token usage and messages, and each tool call as an `execute_tool` span.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[langchain]" langgraph langchain-openai
+pip install "opensearch-genai-observability-sdk-py[langchain]>=0.3.0" langgraph langchain-aws
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
-from langgraph.graph import StateGraph, START, END
-from langchain_openai import ChatOpenAI
-from typing import TypedDict
+import re
+import uuid
+from typing import Annotated, TypedDict
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
-    service_name="langgraph-agent",
+from langchain_aws import ChatBedrockConverse
+from langchain_core.messages import HumanMessage
+from langchain_core.tools import tool
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
+
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
 )
 
+AGENT_NAME, AGENT_VERSION = "langgraph-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# register() activates the LangChain instrumentor from the [langchain] extra.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+
+
+@tool
+def weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"72F and sunny in {city}"
+
+
 class State(TypedDict):
-    query: str
-    result: str
+    messages: Annotated[list, add_messages]
 
-@observe(op=Op.CHAT, name="llm_call")
-def call_model(state: State) -> dict:
-    llm = ChatOpenAI(model="gpt-4o")
-    response = llm.invoke(state["query"])
-    enrich(model="gpt-4o", provider="openai")
-    return {"result": response.content}
 
-@observe(op=Op.EXECUTE_TOOL)
-def check_facts(state: State) -> dict:
-    # fact-checking logic
-    return {"result": f"Verified: {state['result']}"}
+llm = ChatBedrockConverse(model=MODEL_ID).bind_tools([weather])
+
+
+def call_model(state: State) -> dict:  # the LangChain instrumentor traces each model call as a chat span
+    return {"messages": [llm.invoke(state["messages"])]}
+
 
 graph = StateGraph(State)
 graph.add_node("model", call_model)
-graph.add_node("fact_check", check_facts)
+graph.add_node("tools", ToolNode([weather]))
 graph.add_edge(START, "model")
-graph.add_edge("model", "fact_check")
-graph.add_edge("fact_check", END)
-app = graph.compile()
+graph.add_conditional_edges("model", tools_condition)
+graph.add_edge("tools", "model")
+app = graph.compile(checkpointer=InMemorySaver())  # keeps each thread's (conversation's) history
 
-@observe(op=Op.INVOKE_AGENT, name="fact_check_agent")
-def run(query: str) -> str:
-    result = app.invoke({"query": query, "result": ""})
-    return result["result"]
 
-run("What is OpenSearch?")
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()  # this span, not LangGraph's own workflow span, is the agent run
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    result = app.invoke({"messages": [HumanMessage(question)]},
+                        config={"configurable": {"thread_id": conversation_id}})
+    answer = result["messages"][-1].text.strip()
+    enrich(output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
 ```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+**OpenAI models:** install `langchain-openai` instead of `langchain-aws`, and swap the model and the provider on the agent span:
+
+```python
+from langchain_openai import ChatOpenAI
+
+MODEL_ID = "gpt-4o"
+llm = ChatOpenAI(model=MODEL_ID).bind_tools([weather])  # any LangChain chat model works
+# in ask(): enrich(..., model=MODEL_ID, provider="openai", ...)
+```
+
+- Don't wrap the model call in `@observe(op=Op.CHAT)`: the LangChain instrumentor already emits the `chat` span, and a second span would duplicate it.
+- The checkpointer's `thread_id` (the conversation id) keeps each conversation's history; `enrich(session_id=...)` puts the same id on the agent span for Sessions.
+- Set `model=` and `provider=` in `enrich()`: without `provider`, the agent span inherits `gen_ai.provider.name` `langgraph` from LangGraph's span. The agent span's token usage is the sum of its `chat` spans.
+- The instrumentor records a tool call's arguments and result in LangChain's callback format (`input_str`, `tags`, `metadata`, and a serialized `ToolMessage`), so the tool span shows that payload rather than the plain arguments.
+- The instrumentor also writes agent names on LangGraph's own spans (`LangGraph`, and node names such as `model` and `tools`), so they appear in the agent-name facets. Your marked span stays the agent of the trace.
+
+**In Agent Traces**, a tool turn has 11 spans: your agent span, `invoke_agent LangGraph`, `LangGraph.workflow`, `execute_task` spans for the `model`, `tools` and `tools_condition` nodes, two `ChatBedrockConverse.chat` spans and `execute_tool weather`.
 
 ## CrewAI
 
-[CrewAI](https://www.crewai.com/) orchestrates role-playing AI agents. Wrap crew execution with `@observe`. The `[otel-instrumentors]` extra includes auto-instrumentation for CrewAI's internal LLM calls.
+[CrewAI](https://www.crewai.com/) orchestrates role-playing agents. There is no `[crewai]` extra: `[otel-instrumentors]` includes the CrewAI instrumentor, and the Bedrock instrumentor for CrewAI's native Bedrock provider.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]" crewai
+pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]>=0.3.0" "crewai[bedrock]"
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
-from crewai import Agent, Task, Crew
+import re
+import uuid
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
-    service_name="crewai-agent",
+from crewai import Agent, Crew, Task
+from crewai.tools import tool
+
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
 )
 
-researcher = Agent(
-    role="Researcher",
-    goal="Find accurate information",
-    backstory="Expert research analyst",
-    llm="gpt-4o",
-)
+AGENT_NAME, AGENT_VERSION = "crewai-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-writer = Agent(
-    role="Writer",
-    goal="Write clear summaries",
-    backstory="Technical writer",
-    llm="gpt-4o",
-)
+# register() activates the CrewAI and Bedrock instrumentors from [otel-instrumentors].
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
-@observe(op=Op.INVOKE_AGENT, name="research_crew")
-def run_crew(topic: str) -> str:
-    enrich(model="gpt-4o", provider="openai")
-    research_task = Task(
-        description=f"Research: {topic}",
-        expected_output="Key findings",
-        agent=researcher,
-    )
-    write_task = Task(
-        description="Summarize the research findings",
-        expected_output="Clear summary",
-        agent=writer,
-    )
-    crew = Crew(agents=[researcher, writer], tasks=[research_task, write_task])
-    result = crew.kickoff()
-    return str(result)
 
-run_crew("OpenTelemetry observability for AI agents")
+@tool("weather")
+@observe(name="weather", op=Op.EXECUTE_TOOL)  # below @tool: the CrewAI instrumentor records no tool spans
+def weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"72F and sunny in {city}"
+
+
+# "bedrock/..." uses CrewAI's native Bedrock provider (boto3, from crewai[bedrock]); the Bedrock
+# instrumentor traces each call as a chat span with Bedrock's token usage.
+assistant = Agent(role="Travel assistant", goal="Answer travel questions in one or two sentences",
+                  backstory="A concise travel helper", llm=f"bedrock/{MODEL_ID}", tools=[weather])
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+_history: dict[str, list[str]] = {}  # CrewAI keeps no chat history between kickoffs: pass it in
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()  # this span, not the crew span, is the agent run
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    task = Task(description="Conversation so far:\n{history}\n\nUser question: {question}",
+                expected_output="A short answer", agent=assistant)
+    history = "\n".join(_history.get(conversation_id, [])) or "(none)"
+    answer = str(Crew(agents=[assistant], tasks=[task]).kickoff(
+        inputs={"history": history, "question": question})).strip()
+    _history.setdefault(conversation_id, []).extend([f"user: {question}", f"assistant: {answer}"])
+    enrich(output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
 ```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+**OpenAI models:** install `crewai` (without `[bedrock]`), use `llm="gpt-4o"` in `Agent(...)`, and set `model="gpt-4o", provider="openai"` in `enrich()`.
+
+- `llm="bedrock/<model id>"` needs `crewai[bedrock]`: CrewAI calls Bedrock through its own boto3 provider, and the Bedrock instrumentor traces each call as a `chat` span with Bedrock's token usage.
+- The CrewAI instrumentor traces the crew, its tasks, agents and model calls, but not tool calls. Put `@observe(name=..., op=Op.EXECUTE_TOOL)` **below** `@tool`, as in the example, for a tool span with arguments and result.
+- CrewAI logs `Using an approximate input token count ...` for every call. The spans are not affected: the Bedrock instrumentor reads Bedrock's reported usage.
+- The Bedrock instrumentor records the `chat` span's model without the inference-profile prefix (`claude-haiku-4-5-20251001-v1:0`), while the agent span has the full id from `enrich()`.
+- A crew keeps no chat history between `kickoff()` calls, so the example passes the conversation so far into the task. The CrewAI instrumentor names the task span after the task description, so that span's name contains the history.
+- `[otel-instrumentors]` installs many instrumentors; `register()` activates only those whose library is installed (with CrewAI, also its own dependencies such as `lancedb`, `chromadb` and `openai`).
+
+**In Agent Traces**, a tool turn has 7 spans: your agent span, `crewai.workflow`, the task span, `Travel assistant.agent`, two `chat` spans and `execute_tool weather`.
 
 ## OpenAI Agents SDK
 
-The [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) has built-in tracing. Install the OpenAI auto-instrumentor to capture all LLM calls, and use `@observe` for top-level orchestration.
+The [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) is traced by the OpenAI Agents instrumentor in the `[openai]` extra. The example runs it on Amazon Bedrock through LiteLLM.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[openai]" openai-agents
+pip install "opensearch-genai-observability-sdk-py[openai]>=0.3.0" "openai-agents[litellm]" boto3
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
-from agents import Agent, Runner  # openai-agents package
+import re
+import uuid
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
-    service_name="openai-agents",
+from agents import Agent, Runner, function_tool
+from agents.extensions.models.litellm_model import LitellmModel
+
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
 )
 
-agent = Agent(
-    name="assistant",
-    instructions="You are a helpful assistant.",
-    model="gpt-4o",
-)
+AGENT_NAME, AGENT_VERSION = "openai-agents-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-@observe(op=Op.INVOKE_AGENT, name="openai_agent")
-def run(query: str) -> str:
-    enrich(model="gpt-4o", provider="openai")
-    result = Runner.run_sync(agent, query)
-    enrich(
-        input_tokens=result.raw_responses[-1].usage.input_tokens,
-        output_tokens=result.raw_responses[-1].usage.output_tokens,
-    )
-    return result.final_output
+# register() activates the OpenAI Agents instrumentor from the [openai] extra.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
 
-run("Explain observability in three sentences.")
+
+@function_tool
+def weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"72F and sunny in {city}"
+
+
+# LiteLLM calls Amazon Bedrock through boto3. With an OpenAI key, use model="gpt-4o" instead.
+agent = Agent(name=AGENT_NAME, instructions="You are a helpful travel assistant. Answer in one or two sentences.",
+              model=LitellmModel(f"bedrock/{MODEL_ID}"), tools=[weather])
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+_history: dict[str, list] = {}  # the run items of each conversation, passed back on the next turn
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()  # this span, not the instrumentor's agent span, is the agent run
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    result = Runner.run_sync(agent, _history.get(conversation_id, []) + [{"role": "user", "content": question}])
+    _history[conversation_id] = result.to_input_list()
+    answer = result.final_output.strip()
+    # Through LiteLLM the model spans carry no token usage: record the run's usage on the agent span.
+    usage = result.context_wrapper.usage
+    enrich(input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+           output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
 ```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+**OpenAI models:** install `openai-agents` (without `[litellm]` and `boto3`), build the agent with `model="gpt-4o"` instead of the `LitellmModel`, and set `model="gpt-4o", provider="openai"` in `enrich()`.
+
+- LiteLLM calls Bedrock through boto3, which `openai-agents[litellm]` does not install.
+- Through LiteLLM the instrumentor's `openai.response` model spans have no token usage and no output messages, and their model is `bedrock/<model id>`. The example records the run's usage and answer on the agent span, and the model and provider with `enrich()`.
+- `result.context_wrapper.usage` covers all model calls of the run. `result.raw_responses[-1].usage` counts only the last one, so it undercounts a turn with a tool call.
+- `result.to_input_list()` carries the conversation into the next turn.
+- The Agents SDK also has its own tracing to the OpenAI platform and prints `OPENAI_API_KEY is not set, skipping trace export` without a key. It is independent of the spans sent to OpenSearch. Don't call `set_tracing_disabled(True)`: the instrumentor uses the same tracing hooks.
+
+**In Agent Traces**, a tool turn has 6 spans: your agent span, `Agent Workflow`, `<agent>.agent`, two `openai.response` spans and `weather.tool` (an `execute_tool` span with the arguments and result).
 
 ## Amazon Bedrock
 
-For direct Bedrock `converse` or `invoke_model` calls, install the Bedrock auto-instrumentor.
+For direct Bedrock `converse` calls, the Bedrock instrumentor in the `[bedrock]` extra traces each call as a `chat` span with model, tokens and messages. You write the tool loop yourself.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[bedrock]"
+pip install "opensearch-genai-observability-sdk-py[bedrock]>=0.3.0" boto3
 ```
 
 ```python
-from opensearch_genai_observability_sdk_py import register, observe, Op, enrich
+import re
+import uuid
+
 import boto3
 
-register(
-    endpoint="http://localhost:4318/v1/traces",
-    service_name="bedrock-agent",
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
 )
 
-@observe(op=Op.INVOKE_AGENT, name="bedrock_agent")
-def run(query: str) -> str:
-    client = boto3.client("bedrock-runtime", region_name="us-east-1")
-    enrich(model="claude-sonnet-4-20250514", provider="bedrock")
-    response = client.converse(
-        modelId="us.anthropic.claude-sonnet-4-20250514-v1:0",
-        messages=[{"role": "user", "content": [{"text": query}]}],
-    )
-    result = response["output"]["message"]["content"][0]["text"]
-    enrich(
-        input_tokens=response["usage"]["inputTokens"],
-        output_tokens=response["usage"]["outputTokens"],
-    )
-    return result
+AGENT_NAME, AGENT_VERSION = "bedrock-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-run("What is OpenSearch?")
+# register() activates the Bedrock (boto3) instrumentor from the [bedrock] extra.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+client = boto3.client("bedrock-runtime", region_name="us-west-2")  # a region where the model is available
+
+TOOLS = {"tools": [{"toolSpec": {"name": "weather", "description": "Get weather for a city.",
+    "inputSchema": {"json": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}}}]}
+SYSTEM = [{"text": "You are a helpful travel assistant. Answer in one or two sentences."}]
+
+
+@observe(op=Op.EXECUTE_TOOL)  # your own tool code: @observe records its arguments and result
+def weather(city: str) -> str:
+    return f"72F and sunny in {city}"
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+_history: dict[str, list] = {}  # the Converse messages of each conversation
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    messages = _history.setdefault(conversation_id, [])
+    messages.append({"role": "user", "content": [{"text": question}]})
+    tokens_in = tokens_out = 0
+    while True:  # the tool loop: the Bedrock instrumentor traces each converse() call as a chat span
+        response = client.converse(modelId=MODEL_ID, system=SYSTEM, messages=messages, toolConfig=TOOLS)
+        tokens_in += response["usage"]["inputTokens"]
+        tokens_out += response["usage"]["outputTokens"]
+        message = response["output"]["message"]
+        messages.append(message)
+        if response["stopReason"] != "tool_use":
+            break
+        messages.append({"role": "user", "content": [
+            {"toolResult": {"toolUseId": c["toolUse"]["toolUseId"], "content": [{"text": weather(**c["toolUse"]["input"])}]}}
+            for c in message["content"] if "toolUse" in c]})
+    answer = "".join(c.get("text", "") for c in message["content"]).strip()
+    enrich(input_tokens=tokens_in, output_tokens=tokens_out, output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
 ```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+- `boto3.client("bedrock-runtime")` needs a region: pass `region_name`, as above, or set `AWS_DEFAULT_REGION` or the profile's `region`.
+- `@observe(op=Op.EXECUTE_TOOL)` on your tool function gives the tool span with its arguments and result.
+- The agent span carries the model id you called and the provider name `aws.bedrock`. The Bedrock instrumentor records the model on the `chat` spans without the inference-profile prefix (`us.anthropic.claude-...` becomes `claude-...`). With a tool loop there are several `converse` calls per turn, so the example sums their token usage onto the agent span.
+
+**In Agent Traces**, a tool turn has 4 spans: your agent span, two `chat` spans and `execute_tool weather`.
+
+## Anthropic SDK
+
+For the [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), the Anthropic instrumentor in the `[anthropic]` extra traces each `messages.create()` call as an `anthropic.chat` span with model, tokens and messages. The example uses Claude on Amazon Bedrock with `AnthropicBedrock`; `Anthropic()` for the Claude API works the same way.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[anthropic]>=0.3.0" "anthropic[bedrock]"
+```
+
+```python
+import re
+import uuid
+
+from anthropic import AnthropicBedrock
+
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
+)
+
+AGENT_NAME, AGENT_VERSION = "anthropic-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# register() activates the Anthropic instrumentor from the [anthropic] extra.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+# The Anthropic SDK also emits its own spans: turn them off, or every call is traced twice.
+# Anthropic() for the Claude API works the same way.
+client = AnthropicBedrock(aws_region="us-west-2", open_telemetry=False)
+
+TOOLS = [{"name": "weather", "description": "Get weather for a city.",
+          "input_schema": {"type": "object", "properties": {"city": {"type": "string"}}, "required": ["city"]}}]
+SYSTEM = "You are a helpful travel assistant. Answer in one or two sentences."
+
+
+@observe(op=Op.EXECUTE_TOOL)  # your own tool code: @observe records its arguments and result
+def weather(city: str) -> str:
+    return f"72F and sunny in {city}"
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+_history: dict[str, list] = {}  # the Messages API history of each conversation
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    messages = _history.setdefault(conversation_id, [])
+    messages.append({"role": "user", "content": question})
+    tokens_in = tokens_out = 0
+    while True:  # the tool loop: the instrumentor traces each messages.create() call as a chat span
+        r = client.messages.create(model=MODEL_ID, max_tokens=300, system=SYSTEM, messages=messages, tools=TOOLS)
+        tokens_in += r.usage.input_tokens
+        tokens_out += r.usage.output_tokens
+        messages.append({"role": "assistant", "content": r.content})
+        if r.stop_reason != "tool_use":
+            break
+        messages.append({"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": b.id, "content": weather(**b.input)}
+            for b in r.content if b.type == "tool_use"]})
+    answer = "".join(b.text for b in r.content if b.type == "text").strip()
+    enrich(input_tokens=tokens_in, output_tokens=tokens_out, output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
+```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+- **Create the client with `open_telemetry=False`.** Recent Anthropic SDK releases emit their own OpenTelemetry spans (`anthropic.messages.create`), so with the `[anthropic]` extra every call would be traced twice. With `open_telemetry=False` each call is one `anthropic.chat` span, which also records the messages.
+- `aws_region=` (or `AWS_REGION`) picks the Bedrock region.
+- The example sums the token usage of the calls of a turn onto the agent span.
+
+**In Agent Traces**, a tool turn has 4 spans: your agent span, two `anthropic.chat` spans and `execute_tool weather`.
+
+## LlamaIndex
+
+[LlamaIndex](https://www.llamaindex.ai/) agent workflows are traced by the LlamaIndex instrumentor in the `[llamaindex]` extra. The example runs a `FunctionAgent` on Bedrock with `BedrockConverse`.
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[llamaindex]>=0.3.0" llama-index-core llama-index-llms-bedrock-converse
+```
+
+```python
+import asyncio
+import re
+import uuid
+
+from llama_index.core.agent.workflow import AgentOutput, FunctionAgent
+from llama_index.core.memory import ChatMemoryBuffer
+from llama_index.llms.bedrock_converse import BedrockConverse
+
+from opensearch_genai_observability_sdk_py import (
+    EvalScore, Op, enrich, evaluate, mark_agent_root, observe, register, score, scorer,
+)
+
+AGENT_NAME, AGENT_VERSION = "llamaindex-travel-agent", "v1"
+MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# register() activates the LlamaIndex instrumentor from the [llamaindex] extra.
+provider = register(service_name=AGENT_NAME, agent_name=AGENT_NAME, agent_version=AGENT_VERSION)
+
+
+@observe(name="weather", op=Op.EXECUTE_TOOL)  # the LlamaIndex instrumentor records no tool spans
+def weather(city: str) -> str:
+    """Get weather for a city."""
+    return f"72F and sunny in {city}"
+
+
+agent = FunctionAgent(name=AGENT_NAME, tools=[weather],
+                      llm=BedrockConverse(model=MODEL_ID, region_name="us-west-2"),
+                      system_prompt="You are a travel assistant. Use the weather tool for weather questions. "
+                                    "Answer in one or two sentences.")
+loop = asyncio.new_event_loop()  # one event loop for the process
+_memory: dict[str, ChatMemoryBuffer] = {}  # one memory per conversation keeps its history
+
+
+def _messages(role, text):
+    return [{"role": role, "parts": [{"type": "text", "content": text}]}]
+
+
+@observe(name=AGENT_NAME, op=Op.INVOKE_AGENT)
+def ask(conversation_id: str, question: str, online_eval: bool = True) -> str:
+    mark_agent_root()  # this span, not the workflow's own agent spans, is the agent run
+    enrich(session_id=conversation_id, input_messages=_messages("user", question),
+           model=MODEL_ID, provider="aws.bedrock", **{"gen_ai.agent.version": AGENT_VERSION})
+    memory = _memory.setdefault(conversation_id, ChatMemoryBuffer.from_defaults())
+    usage = {"inputTokens": 0, "outputTokens": 0}
+
+    async def run():
+        handler = agent.run(question, memory=memory)
+        async for event in handler.stream_events():  # one AgentOutput per model call, with Bedrock's usage
+            if isinstance(event, AgentOutput):
+                u = ((event.raw or {}).get("metadata") or {}).get("usage") or {}
+                usage["inputTokens"] += u.get("inputTokens", 0)
+                usage["outputTokens"] += u.get("outputTokens", 0)
+        return await handler
+
+    answer = str(loop.run_until_complete(run())).strip()
+    # The instrumentor records no model or token usage for BedrockConverse: set them on the agent span.
+    enrich(input_tokens=usage["inputTokens"], output_tokens=usage["outputTokens"],
+           output_messages=_messages("assistant", answer))
+    if online_eval:
+        # Online evaluation: score() inside the agent span is linked to this span.
+        ok = len(answer) <= 400
+        score("concise_answer", 1.0 if ok else 0.0, label="pass" if ok else "fail",
+              explanation=f"{len(answer)} characters", evaluator="length_check",
+              evaluator_type="code", agent_version=AGENT_VERSION)
+    return answer
+```
+
+Then append [the conversation and evaluation part](#the-conversation-and-evaluation-part).
+
+- The instrumentor records no tool spans for `FunctionAgent` tools: decorate the tool with `@observe(name=..., op=Op.EXECUTE_TOOL)`, as above. `FunctionAgent` still reads the tool's name, signature and docstring through the decorator.
+- With `BedrockConverse` the instrumentor's model-call spans have messages but no model id and no token usage. The example sums Bedrock's usage from the `AgentOutput` events onto the agent span and sets the model and provider with `enrich()`.
+- Every workflow step is an `invoke_agent` span (`BaseWorkflowAgent.task`, `BedrockConverse.task`, `FunctionTool.task`), so step names appear in the agent-name facets. Your marked span stays the agent of the trace, and the session turns of a session-level result stay right.
+- Pass one `ChatMemoryBuffer` per conversation to `agent.run(memory=...)`. A reused workflow `Context` alone did not keep the chat history between runs.
+- The instrumentor logs `Failed to detach context` tracebacks and `Setting attribute on ended span` warnings. They are harmless and come from the instrumentor.
+- These traces are large (17 spans per tool turn) and can take a little longer to show up.
+
+**In Agent Traces**, a tool turn has 17 spans: your agent span, the workflow's `invoke_agent` step spans and `execute_tool weather`.
+
+---
+
+## Langfuse
+
+If your app is already traced with [Langfuse](https://langfuse.com/) (Python SDK v3 or later, which is built on OpenTelemetry), keep Langfuse and add OpenSearch as a second destination. Both backends then receive the same spans with the same trace and span ids, which is what lets you mirror Langfuse scores later (see [Evaluation Integrations: Langfuse](/docs/agent-evals/evaluation-integrations/#langfuse)).
+
+```bash
+pip install "opensearch-genai-observability-sdk-py>=0.3.0" langfuse
+export LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... LANGFUSE_BASE_URL=https://<your-langfuse-host>
+```
+
+The examples use the Langfuse Python SDK (`get_client`, `@observe`, `propagate_attributes`).
+
+**Call `register()` before Langfuse starts.** Langfuse attaches its span processor to the global tracer provider if one exists, and otherwise installs its own. `register()` must therefore run before `get_client()`, `Langfuse()` or the first `@observe` call. If Langfuse goes first, OpenTelemetry keeps Langfuse's provider, logs `Overriding of current TracerProvider is not allowed`, and nothing reaches OpenSearch.
+
+```python
+from opensearch_genai_observability_sdk_py import register
+
+provider = register(service_name="travel-agent", agent_name="travel_assistant", agent_version="v1")
+
+from langfuse import get_client, observe, propagate_attributes  # after register()
+
+langfuse = get_client()
+```
+
+Langfuse still decides which spans it keeps (its own spans and spans with GenAI attributes); OpenSearch receives every span the app creates.
+
+### Frameworks that emit GenAI attributes
+
+Frameworks that already write OpenTelemetry GenAI attributes, for example [Strands Agents](#strands-agents) with the opt-in flags from its section, need nothing else. Keep your Langfuse code as it is:
+
+```python
+@observe(name="travel_assistant")
+def ask(question: str) -> str:
+    with propagate_attributes(session_id=conversation_id, user_id=user_id):
+        return str(agent(question))  # a Strands Agent
+```
+
+Agent Traces lists each turn by the framework's `invoke_agent` span, below the Langfuse span. `propagate_attributes(session_id=...)` writes `session.id` on every span, and Data Prepper copies it to `gen_ai.conversation.id`, so turns group into sessions.
+
+### Langfuse-native spans: copy `langfuse.*` to `gen_ai.*`
+
+Spans created by Langfuse itself (`@observe`, the LangChain / LangGraph `CallbackHandler`, the Langfuse OpenAI wrapper) carry only `langfuse.*` attributes, so Agent Traces does not recognize them. Wrap the OpenSearch exporter with a small translator that copies them to the GenAI names (existing `gen_ai.*` keys are never overwritten, and the `langfuse.*` keys are kept):
+
+```python
+# langfuse_genai.py
+import json
+
+from opentelemetry.sdk.trace import ReadableSpan
+from opentelemetry.sdk.trace.export import SpanExporter
+
+_OPERATIONS = {"agent": "invoke_agent", "generation": "chat", "tool": "execute_tool",
+               "embedding": "embeddings", "retriever": "retrieval"}
+
+
+def _messages(value, role):
+    """Langfuse input or output (JSON) -> GenAI messages in parts format."""
+    try:
+        data = json.loads(value)
+    except (TypeError, ValueError):
+        data = value
+    if isinstance(data, dict) and "messages" in data:  # LangGraph state
+        data = data["messages"]
+    if isinstance(data, dict) and set(data) >= {"role", "content"}:
+        data = [data]
+    if isinstance(data, list) and data and all(isinstance(m, dict) and "content" in m for m in data):
+        out = []
+        for m in data:
+            text = m["content"] if isinstance(m["content"], str) else json.dumps(m["content"], default=str)
+            r = m.get("role") or {"human": "user", "ai": "assistant"}.get(m.get("type"), m.get("type", role))
+            out.append({"role": r, "parts": [{"type": "text", "content": text}]})
+        return json.dumps(out)
+    if isinstance(data, dict) and set(data) == {"args", "kwargs"}:  # @observe() arguments
+        data = data["args"][0] if len(data["args"]) == 1 and not data["kwargs"] else data
+    text = data if isinstance(data, str) else json.dumps(data, default=str)
+    return json.dumps([{"role": role, "parts": [{"type": "text", "content": text}]}])
+
+
+def langfuse_to_genai(attrs, name):
+    a, new = dict(attrs), {}
+    op = _OPERATIONS.get(str(a.get("langfuse.observation.type", "")).lower())
+    if op == "invoke_agent" and "langfuse.observation.metadata.langgraph_node" in a:
+        op = None  # a LangGraph node that Langfuse types "agent", not a separate agent
+    if op:
+        new["gen_ai.operation.name"] = op
+        if op == "invoke_agent":
+            new["gen_ai.agent.name"] = name.removeprefix("invoke_agent ").strip()
+            if "langfuse.version" in a:
+                new["gen_ai.agent.version"] = a["langfuse.version"]
+        if op == "execute_tool":
+            new["gen_ai.tool.name"] = name
+        if "langfuse.observation.input" in a:
+            new["gen_ai.input.messages"] = _messages(a["langfuse.observation.input"], "user")
+        if "langfuse.observation.output" in a:
+            new["gen_ai.output.messages"] = _messages(a["langfuse.observation.output"], "assistant")
+    if "langfuse.observation.model.name" in a:
+        new["gen_ai.request.model"] = a["langfuse.observation.model.name"]
+    try:
+        usage = json.loads(a.get("langfuse.observation.usage_details") or "{}")
+        for src, dst in (("input", "input_tokens"), ("output", "output_tokens"), ("total", "total_tokens")):
+            if isinstance(usage.get(src), (int, float)):
+                new[f"gen_ai.usage.{dst}"] = int(usage[src])
+    except (TypeError, ValueError):
+        pass
+    session = a.get("session.id") or a.get("langfuse.session.id")
+    if session:
+        new["gen_ai.conversation.id"] = session
+    for k, v in new.items():
+        a.setdefault(k, v)
+    return a
+
+
+class LangfuseToGenAIExporter(SpanExporter):
+    def __init__(self, inner: SpanExporter):
+        self._inner = inner
+
+    def export(self, spans):
+        return self._inner.export([ReadableSpan(
+            name=s.name, context=s.context, parent=s.parent, resource=s.resource,
+            attributes=langfuse_to_genai(s.attributes or {}, s.name), events=s.events, links=s.links,
+            kind=s.kind, status=s.status, start_time=s.start_time, end_time=s.end_time,
+            instrumentation_scope=s.instrumentation_scope) for s in spans])
+
+    def shutdown(self):
+        self._inner.shutdown()
+
+    def force_flush(self, timeout_millis=30000):
+        return self._inner.force_flush(timeout_millis)
+```
+
+Save it next to your app and pass it to `register()`. With a custom exporter, also give the logs endpoint so evaluation results are exported. The example below is a LangGraph agent (`graph`) traced with Langfuse's `CallbackHandler`:
+
+```python
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opensearch_genai_observability_sdk_py import register
+from langfuse_genai import LangfuseToGenAIExporter
+
+provider = register(
+    service_name="travel-agent", agent_name="travel_assistant", agent_version="v1",
+    exporter=LangfuseToGenAIExporter(OTLPSpanExporter(endpoint="http://localhost:4318/v1/traces")),
+    logs_endpoint="http://localhost:4318/v1/logs",
+)
+
+from langfuse import get_client, observe, propagate_attributes
+from langfuse.langchain import CallbackHandler
+
+langfuse = get_client()
+
+
+@observe(name="travel_assistant", as_type="agent")  # this span becomes the agent root
+def ask(question: str) -> str:
+    with propagate_attributes(session_id=conversation_id, user_id=user_id, version="v1"):
+        state = graph.invoke({"messages": [{"role": "user", "content": question}]},
+                             config={"callbacks": [CallbackHandler()]})
+        return state["messages"][-1].content
+```
+
+`as_type="agent"` on the entry function gives each turn one agent root named after the agent, with the messages, model and token totals of its LangChain calls. Langfuse's `CallbackHandler` writes every LangChain and LangGraph metadata key as a `langfuse.observation.metadata.*` attribute; keep custom metadata keys few, as each one is a field in the span index.
 
 ---
 
@@ -268,3 +1007,5 @@ run("What is OpenSearch?")
 - [Python SDK reference](/docs/send-data/ai-agents/python/) - full API documentation for `register`, `observe`, `enrich`
 - [Auto-instrumentation](/docs/send-data/ai-agents/python/#auto-instrumentation) - supported providers and extras
 - [Evaluation & Scoring](/docs/agent-evals/evaluation/) - score and evaluate your agent outputs
+- [Agent Evals Quickstart](/docs/agent-evals/quickstart/) - first offline and online evaluation results
+- [Evaluation Integrations: Langfuse](/docs/agent-evals/evaluation-integrations/#langfuse) - mirror Langfuse scores and experiments

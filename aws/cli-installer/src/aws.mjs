@@ -727,6 +727,22 @@ export function sigv4Fetch(region, service) {
   };
 }
 
+/**
+ * fetch() for direct requests to a managed domain. Basic auth when a master password is
+ * supplied or stored (domains with an internal master user); otherwise requests are signed
+ * with the caller's credentials (IAM master user, or a role mapped to security_manager).
+ */
+export async function domainFetchFor(cfg) {
+  let masterPass = cfg.opensearchPassword || '';
+  if (!masterPass) {
+    try { masterPass = await getMasterPassword(cfg.region, cfg.pipelineName); } catch { /* none stored */ }
+  }
+  const domainFetch = masterPass
+    ? basicAuthFetch(cfg.opensearchUser || 'admin', masterPass)
+    : sigv4Fetch(cfg.region, 'es');
+  return { domainFetch, masterPass };
+}
+
 export async function mapOsiRoleInDomain(cfg) {
   if (cfg.opensearchType === 'serverless') return;
   if (!cfg.opensearchEndpoint || !cfg.iamRoleArn) return;
@@ -744,16 +760,7 @@ export async function mapOsiRoleInDomain(cfg) {
 
   printStep('Mapping roles in OpenSearch FGAC...');
 
-  // Basic auth when a master password is supplied or stored (domains with an internal
-  // master user); otherwise sign with the caller's credentials (IAM master user, or a
-  // role mapped to security_manager).
-  let masterPass = cfg.opensearchPassword || '';
-  if (!masterPass) {
-    try { masterPass = await getMasterPassword(cfg.region, cfg.pipelineName); } catch { /* none stored */ }
-  }
-  const domainFetch = masterPass
-    ? basicAuthFetch(cfg.opensearchUser || 'admin', masterPass)
-    : sigv4Fetch(cfg.region, 'es');
+  const { domainFetch, masterPass } = await domainFetchFor(cfg);
 
   const url = `${cfg.opensearchEndpoint}/_plugins/_security/api/rolesmapping`;
   const { backendRoles: newBackendRoles, users: newUsers } = fgacPrincipals(cfg);
@@ -803,6 +810,35 @@ export async function mapOsiRoleInDomain(cfg) {
     if (!masterPass) printInfo('Requests were signed with your AWS credentials; your role must be the domain\'s master user or mapped to security_manager (for a CDK-deployed domain, list it in adminRoleArns).');
     printInfo('Map it manually in OpenSearch UI → Security → Roles, or re-run the installer.');
     throw new Error('FGAC role mapping failed — pipeline would not be able to write to OpenSearch');
+  }
+}
+
+/**
+ * Creates the GenAI evaluation index (ISM rollover policy, index template and write alias
+ * otel-v1-genai-evaluation) on a managed domain. Not fatal: without it the pipeline creates
+ * a single otel-v1-genai-evaluation index with the same mappings and no rollover.
+ */
+export async function setupEvaluationIndex(cfg) {
+  if (cfg.opensearchType === 'serverless' || !cfg.opensearchEndpoint) return;
+  const fallback = 'The pipeline will create a single otel-v1-genai-evaluation index with the evaluation mappings and no rollover. To use rollover, follow the Agent Evaluations data model docs (/docs/agent-evals/data-model/).';
+  if (cfg.vpcId) {
+    printInfo('VPC domain: the evaluation index rollover policy and alias are not created from here.');
+    printInfo(fallback);
+    return;
+  }
+  printStep('Creating the agent evaluation index (otel-v1-genai-evaluation)...');
+  try {
+    const { ensureEvaluationIndex } = await import('./evaluation-index.mjs');
+    const { domainFetch } = await domainFetchFor(cfg);
+    const r = await ensureEvaluationIndex(domainFetch, cfg.opensearchEndpoint, { log: printInfo });
+    if (r.alias === 'concrete-index') {
+      printWarning('An index named otel-v1-genai-evaluation already exists, so the rollover alias was not created. Evaluation results keep going to that index.');
+    } else {
+      printSuccess(`Evaluation index ready (policy ${r.policy}, template ${r.template}, alias ${r.alias})`);
+    }
+  } catch (err) {
+    printWarning(`Could not create the evaluation index: ${err.message}`);
+    printInfo(fallback);
   }
 }
 

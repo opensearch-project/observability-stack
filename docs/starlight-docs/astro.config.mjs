@@ -284,7 +284,10 @@ export default defineConfig({
 					collapsed: true,
 					items: [
 						{ label: 'Overview', link: '/agent-evals/' },
+						{ label: 'Quickstart', link: '/agent-evals/quickstart/' },
 						{ label: 'Evaluation & Scoring', link: '/agent-evals/evaluation/' },
+						{ label: 'Run Evaluations in CI', link: '/agent-evals/ci/' },
+						{ label: 'Data Model & Ingestion', link: '/agent-evals/data-model/' },
 						{ label: 'Evaluation Integrations', link: '/agent-evals/evaluation-integrations/' },
 					],
 				},

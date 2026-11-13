@@ -129,6 +129,40 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 For a VPC deployment the ingest endpoint is VPC-private, so your collector must run inside the VPC (or reach it over peering/Transit Gateway). A VPC OSIS endpoint also takes ~10-15 minutes after the pipeline reports `ACTIVE` before it serves requests; until then connections close with no HTTP response. This is AWS-side ingestion warmup, not a configuration problem.
 
+## Agent evaluation results
+
+Both methods set up storage for [agent evaluation results](/docs/agent-evals/) (`gen_ai.evaluation.result` log events). The pipeline routes those events, and only those, to the evaluation index; every other log still goes to `logs-otel-v1`:
+
+```yaml
+  route:
+    - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'
+    - logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'
+```
+
+| | Managed (AOS), including log-optimized domains | Serverless (AOSS) |
+|---|---|---|
+| **Written to** | Write alias `otel-v1-genai-evaluation` over `otel-v1-genai-evaluation-000001`, ... | Index `otel-v1-genai-evaluation` |
+| **Created by** | The installer, before it creates the pipeline: ISM policy `otel-v1-genai-evaluation-policy`, index template `otel-v1-genai-evaluation-index-template`, and the first index with the write alias | The pipeline sink, from the template in its configuration (`template_content`), on first start |
+| **Lifecycle** | Rollover at 50 GB or 24 hours, no delete | Collection data lifecycle policy (no ISM) |
+
+For a VPC-private domain created by the CLI installer, the installer cannot reach the domain to create the alias, so the pipeline creates a single `otel-v1-genai-evaluation` index from the same template instead (no rollover). To use rollover there, create the [policy, template and first index](/docs/agent-evals/data-model/#the-evaluation-index) from OpenSearch UI Dev Tools before the pipeline starts.
+
+If the pipeline starts before the alias exists (a VPC domain, or an installer run where the index step failed with a warning), it creates the single index from the same template. To switch to rollover later, follow [Migrate from the logs index](/docs/agent-evals/data-model/#migrate-from-the-logs-index) with that index as the source.
+
+The `eventName` route needs an ingestion pipeline whose Data Prepper version stores the OTLP event name ([data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148)); with an older version, results stay in `logs-otel-v1`.
+
+Send results from the SDK to the pipeline's ingest endpoint and path, signed with SigV4:
+
+```python
+register(
+    endpoint="https://<ingest-endpoint>/<pipeline-name>",  # the SDK appends /v1/traces and /v1/logs
+    sigv4={"service": "osis", "region": "us-west-2"},
+    service_name="my-agent",
+)
+```
+
+Then open **Agent monitoring > Evaluations** in OpenSearch UI and run the setup: it detects `otel-v1-genai-evaluation*`. See [Data Model & Ingestion](/docs/agent-evals/data-model/) for the template and the attributes.
+
 ## Cleanup
 
 **CLI installer:**

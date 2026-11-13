@@ -1,0 +1,718 @@
+---
+title: "Data Model & Ingestion"
+description: "The evaluation result event, every attribute and how it is indexed, case identity, the evaluation index template and ISM policy, and how to route results with Data Prepper"
+sidebar:
+  order: 4
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Every evaluation result is one OpenTelemetry log event named `gen_ai.evaluation.result`, as defined by the [OTel GenAI events conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/). Results travel the OTLP logs path next to your application logs. Data Prepper routes them to their own index, `otel-v1-genai-evaluation`, where they join the agent spans in `otel-v1-apm-span-*` on `traceId` and `spanId`. The Evaluations pages in OpenSearch Dashboards read nothing else.
+
+This page is the reference for that record and its storage. To send your first results, start with the [Quickstart](/docs/agent-evals/quickstart/). The SDK side, including every argument that sets these attributes, is in the SDK guides: [Python](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/agent-evaluations.md) and [TypeScript](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/agent-evaluations.md).
+
+## The data model
+
+Results are organized the way you test an agent:
+
+```text
+Test suite  "travel-planner-golden"                 test.suite.name
+ └─ Run      run_20261105_215438_5df57445           test.suite.run.id  (one execution of the suite)
+     └─ Case  "Plan a trip to Lisbon"               test.case.id / test.case.name
+         ├─ Input      "Plan 3 days in Lisbon under $1,000"   → the agent's trace
+         ├─ Expected   "Itinerary with flights + hotel ≤ $1,000"  → opensearch.test.case.expected
+         ├─ Output     the agent's actual answer                  → the agent's trace
+         └─ Evaluators run on (input, output, expected, trace):
+              ├─ answer_quality   score 4/5, pass   → 1 result event
+              ├─ budget_respected pass               → 1 result event
+              └─ safety           pass               → 1 result event
+```
+
+- The **agent** (`gen_ai.agent.name`, `gen_ai.agent.version`) is what you evaluate. Every result names the agent and version it judged.
+- A **test suite** is a named set of cases, stable across runs.
+- A **run** is one execution of the suite against one version of the agent. It has one result per case per evaluator.
+- A **case** is one input with an optional expected output. Its input and output live in the agent's trace, not in the result: the result links to that trace.
+- An **evaluator** (a code check, an LLM judge, a human) produces one result event per evaluation it scores.
+
+### Online and offline results
+
+| | Offline | Online |
+|---|---|---|
+| What runs | A test suite you run on purpose, before a release or in CI | Real traffic, sampled and scored as it happens or shortly after |
+| SDK | `evaluate()`, `Benchmark` | `score()` |
+| Suite, run and case | `test.suite.name`, `test.suite.run.id`, `test.case.id` (and usually `test.case.name`) | None |
+| Expected output | `opensearch.test.case.expected`, when the case has one | None |
+| Linked to | The root span of the agent run for that case | The span, trace or session it judged |
+
+A result without `test.suite.run.id` is online. The **Online** source filter on the Evaluations pages shows exactly those. When each offline case runs in its own conversation id (as in the [framework examples](/docs/send-data/ai-agents/integrations/#how-the-examples-are-built), so cases don't share history), the Agent Traces **Sessions** tab shows every case as a one-turn session next to your real conversations.
+
+### Levels
+
+`opensearch.gen_ai.evaluation.level` says what was judged: `span`, `trace`, `session` or `tool_call`. When it is absent, a result with a `spanId` is span level and one with only a `traceId` is trace level. A session-level result carries `gen_ai.conversation.id` and no trace context.
+
+### Verdicts
+
+The verdict is `gen_ai.evaluation.score.label`: `pass` or `fail` (lowercase). Your evaluator, or the SDK from your `threshold` and `direction`, decides it. OpenSearch Dashboards shows the stored label and never computes one:
+
+- `error.type` is set: **evaluator error** (no value, no label).
+- `gen_ai.evaluation.score.label` is `pass` or `fail`: **Pass** or **Fail**.
+- Anything else: **Scored**, left out of pass rates. A judge's own category (for example `relevant`) is kept in `opensearch.gen_ai.evaluation.judge_label` when the result also has a verdict.
+
+Pass rate = pass / (pass + fail).
+
+## Case identity
+
+Compare, deltas against the previous run and "new failure" all match cases by id, so keep ids stable:
+
+- **Across runs**, a case is `test.suite.name` + `test.case.id`.
+- **Within a run**, a case is `test.suite.run.id` + `test.case.id`. All results of a case in one run share these two values.
+- **SDK default:** when you don't pass a case id, the SDK uses the first 16 hex characters of the SHA-256 of the input. Editing the input therefore makes a new case, and the old one shows as removed in Compare. Pass an explicit `case_id` (`caseId` in TypeScript) for an identity that survives edits.
+- `test.case.name` is a display name only. Renaming a case does not change its identity.
+- Online results have no suite, run or case.
+
+## The result event
+
+The SDK sends each result as an OTLP LogRecord:
+
+- `event_name` = `gen_ai.evaluation.result`, severity INFO, an empty body, all data in attributes.
+- The trace context of what was judged: `traceId` + `spanId` for a span, only `traceId` for a trace, none for a session or for a case whose task started no span. Offline results are parented to the root span of the agent run for the case.
+- The instrumentation scope is the SDK (`opensearch-genai-observability-sdk-py` or `-ts`) with its version.
+
+Data Prepper stores the attributes under `attributes` with their dotted OTel names, for example `attributes.gen_ai.evaluation.score.value`. Any OpenTelemetry producer works, as long as it sends the event name and these attributes.
+
+### Attributes
+
+**Index type** is how the [evaluation index template](#the-index-template) stores the field. **Explicit** fields are mapped by the template; **dynamic** fields take the template's dynamic rules (strings become `keyword` with `ignore_above` 256, whole numbers `long`, other numbers `double`, booleans `boolean`). **Required** means the Evaluations pages need it; recommended fields make the pages more useful.
+
+The template maps every field the Evaluations pages query explicitly, so each new index (a fresh install, or a rollover) can be queried before its first document carries the field. Without the template, a query that references a field no index behind `otel-v1-genai-evaluation*` has mapped yet fails with `Field [...] not found`, so on a fresh install create the template before the first result arrives.
+
+#### Document fields
+
+| Field | Index type | Mapping | Required | Meaning |
+|---|---|---|---|---|
+| `eventName` | `text` with a `keyword` (256) subfield | explicit | Required | `gen_ai.evaluation.result`. Routing matches this field |
+| `time` | `date_nanos` | explicit | Required | When the result was recorded |
+| `@timestamp` | `date_nanos` | explicit | Required | Copy of `time` made by the pipeline. The Evaluations dataset's time field |
+| `traceId` | `keyword` (32) | explicit | Optional | Trace that was judged. Online: the evaluated trace; offline: the agent run of the case |
+| `spanId` | `keyword` (16) | explicit | Optional | Span that was judged |
+| `instrumentationScope.name` / `.version` | `keyword` (128 / 64) | explicit | Optional | The producer, for example the SDK and its version |
+| `resource.attributes.service.name` | `keyword` (256) | dynamic | Optional | Service that sent the result (your evaluator or CI job) |
+
+#### OTel GenAI attributes
+
+| Attribute | Index type | Mapping | Required | Meaning |
+|---|---|---|---|---|
+| `gen_ai.evaluation.name` | `keyword` (256) | explicit | Required | Evaluation (metric) name, for example `answer_quality`. Results are grouped by it |
+| `gen_ai.evaluation.score.value` | `double` | explicit | One of value, label or `error.type` | Numeric score. Absent on error results |
+| `gen_ai.evaluation.score.label` | `keyword` (256) | explicit | One of value, label or `error.type` | `pass` / `fail` is the verdict; any other value is a category |
+| `gen_ai.evaluation.explanation` | `text` | explicit | Optional | The evaluator's rationale, up to 8192 characters. Searchable, not aggregatable |
+| `error.type` | `keyword` (256) | explicit | Optional | The evaluator or the task failed, for example `TimeoutError`. No value or label |
+| `gen_ai.agent.name` | `keyword` (256) | explicit | Recommended | Agent that was judged. Results without it show as "(no agent name)" |
+| `gen_ai.agent.version` | `keyword` (256) | explicit | Recommended | Its version. Pinned to `keyword` so a version like `2` never becomes a number |
+| `gen_ai.conversation.id` | `keyword` (256) | explicit | Optional | Session that was judged (session-level results) |
+| `gen_ai.response.id` | `keyword` (256) | dynamic | Optional | Completion that was judged |
+| `gen_ai.request.model` | `keyword` (256) | dynamic | Optional | Model the LLM judge used |
+| `gen_ai.prompt.name` | `keyword` (256) | dynamic | Optional | Name of the judge prompt |
+| `gen_ai.prompt.version` | `keyword` (256) | explicit | Optional | Version of the judge prompt. Pinned to `keyword` |
+
+#### OpenSearch evaluation extensions
+
+OTel does not define these yet. They mirror the OTel names under `opensearch.`.
+
+| Attribute | Index type | Mapping | Required | Meaning |
+|---|---|---|---|---|
+| `opensearch.gen_ai.evaluation.level` | `keyword` (256) | explicit | Optional | `span`, `trace`, `session` or `tool_call` |
+| `opensearch.gen_ai.evaluation.evaluator.name` | `keyword` (256) | dynamic | Recommended | Evaluator that produced the result. One evaluator can produce several evaluations |
+| `opensearch.gen_ai.evaluation.evaluator.version` | `keyword` (256) | explicit | Optional | Evaluator version. Pinned to `keyword` |
+| `opensearch.gen_ai.evaluation.evaluator.type` | `keyword` (256) | dynamic | Recommended | `llm_judge`, `code`, `human` or `external` |
+| `opensearch.gen_ai.evaluation.evaluator.description` | `keyword` (256) | dynamic | Optional | What the evaluator checks (criteria or rubric summary) |
+| `opensearch.gen_ai.evaluation.score.min` | `double` | explicit | Optional | Lower bound of the scale |
+| `opensearch.gen_ai.evaluation.score.max` | `double` | explicit | Optional | Upper bound of the scale |
+| `opensearch.gen_ai.evaluation.score.threshold` | `double` | explicit | Optional | Pass threshold the verdict was computed from |
+| `opensearch.gen_ai.evaluation.score.direction` | `keyword` (256) | explicit | Optional | `maximize` (default) or `minimize`, for example for latency or cost |
+| `opensearch.gen_ai.evaluation.judge_label` | `keyword` (256) | dynamic | Optional | The judge's own category when the result also has a verdict |
+| `opensearch.gen_ai.evaluation.judge.trace_id` | `keyword` (256) | dynamic | Optional | Trace of the judge's own run, when the judge is traced |
+
+#### Test suite, run and case
+
+`test.suite.name` and `test.case.name` are in the OTel registry; `test.suite.run.id` and `test.case.id` are proposed in [semantic-conventions#1262](https://github.com/open-telemetry/semantic-conventions/issues/1262). Set only on offline results.
+
+| Attribute | Index type | Mapping | Required | Meaning |
+|---|---|---|---|---|
+| `test.suite.name` | `keyword` (256) | explicit | Required offline | Test suite, stable across runs |
+| `test.suite.run.id` | `keyword` (256) | explicit | Required offline | One run of the suite. Pinned to `keyword` |
+| `test.case.id` | `keyword` (256) | explicit | Required offline | One case. Pinned to `keyword`. See [Case identity](#case-identity) |
+| `test.case.name` | `keyword` (256) | dynamic | Optional | Readable case name |
+| `opensearch.test.suite.run.name` | `keyword` (256) | dynamic | Optional | Readable run name, shown in place of the short run id |
+| `opensearch.test.suite.run.description` | `keyword` (256) | dynamic | Optional | What changed in this run, up to 1024 characters |
+| `opensearch.test.case.expected` | `keyword` (256) | dynamic | Optional | Expected output of the case, up to 32768 characters. Strings as is, other values JSON-encoded |
+| `opensearch.test.case.expected_truncated` | `boolean` | dynamic | Optional | `true` when the expected output was cut |
+
+#### CI/CD
+
+OTel `cicd.pipeline.*` attributes. The SDK sets them inside GitHub Actions, GitLab CI and Jenkins, on results and on agent root spans. See [Run evaluations in CI](/docs/agent-evals/ci/#cicd-attributes).
+
+| Attribute | Index type | Mapping | Required | Meaning |
+|---|---|---|---|---|
+| `cicd.pipeline.name` | `keyword` (256) | dynamic | Optional | CI workflow or job |
+| `cicd.pipeline.run.id` | `keyword` (256) | dynamic | Optional | CI run id |
+| `cicd.pipeline.run.url.full` | `keyword` (256) | dynamic | Optional | Link to the CI run, shown on the run page and in the result flyout |
+
+Your own attributes (`score(attributes=...)`, run and case `metadata`) are added under `attributes` too and mapped dynamically. The SDK never lets them overwrite the fields above.
+
+### Long strings
+
+A string attribute longer than 256 characters is stored in full in `_source` and shown in full on the result, but it is not indexed: you cannot filter or aggregate on it, and it is never rejected. That covers long expected outputs, evaluator descriptions, case names and CI URLs. `gen_ai.evaluation.explanation` is `text`, so it stays searchable at any length.
+
+### Judge prompts
+
+Record which prompt a judge used by name and version, not by content:
+
+- Every result carries `gen_ai.prompt.name` and `gen_ai.prompt.version` (for example `answer-quality` and `v3`, read together as `answer-quality@v3`), with the judge model in `gen_ai.request.model`. Bump the version whenever the prompt changes, so two judge versions are never mixed in one pass rate.
+- Result events do not carry the judge's system prompt. The same prompt would be copied onto every result, it can hold sensitive data, and it would bloat the index.
+- If you want the full prompt, trace the judge and put the prompt on the judge's own LLM span as `gen_ai.system_instructions` (its OTel location), for example with `enrich(system_instructions=...)` inside the judge call. Pass the judge's trace id to `score()` (`judge_trace_id=`) or `EvalScore`, so the result links to `opensearch.gen_ai.evaluation.judge.trace_id` and the result flyout can open the judge's run.
+
+## The evaluation index
+
+Results are written to `otel-v1-genai-evaluation`:
+
+- On backends with ISM and aliases (OpenSearch, Amazon OpenSearch Service), it is a **write alias** over rolling indices `otel-v1-genai-evaluation-000001`, `-000002`, ..., managed by an ISM policy.
+- On OpenSearch Serverless, which has no ISM or aliases, it is **one index** named `otel-v1-genai-evaluation`, with the same mappings.
+
+Either way, the Evaluations setup in OpenSearch Dashboards finds the results through the index pattern `otel-v1-genai-evaluation*`.
+
+| Where you run | Who creates the index |
+|---|---|
+| Local stack (Docker Compose) | Data Prepper, from the template and ISM policy files in `docker-compose/data-prepper/`. The init job creates the same objects if they are missing. |
+| AWS CLI installer and CDK, managed domain | The installer, before it creates the OpenSearch Ingestion pipeline: ISM policy, template and first index with the write alias |
+| AWS CLI installer and CDK, OpenSearch Serverless | The pipeline sink, from the template in the pipeline configuration, on first start |
+| Your own cluster | You, once, with the three requests below |
+
+### The index template
+
+A composable index template named `otel-v1-genai-evaluation-index-template`, `"version": 1`, priority 100, for the indices `otel-v1-genai-evaluation-*`. It starts from Data Prepper's standard OTel logs template (`date_detection` off, string attributes `keyword` with `ignore_above` 256, numbers dynamic) and adds the evaluation fields listed in [Attributes](#attributes). Data Prepper, the AWS installer and this page use the same name and version, so installs converge: a tool replaces the template only when its own version is higher.
+
+<details>
+<summary>otel-v1-genai-evaluation-index-template</summary>
+
+```json
+PUT _index_template/otel-v1-genai-evaluation-index-template
+{
+  "version": 1,
+  "index_patterns": [
+    "otel-v1-genai-evaluation-*"
+  ],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "plugins.index_state_management.rollover_alias": "otel-v1-genai-evaluation"
+    },
+    "mappings": {
+      "date_detection": false,
+      "_source": {
+        "enabled": true
+      },
+      "dynamic_templates": [
+        {
+          "long_resource_attributes": {
+            "mapping": {
+              "type": "long"
+            },
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "double_resource_attributes": {
+            "mapping": {
+              "type": "double"
+            },
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "double"
+          }
+        },
+        {
+          "string_resource_attributes": {
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "path_match": "resource.attributes.*",
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "long_scope_attributes": {
+            "mapping": {
+              "type": "long"
+            },
+            "path_match": "instrumentationScope.attributes.*",
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "double_scope_attributes": {
+            "mapping": {
+              "type": "double"
+            },
+            "path_match": "instrumentationScope.attributes.*",
+            "match_mapping_type": "double"
+          }
+        },
+        {
+          "string_scope_attributes": {
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "path_match": "instrumentationScope.attributes.*",
+            "match_mapping_type": "string"
+          }
+        },
+        {
+          "long_attributes": {
+            "mapping": {
+              "type": "long"
+            },
+            "path_match": "attributes.*",
+            "match_mapping_type": "long"
+          }
+        },
+        {
+          "double_attributes": {
+            "mapping": {
+              "type": "double"
+            },
+            "path_match": "attributes.*",
+            "match_mapping_type": "double"
+          }
+        },
+        {
+          "string_attributes": {
+            "mapping": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "path_match": "attributes.*",
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "droppedAttributesCount": {
+          "type": "integer"
+        },
+        "instrumentationScope": {
+          "properties": {
+            "droppedAttributesCount": {
+              "type": "integer"
+            },
+            "schemaUrl": {
+              "type": "keyword",
+              "ignore_above": 256
+            },
+            "name": {
+              "type": "keyword",
+              "ignore_above": 128
+            },
+            "version": {
+              "type": "keyword",
+              "ignore_above": 64
+            }
+          }
+        },
+        "resource": {
+          "properties": {
+            "droppedAttributesCount": {
+              "type": "integer"
+            },
+            "schemaUrl": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "severity": {
+          "properties": {
+            "number": {
+              "type": "integer"
+            },
+            "text": {
+              "type": "keyword",
+              "ignore_above": 32
+            }
+          }
+        },
+        "body": {
+          "type": "text"
+        },
+        "@timestamp": {
+          "type": "date_nanos"
+        },
+        "time": {
+          "type": "date_nanos"
+        },
+        "observedTime": {
+          "type": "date_nanos"
+        },
+        "traceId": {
+          "type": "keyword",
+          "ignore_above": 32
+        },
+        "spanId": {
+          "type": "keyword",
+          "ignore_above": 16
+        },
+        "eventName": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "flags": {
+          "type": "long"
+        },
+        "attributes": {
+          "properties": {
+            "gen_ai": {
+              "properties": {
+                "evaluation": {
+                  "properties": {
+                    "score": {
+                      "properties": {
+                        "value": {
+                          "type": "double"
+                        },
+                        "label": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "explanation": {
+                      "type": "text"
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "agent": {
+                  "properties": {
+                    "version": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "prompt": {
+                  "properties": {
+                    "version": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "conversation": {
+                  "properties": {
+                    "id": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                }
+              }
+            },
+            "opensearch": {
+              "properties": {
+                "gen_ai": {
+                  "properties": {
+                    "evaluation": {
+                      "properties": {
+                        "score": {
+                          "properties": {
+                            "min": {
+                              "type": "double"
+                            },
+                            "max": {
+                              "type": "double"
+                            },
+                            "threshold": {
+                              "type": "double"
+                            },
+                            "direction": {
+                              "type": "keyword",
+                              "ignore_above": 256
+                            }
+                          }
+                        },
+                        "evaluator": {
+                          "properties": {
+                            "version": {
+                              "type": "keyword",
+                              "ignore_above": 256
+                            }
+                          }
+                        },
+                        "level": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "test": {
+              "properties": {
+                "case": {
+                  "properties": {
+                    "id": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                },
+                "suite": {
+                  "properties": {
+                    "run": {
+                      "properties": {
+                        "id": {
+                          "type": "keyword",
+                          "ignore_above": 256
+                        }
+                      }
+                    },
+                    "name": {
+                      "type": "keyword",
+                      "ignore_above": 256
+                    }
+                  }
+                }
+              }
+            },
+            "error": {
+              "properties": {
+                "type": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+</details>
+
+### The ISM policy
+
+Roll over at 50 GB or after 24 hours. The policy never deletes: evaluation results are small and are your quality history. Add a `delete` state if you want retention. Its `ism_template` attaches it to every new `otel-v1-genai-evaluation-*` index.
+
+```json
+PUT _plugins/_ism/policies/otel-v1-genai-evaluation-policy
+{
+  "policy": {
+    "description": "Rollover for GenAI evaluation results",
+    "default_state": "current_write_index",
+    "states": [
+      {
+        "name": "current_write_index",
+        "actions": [
+          {
+            "rollover": {
+              "min_size": "50gb",
+              "min_index_age": "24h"
+            }
+          }
+        ]
+      }
+    ],
+    "ism_template": {
+      "index_patterns": [
+        "otel-v1-genai-evaluation-*"
+      ]
+    }
+  }
+}
+```
+
+### The first index and the write alias
+
+Create the policy, then the template, then the first index, so the index picks up both:
+
+```json
+PUT otel-v1-genai-evaluation-000001
+{
+  "aliases": {
+    "otel-v1-genai-evaluation": { "is_write_index": true }
+  }
+}
+```
+
+Check it:
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/_cat/aliases/otel-v1-genai-evaluation?v'
+curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/_plugins/_ism/explain/otel-v1-genai-evaluation-000001?pretty'
+```
+
+<Aside type="caution">
+Create the alias before the pipeline starts writing. If a writer creates a concrete index named `otel-v1-genai-evaluation` first, the alias cannot be created with that name: reindex the results into `otel-v1-genai-evaluation-000001`, delete the concrete index, then add the alias.
+</Aside>
+
+### OpenSearch Serverless
+
+Serverless collections have no ISM and no aliases:
+
+- Use a variant of the template with the same `mappings`, `"index_patterns": ["otel-v1-genai-evaluation"]` (the single index, no `-*`), and no `plugins.index_state_management.rollover_alias` setting, which is ISM-only. On a time series collection, set `"settings": {"index.timestamp_field": "time"}` instead: every document must carry the collection's timestamp field. Then write to the index `otel-v1-genai-evaluation`; the first write creates it from the template. The AWS installer's pipeline passes exactly this variant as `template_content`.
+- Retention is set on the collection, with a [data lifecycle policy](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-lifecycle.html), not with ISM.
+
+### Field limit
+
+The index keeps the default limit of 1000 fields. The built-in attributes use well under 100. If your own `attributes` and metadata add many keys, raise the limit in two places:
+
+- In the template: add `"index.mapping.total_fields.limit": 2000` under `template.settings` and `PUT` the template again. New indices (after the next rollover) get it.
+- On the current write index, now:
+
+    ```json
+    PUT otel-v1-genai-evaluation-000001/_settings
+    { "index.mapping.total_fields.limit": 2000 }
+    ```
+
+When you change the template, raise its `version` too, so a tool with version 1 does not replace your copy.
+
+## Route results with Data Prepper
+
+Results arrive on the OTLP logs path, mixed with your application logs. Route by the OTLP event name:
+
+- only events with `eventName == "gen_ai.evaluation.result"` go to the evaluation index, and
+- the logs route excludes them, so a result is never stored twice.
+
+<Aside type="caution" title="Data Prepper version">
+Routing on `eventName` needs a Data Prepper build that includes [opensearch-project/data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148), which stores the OTLP event name of a log record. Data Prepper 2.16.0 and earlier do not set `eventName`: the evaluation route never matches, and results stay in `logs-otel-v1-*`. The same applies to the Data Prepper version behind Amazon OpenSearch Ingestion.
+</Aside>
+
+Routing matches the `eventName` field of the log record, not an `event.name` attribute. Matching producers that set only the attribute is a planned follow-up.
+
+```yaml
+otlp-pipeline:
+  source:
+    otlp:
+      port: 21890
+      ssl: false
+  route:
+    - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'
+    - logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'
+    - traces: 'getEventType() == "TRACE"'
+  sink:
+    - pipeline:
+        name: "otel-logs-pipeline"
+        routes: ["logs"]
+    - pipeline:
+        name: "otel-evaluations-pipeline"
+        routes: ["evaluations"]
+    - pipeline:
+        name: "otel-traces-pipeline"
+        routes: ["traces"]
+
+otel-evaluations-pipeline:
+  source:
+    pipeline:
+      name: "otlp-pipeline"
+  processor:
+    - copy_values:
+        entries:
+          - from_key: "time"
+            to_key: "@timestamp"
+  sink:
+    - opensearch:
+        hosts: ["https://opensearch:9200"]
+        username: "admin"
+        password: "<password>"
+        index: "otel-v1-genai-evaluation"  # the write alias
+```
+
+`otel-logs-pipeline` and `otel-traces-pipeline` are your existing pipelines. The `copy_values` step is required: the Evaluations pages use `@timestamp` as the time field.
+
+The sink above writes to an alias you created. To let Data Prepper create the policy, the template and the first index itself, point the sink at the two files, as the local stack does:
+
+```yaml
+        index: "otel-v1-genai-evaluation"
+        template_type: index-template
+        template_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-index-template.json
+        ism_policy_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-policy.json
+```
+
+Data Prepper names the policy `otel-v1-genai-evaluation-policy`, installs the template only when it is missing or has a lower version, and creates `otel-v1-genai-evaluation-000001` with the write alias when the alias does not exist.
+
+On Amazon OpenSearch Ingestion, use the same routes. The pipeline cannot read local files, so create the index first (the AWS installer does) or pass the template inline with `template_content`. See [AWS Managed Services](/docs/deploy/aws/#agent-evaluation-results).
+
+### Experimental: `index_type: genai-evaluation-plain`
+
+[opensearch-project/data-prepper#7243](https://github.com/opensearch-project/data-prepper/pull/7243) adds an index type for evaluation results to the OpenSearch sink. It is experimental and not in a Data Prepper release yet; its mappings may change in a minor release.
+
+```yaml
+  sink:
+    - opensearch:
+        hosts: ["https://opensearch:9200"]
+        username: "admin"
+        password: "<password>"
+        index_type: genai-evaluation-plain  # experimental
+        routes: ["evaluations"]
+```
+
+The sink sets up the evaluation index itself, with the same names as this page, so it converges with a manual install or the AWS installer:
+
+- On backends with ISM: the template `otel-v1-genai-evaluation-index-template` (`"version": 1`, priority 100), the ISM policy `otel-v1-genai-evaluation-policy`, and the first index `otel-v1-genai-evaluation-000001` behind the write alias `otel-v1-genai-evaluation`.
+- On OpenSearch Serverless (`aws.serverless: true`): a template for `["otel-v1-genai-evaluation"]` without the ISM setting, and the plain index `otel-v1-genai-evaluation`.
+
+Data Prepper skips a template that already exists with the same name and the same or a higher version, so a manual install must keep the name and `"version": 1`. Until the index type is in a Data Prepper release, the local stack and the AWS installer create the template, policy and first index themselves and write with a plain sink (`index: otel-v1-genai-evaluation`).
+
+### Attribute names must stay OTel names
+
+The template maps attributes under `attributes.` with their dotted OTel names, for example `attributes.gen_ai.evaluation.score.value`, and the Evaluations pages read those names. That is what the `otlp` source produces by default (`output_format: otel`). A source that writes another shape (for example `log.attributes.*`) gets none of the evaluation mappings, and the pages find no results. Check a stored result:
+
+```bash
+curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/otel-v1-genai-evaluation/_search?size=1&filter_path=hits.hits._source.attributes'
+```
+
+## Migrate from the logs index
+
+Earlier versions of the stack stored evaluation results in the logs index (`logs-otel-v1-*`) or in daily indices. To move to the evaluation index:
+
+1. Create the evaluation index ([above](#the-evaluation-index)) and update your pipeline's routes, so new results go only to `otel-v1-genai-evaluation`.
+2. In OpenSearch Dashboards, open **Agent monitoring > Evaluations**, select **Settings** (Agent evaluations settings), choose **Create evaluations dataset** for `otel-v1-genai-evaluation*` or select it, and select **Update**. The Evaluations pages and the Evaluations column in Agent Traces read the dataset from this setting.
+3. Optional: copy the old results across, so their history stays on the pages:
+
+    ```json
+    POST _reindex
+    {
+      "source": {
+        "index": "logs-otel-v1-*",
+        "query": { "match_phrase": { "eventName": "gen_ai.evaluation.result" } }
+      },
+      "dest": { "index": "otel-v1-genai-evaluation" }
+    }
+    ```
+
+    Reindexing into the alias writes to its current write index. Results copied this way keep their original `time` and `@timestamp`.
+
+## Related
+
+- [Quickstart](/docs/agent-evals/quickstart/): send your first results.
+- [Evaluation & Scoring](/docs/agent-evals/evaluation/): the SDK APIs that produce these events.
+- [Run evaluations in CI](/docs/agent-evals/ci/): `cicd.pipeline.*`, gates and shards.

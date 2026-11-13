@@ -159,5 +159,63 @@ class CreateIndexPatternTests(unittest.TestCase):
                 initializer.requests.put.assert_not_called()
 
 
+class EnsureEvaluationIndexTests(unittest.TestCase):
+    COMPOSE_INITIALIZER = INITIALIZER_PATHS[0]
+
+    def setUp(self):
+        self.initializer = load_initializer(self.COMPOSE_INITIALIZER)
+        self.initializer.EVALUATION_FILES_DIR = str(REPOSITORY_ROOT / "docker-compose/data-prepper")
+        self.endpoint = self.initializer.OPENSEARCH_ENDPOINT
+
+    def _routes(self, routes):
+        def respond(method):
+            def call(url, **kwargs):
+                status, body = routes.get((method, url.replace(self.endpoint, "")), (404, {}))
+                return Mock(status_code=status, text=str(body), json=Mock(return_value=body))
+            return call
+        self.initializer.requests.get.side_effect = respond("GET")
+        self.initializer.requests.put.side_effect = respond("PUT")
+
+    def test_creates_policy_template_and_write_index_in_order(self):
+        self._routes({
+            ("PUT", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (201, {}),
+            ("PUT", "/_index_template/otel-v1-genai-evaluation-index-template"): (200, {}),
+            ("PUT", "/otel-v1-genai-evaluation-000001"): (200, {}),
+        })
+        self.assertTrue(self.initializer.ensure_evaluation_index())
+        puts = [c.args[0].replace(self.endpoint, "") for c in self.initializer.requests.put.call_args_list]
+        self.assertEqual(puts, [
+            "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy",
+            "/_index_template/otel-v1-genai-evaluation-index-template",
+            "/otel-v1-genai-evaluation-000001",
+        ])
+        policy = self.initializer.requests.put.call_args_list[0].kwargs["json"]
+        self.assertNotIn('"delete"', str(policy).replace("'", '"'))
+        self.assertEqual(
+            {"aliases": {"otel-v1-genai-evaluation": {"is_write_index": True}}},
+            self.initializer.requests.put.call_args_list[2].kwargs["json"],
+        )
+
+    def test_skips_existing_objects(self):
+        self._routes({
+            ("GET", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (200, {}),
+            ("GET", "/_index_template/otel-v1-genai-evaluation-index-template"): (
+                200, {"index_templates": [{"index_template": {"version": 1}}]}),
+            ("GET", "/_alias/otel-v1-genai-evaluation"): (200, {}),
+        })
+        self.assertTrue(self.initializer.ensure_evaluation_index())
+        self.initializer.requests.put.assert_not_called()
+
+    def test_leaves_a_concrete_index_with_the_alias_name(self):
+        self._routes({
+            ("GET", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (200, {}),
+            ("GET", "/_index_template/otel-v1-genai-evaluation-index-template"): (
+                200, {"index_templates": [{"index_template": {"version": 1}}]}),
+            ("GET", "/otel-v1-genai-evaluation"): (200, {}),
+        })
+        self.assertFalse(self.initializer.ensure_evaluation_index())
+        self.initializer.requests.put.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
