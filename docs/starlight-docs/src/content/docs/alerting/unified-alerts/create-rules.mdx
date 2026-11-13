@@ -33,13 +33,39 @@ Log rules are OpenSearch Alerting monitors under the hood, but you no longer han
     source=logs-otel-v1* | where severityNumber >= 17 | stats count() as error_count
     ```
 
-4. **Set the schedule** — how often the rule runs (for example, every `1` minute).
+4. **Set the look-back window** — how far back each run reads data. **Add look back window** is on by default at `1` hour. See [Look-back window](#look-back-window).
 
-5. **Add a trigger** — a name, severity, and condition (see [Trigger conditions](#trigger-conditions)). Optionally add [notification actions](/docs/alerting/notifications/#opensearch-rules--notification-channels) to send the alert to Slack, email, or a webhook.
+5. **Set the schedule** — how often the rule runs (for example, every `1` minute).
 
-6. **Save & enable.** The rule appears in the **Rules** catalog tagged **Log**, and firing alerts show up in the **Alerts** tab.
+6. **Add a trigger** — a name, severity, and condition (see [Trigger conditions](#trigger-conditions)). Optionally add [notification actions](/docs/alerting/notifications/#opensearch-rules--notification-channels) to send the alert to Slack, email, or a webhook, and [throttle](#throttling-notifications) how often each action sends.
+
+7. **Save & enable.** The rule appears in the **Rules** catalog tagged **Log**, and firing alerts show up in the **Alerts** tab.
 
 </Steps>
+
+### Look-back window
+
+The look-back window limits each run to recent data, so the rule evaluates the last hour (or the window you set) rather than the whole index. It sits under the query editor in the **Query** section:
+
+| Control | What it does |
+|---|---|
+| **Add look back window** | Turns the window on or off. On by default. |
+| **Look back window** | The amount, from 1 minute up to 7 days (10,080 minutes). |
+| **Unit** | **minute(s)**, **hour(s)**, or **day(s)**. Defaults to **hour(s)**. |
+
+![Create logs rule flyout with Add look back window selected and a 1 hour window filtering on @timestamp](/docs/images/alerting/create-logs-rule-look-back.png)
+
+The window filters on the query's time field, so there's no separate timestamp setting. If the window is on and you haven't picked a time field, the form picks one for you: `@timestamp` if the indices have it, otherwise their first date field. If the selected indices have no date field, the checkbox is disabled.
+
+When you save, the window is added to the query as a filter on the time field, right after the `source` command so it runs ahead of any aggregation — for example `| where @timestamp > DATE_SUB(NOW(), INTERVAL 1 HOUR)`. When you edit the rule, the form reads that filter back into the look-back controls. Time filters you write yourself are kept as written. If your query already filters on the time field, the form warns that rows must match both filters. A fixed range in the past never overlaps the window, so the rule never fires. In that case, turn off the look-back window and rely on your own filter.
+
+### Throttling notifications
+
+Without throttling, a notification action sends on every run while its trigger stays active. To limit that, open the action under the trigger's **Notification actions**, select **Throttle notifications**, and set **Only send every** to a whole number of minutes (at least 1; the default is 10). Throttling is off by default and is set per action, so one trigger can page on-call every run and post to a Slack channel at most every 30 minutes.
+
+### Starting from Discover Logs
+
+You can also start a log rule from a query in **Discover** > **Logs**. Run a PPL query and select **Create alert rule** to open the **Create logs rule** flyout with that query. The action appears only for PPL queries on an index pattern or index, on the local cluster or an OpenSearch data source. SQL queries and data sources whose engine isn't OpenSearch don't get the action.
 
 ### Trigger conditions
 
@@ -132,7 +158,7 @@ An expression without a comparison fires for every series it returns. The flyout
 
 ### Starting from Discover Metrics
 
-You can start a metric rule from a query you're already exploring. In **Discover** > **Metrics**, run a PromQL query and select **Create alert rule**. The **Create metrics rule** flyout opens with that query in the editor.
+You can start a metric rule from a query you're already exploring. In **Discover** > **Metrics**, run a PromQL query and select **Create alert rule**. The **Create metrics rule** flyout opens with that query in the editor. The action appears only for PromQL queries on a Prometheus data source.
 
 ### Rule groups
 

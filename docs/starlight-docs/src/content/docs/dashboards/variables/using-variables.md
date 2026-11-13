@@ -146,6 +146,29 @@ When a variable allows multiple selections, values are automatically formatted b
   </tbody>
 </table>
 
+### Selecting all values
+
+When a variable has **Allow multiple selections** and **Include All option** enabled, viewers can select **All** in the dropdown. The dashboard stores **All** as a selection state rather than a snapshot of values, so it always reflects the variable's current options. For example, if a time range change returns a different set of options, panels that reference the variable query the new set. A saved dashboard with **All** selected still shows **All** when it is reopened.
+
+When **All** is selected, the variable is substituted as follows:
+
+- If **Custom all value** is empty, the variable expands to every current option, using the [multi-value formatting](#multi-value-variable-formatting) for the query language. For example, `('a', 'b', 'c')` in PPL or `(a|b|c)` in PromQL.
+- If **Custom all value** is set, its raw value is substituted without escaping or formatting.
+
+A custom all value keeps queries short when a variable has many options. For example, with **Custom all value** set to `.+`, the following PromQL query:
+
+```promql
+sum by (service) (rate(http_requests_total{service=~"$service"}[5m]))
+```
+
+resolves to the following query when **All** is selected:
+
+```promql
+sum by (service) (rate(http_requests_total{service=~".+"}[5m]))
+```
+
+If you clear one option while **All** is selected, the variable leaves the **All** state and keeps the remaining values selected.
+
 ### Autocomplete suggestions
 
 Query editors in OpenSearch Dashboards provide autocomplete suggestions for dashboard variables.
@@ -179,7 +202,7 @@ To filter a visualization by a variable value, follow these steps:
    1. Select **Preview** and make sure that you see values such as `win 8`, `ios`, and `win xp` in the **Preview of values**. Then select **Add variable** to save.
 
 1. Filter by a variable value:
-   1. Open a new visualization editor by selecting **Create new** in the dashboard and then selecting **Add visualization**. 
+   1. Open a new visualization editor from the dashboard. For the available entry points, see [Creating a visualization](/docs/dashboards/visualize/#creating-a-visualization).
    1. In the time filter, select **Last 30 days**.
    1. In the query box, enter the following query:
 
@@ -206,7 +229,7 @@ To select a metric dynamically, follow these steps:
    1. Select **Add variable** to save.
 
 1. Use the variable in a visualization:
-   1. Open a new visualization editor by selecting **Create new** in the dashboard and then selecting **Add visualization**. 
+   1. Open a new visualization editor from the dashboard. For the available entry points, see [Creating a visualization](/docs/dashboards/visualize/#creating-a-visualization).
    1. In the time filter, select **Last 30 days**.
    1. In the query box, enter the following query:
 
@@ -234,7 +257,7 @@ To change time intervals dynamically, follow these steps:
    1. Select **Add variable** to save.
 
 1. Use the variable in a visualization:
-   1. Open a new visualization editor by selecting **Create new** in the dashboard and then selecting **Add visualization**.
+   1. Open a new visualization editor from the dashboard. For the available entry points, see [Creating a visualization](/docs/dashboards/visualize/#creating-a-visualization).
    1. In the time filter, select **Last 30 days**.
    1. In the query box, enter the following query:
 
@@ -261,7 +284,7 @@ To change aggregation functions dynamically, follow these steps:
    1. Select **Add variable** to save.
 
 1. Use the variable in a visualization:
-   1. Open a new visualization editor by selecting **Create new** in the dashboard and then selecting **Add visualization**.
+   1. Open a new visualization editor from the dashboard. For the available entry points, see [Creating a visualization](/docs/dashboards/visualize/#creating-a-visualization).
    1. In the time filter, select **Last 30 days**.
    1. In the query box, enter the following query:
 

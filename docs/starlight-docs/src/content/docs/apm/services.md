@@ -5,7 +5,7 @@ sidebar:
   order: 20
 ---
 
-The Services page provides a catalog of all instrumented services along with their health metrics, operations, and dependencies.
+The Services page provides a catalog of all instrumented services along with their health metrics, operations, and dependencies. The catalog also lists the [external dependencies](#external-dependencies) that your services call, such as databases, message brokers, and external HTTP endpoints.
 
 ## Accessing the Services page
 
@@ -26,21 +26,23 @@ A second panel shows the dependency paths (service → downstream service) with 
 
 ### Service Catalog table
 
-The main table lists all instrumented services:
+The main table lists all instrumented services and their external dependencies:
 
 | Column | Description |
 |---|---|
-| **Service** | Service name with an icon indicating the service type |
+| **Service** | Service name with an icon. A service shows its SDK language icon. A dependency shows the icon of its system (for example, PostgreSQL, Kafka, or Redis) or a generic database, messaging, or external icon |
 | **Correlations** | Three icon buttons linking to correlated spans, logs, and service attributes |
 | **Avg Latency (P99)** | 99th percentile latency averaged over the selected time range |
 | **Avg throughput** | Average request throughput, displayed as a bar chart |
 | **Avg failure ratio** | Average failure ratio, displayed as a bar chart |
 | **Environment** | The deployment environment for the service |
+| **Type** | **Service**, **Database**, **Messaging**, or **External**. Appears only when the catalog contains external dependencies |
 
 ### Filters sidebar
 
 Use the left-hand filters to narrow down the catalog:
 
+- **Type** - filter by **Service**, **Database**, **Messaging**, or **External**. Appears only when the catalog contains external dependencies
 - **Environment** - filter by deployment environment
 - **Latency** - range slider to set minimum and maximum latency thresholds
 - **Throughput** - range slider to set minimum and maximum throughput thresholds
@@ -122,8 +124,10 @@ Click a row to expand it and see inline charts:
 **Correlation flyout**
 Click a correlation icon on any operation row to open a flyout panel. The flyout header shows the service name, environment badge, and operation filter badge. It contains two tabs:
 
-- **Correlated spans** - a table of spans with columns for Time, Status (OK/ERROR badge), HTTP Status, Kind, Operation, and Span ID. The Span ID is a clickable link that navigates to the span in Explore Traces.
+- **Correlated spans** - a table of spans with columns for Time, Status (OK/ERROR badge), HTTP Status, Kind, Operation, and Span ID. The Span ID is a clickable link that navigates to the span in Explore Traces. A span with the `gen_ai.operation.name` attribute opens its trace in [Agent Traces](/docs/ai-observability/agent-tracing/) instead.
 - **Correlated logs** - a table of log entries correlated to the selected operation.
+
+For a service that emits GenAI spans, the **Explore Traces** button reads **View in Agent Traces** and opens the Agent Traces **Spans** tab filtered to the service. This routing applies only when Agent Traces is enabled.
 
 ![Correlation flyout showing correlated spans for the frontend service GET operation](/docs/images/apm/service-span-correlations.png)
 
@@ -153,6 +157,42 @@ Click a row to expand it and see inline charts for request volume, errors, and l
 - **Availability** - bucket filters for availability ranges
 - **Dependency service** - search box to filter by dependency name
 - **Error rate** - filter by error rate range
+
+### Chart interactions
+
+The time-series charts on the service detail tabs support the following interactions:
+
+- **Synced crosshair** - hover over a chart to show a vertical guide at the same timestamp on the other charts on the page.
+- **Drag to zoom** - drag across a chart to set the page time range to the selected window. All charts on the page update.
+- **Isolate a series** - in a chart with multiple series, select a series in the legend to hide the others. Select it again to show all series.
+- **Open in Discover metrics** - select the button in the upper-right corner of a chart to open its PromQL query, Prometheus data source, and time range in [Discover Metrics](/docs/investigate/discover-metrics/) in a new browser tab.
+
+## External dependencies
+
+Databases, message brokers, and external endpoints (such as third-party HTTP APIs or LLM providers) don't emit their own spans. Data Prepper detects them from the CLIENT, PRODUCER, and CONSUMER spans of the services that call them and adds them to the catalog and the [Application Map](/docs/apm/service-map/) as typed dependencies. Their RED metrics come from the callers' spans.
+
+![Services page with the Type filter set to Database and Messaging, showing kafka, postgresql, and redis dependencies in the Service Catalog with a Type column](/docs/images/apm/services-dependency-types.png)
+
+| Type | Detected from | Example name |
+|---|---|---|
+| **Database** | A CLIENT span with `db.*` attributes and no child SERVER span | `postgresql:orders-db`, `redis:valkey-cart` |
+| **Messaging** | PRODUCER and CONSUMER spans with `messaging.system` | `kafka:orders` |
+| **External** | A CLIENT span with HTTP, RPC, or `peer.service` attributes and no child SERVER span | `api.openai.com` |
+
+Dependency rows don't have spans and logs correlation buttons, because a dependency emits no telemetry of its own.
+
+> **Note:** Dependency detection requires Data Prepper 2.17 or later. It's controlled by the `dependency_nodes.enabled` option of the `otel_apm_service_map` processor, which defaults to `true`. With earlier Data Prepper versions, or with `dependency_nodes.enabled: false`, the catalog shows only services and the **Type** column and filter don't appear.
+
+### Dependency detail view
+
+Click a dependency name to open its detail view. The page header shows the dependency's icon and name. The page shows a type badge and the following panels:
+
+- **Metric cards** - **Throughput (req/s)**, **Latency (P99)**, **Fault rate (5xx)**, and **Error rate (4xx)**, derived from the callers' spans.
+- **Charts** - **Requests**, **Latency**, **Faults (5xx)**, and **Errors (4xx)** over time. The charts support the same [interactions](#chart-interactions) as the service detail charts.
+- **Callers** - the services that call the dependency, with the **Operation** they invoke and the number of **Requests**. For a message broker, a **Role** column shows whether each service is a **Producer** or a **Consumer**.
+- **Spans** - recent spans from calling services that target the dependency, with **Caller**, **Operation**, **Duration**, **Status**, and **Start time** columns.
+
+For a message broker, throughput, latency, and failures are measured on publishes, so each message counts once. If no producer is instrumented, they're measured on consumes.
 
 ## How service data is generated
 

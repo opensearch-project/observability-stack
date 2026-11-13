@@ -30,6 +30,7 @@ Actions fire per trigger, so a single rule can route different severities to dif
 2. Send a test message from the channel screen to confirm connectivity.
 3. When you [create or edit a log rule](/docs/alerting/unified-alerts/create-rules/#log-rule-ppl), open the trigger's **Notification actions** section and choose **Add another action**.
 4. Select the channel, and optionally customize the message with the trigger's context (rule name, severity, results).
+5. Optionally select **Throttle notifications** and set **Only send every** *N* minutes, so the action doesn't notify on every run while the trigger stays active. See [Throttling notifications](/docs/alerting/unified-alerts/create-rules/#throttling-notifications).
 
 For channel management details, see the [OpenSearch Notifications documentation](https://docs.opensearch.org/latest/observing-your-data/notifications/index/).
 
