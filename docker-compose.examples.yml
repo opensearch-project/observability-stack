@@ -194,7 +194,6 @@ services:
       - EVAL_CANARY_INTERVAL=${EVAL_CANARY_INTERVAL}
       - EVAL_CANARY_LOOKBACK_MINUTES=${EVAL_CANARY_LOOKBACK_MINUTES}
     depends_on:
-      - opensearch
       - otel-collector
     networks:
       - observability-stack-network
@@ -223,9 +222,6 @@ services:
       - |
         pip install requests || exit 1
         python /init-anomaly-detectors.py examples
-    depends_on:
-      opensearch:
-        condition: service_healthy
     environment:
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}

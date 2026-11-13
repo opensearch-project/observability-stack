@@ -791,11 +791,6 @@ services:
         echo "=== Creating OpenSearch monitors (otel_demo) ==="
         python /init-otel-demo-monitors.py || fail=1
         exit $$fail
-    depends_on:
-      prometheus:
-        condition: service_healthy
-      opensearch:
-        condition: service_healthy
     environment:
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
@@ -824,9 +819,6 @@ services:
       - |
         pip install requests || exit 1
         python /init-anomaly-detectors.py otel-demo
-    depends_on:
-      opensearch:
-        condition: service_healthy
     environment:
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
