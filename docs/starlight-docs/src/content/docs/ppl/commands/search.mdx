@@ -39,7 +39,7 @@ source=<index> [<boolean-expression>]
 - **Omitting the keyword**: The `search` keyword is optional. Writing `source=logs-otel-v1*` is the most common form.
 - **Discover UI queries**: When using PPL in Discover, the source index is set by the dataset selector. Your query starts with `|` followed by pipeline commands (e.g., `| where severityText = 'ERROR' | fields body`).
 - **Search expression vs. where**: The boolean expression in `search` is converted to an OpenSearch query string query and executes at the search layer. For more complex filtering with functions and eval expressions, use the [`where`](/docs/ppl/commands/where/) command after the pipe.
-- **Cross-cluster search**: To query an index on a remote cluster, prefix the index name with the cluster name and a colon. Cross-cluster search must be configured at the OpenSearch level.
+- **Cross-cluster search**: To query an index on a remote cluster, prefix the index name with the cluster name and a colon. PPL reads the index's fields from the remote cluster, so the index doesn't need to exist on the local cluster. Cross-cluster search must be configured at the OpenSearch level. See the [cross-cluster search example](#cross-cluster-search) for permissions and behavior when a remote cluster is unavailable.
 - **Full-text search**: Unquoted terms search across all fields (or the configured default field). Multiple terms are combined with `AND` by default. Use quotes for phrase matching.
 - **Wildcard patterns in index names**: Index names support `*` wildcards (e.g., `source=logs-*`), which is common for querying across time-based index patterns.
 - **Operator precedence**: Boolean operators in the search expression follow this precedence: `Parentheses > NOT > OR > AND`. Note that this is PPL-specific and differs from SQL and Splunk SPL, where `AND` binds tighter than `OR`. In PPL, `a OR b AND c` is evaluated as `(a OR b) AND c`, not `a OR (b AND c)`. Use explicit parentheses to avoid ambiguity.
@@ -133,6 +133,33 @@ source=us-west:logs-otel-v1* severityText="ERROR"
 | stats count() as error_count by `resource.attributes.service.name`
 | sort - error_count
 ```
+
+To query every connected remote cluster, use `*` as the cluster name, for example `source=*:logs-otel-v1*`. To combine local and remote indexes, separate them with a comma, for example `source=logs-otel-v1*,us-west:logs-otel-v1*`.
+
+PPL reads a remote index's fields from the remote cluster, so you don't need a local copy of the index. The fields are cached for up to 60 seconds per user on each node, so a field just added on the remote cluster, or a new index that matches the pattern, can return a `field not found` error until the cache expires.
+
+If a remote cluster can't be reached, the query fails with the same error as a search request. If the remote cluster is configured with `skip_unavailable: true`, it's skipped and the other clusters in the query are still searched. Run the same OpenSearch version on the local and remote clusters, because parts of a query can run on the remote cluster.
+
+On the remote cluster, map the user to a role with the same index permissions PPL needs on a local index:
+
+```json
+PUT _plugins/_security/api/roles/ccs_role
+{
+  "index_permissions": [
+    {
+      "index_patterns": ["logs-otel-v1*"],
+      "allowed_actions": [
+        "indices:admin/shards/search_shards",
+        "indices:data/read/search",
+        "indices:admin/mappings/get",
+        "indices:monitor/settings/get"
+      ]
+    }
+  ]
+}
+```
+
+To let [time-range index pruning](/docs/ppl/#time-range-index-pruning) skip remote indexes outside the query's time range, also grant `indices:admin/resolve/index` and `indices:data/read/field_caps*`. On the local cluster, if the user's role lists specific index patterns, also include the cluster-prefixed pattern, such as `*:logs-otel-v1*`.
 
 ## See also
 

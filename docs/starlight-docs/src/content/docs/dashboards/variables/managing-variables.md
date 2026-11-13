@@ -37,7 +37,8 @@ To create a new variable, follow these steps:
    - **Selection configuration** (available for both query and custom types):
      - **Sort**: Choose how options are sorted in the dropdown list (**Disabled**, **Alphabetical** (ascending or descending), or **Numerical** (ascending or descending)).
      - **Allow multiple selections**: Enables you to select multiple values from the dropdown.
-     - **Include All option** (only available when multiple selections are enabled): Adds an **All** option to the dropdown that selects all available values.
+     - **Include All option** (only available when multiple selections are enabled): Adds an **All** option to the dropdown that selects all available values. **All** always reflects the current option list. For more information, see [Selecting all values](/docs/dashboards/variables/using-variables/#selecting-all-values).
+     - **Custom all value** (optional, only available when **Allow multiple selections** and **Include All option** are enabled): A raw value substituted for the variable when **All** is selected, for example `.+` for a PromQL regex match. The value is inserted as-is, without escaping or formatting. Leave empty to expand all option values.
      - **Allow custom values**: Lets viewers type a value that isn't in the option list.
 
 1. Select **Add variable** to save.
@@ -115,6 +116,12 @@ Each variable displays a status indicator at the top of the dashboard:
 - **Loading**: A spinner appears while the system fetches options.
 - **Error**: An error icon appears with a tooltip showing the error message. The dropdown is disabled.
 - **No options**: If a variable query returns no results, "No options" is displayed in the dropdown.
+
+## Selecting from long option lists
+
+The variable dropdown displays up to 100 options at a time. When a variable has more options, the list ends with a hint row, for example "Showing 100 of 250 options — type to search all". Type in the dropdown search box to search the full option list, including values beyond the first 100.
+
+Selecting or clearing an option while a search is active doesn't affect selected values that are hidden by the search.
 
 ## URL synchronization
 

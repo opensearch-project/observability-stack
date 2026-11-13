@@ -329,6 +329,7 @@ export default defineConfig({
 										{ label: 'Line Chart', link: '/dashboards/visualize/line-chart/' },
 										{ label: 'Metric Chart', link: '/dashboards/visualize/metric-chart/' },
 										{ label: 'Pie Chart', link: '/dashboards/visualize/pie-chart/' },
+										{ label: 'Sankey Chart', link: '/dashboards/visualize/sankey-chart/' },
 										{ label: 'Scatter Plot', link: '/dashboards/visualize/scatter-chart/' },
 										{ label: 'State Timeline', link: '/dashboards/visualize/state-timeline-chart/' },
 										{ label: 'Table', link: '/dashboards/visualize/table-chart/' },

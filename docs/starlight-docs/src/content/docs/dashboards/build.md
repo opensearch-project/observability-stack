@@ -21,7 +21,7 @@ Alternatively, when you're in Discover and have a visualization you like, select
 
 1. Select **Add** in the dashboard toolbar
 2. Choose **Create new** to build a visualization from scratch, or **Add existing** to reuse a saved visualization
-3. For a new panel:
+3. For a new panel, open the visualization editor (see [Creating a visualization](/docs/dashboards/visualize/#creating-a-visualization) for the entry points), then:
    - Select your index pattern or data source
    - Write your query (PPL or PromQL)
    - Choose a visualization type
@@ -51,6 +51,7 @@ Each panel supports one visualization type. Choose based on what the data needs 
 | Gauge | Progress toward a threshold | Error budget remaining, CPU usage |
 | Pie chart | Proportional breakdown | `stats count() by category` |
 | Heat map | Density across two dimensions | `bin` with two grouping fields |
+| Sankey | Flows between two dimensions | `stats count() by source_field, target_field` |
 | Tag cloud | Term frequency | `stats count() by keyword` |
 
 ### Choosing the right visualization

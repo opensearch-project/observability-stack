@@ -61,7 +61,7 @@ Send agent trace data to the observability stack:
 
 Explore traces in OpenSearch Dashboards:
 
-- [Agent Tracing](/docs/ai-observability/agent-tracing/) - the Agent Traces UI, span tables, detail flyouts
+- [Agent Tracing](/docs/ai-observability/agent-tracing/) - the Agent Traces UI, span tables, sessions, detail flyouts, correlated logs
 - [Agent Graph & Path](/docs/ai-observability/agent-tracing/graph/) - DAG visualization, trace tree, and timeline views
 
 ## Evaluate

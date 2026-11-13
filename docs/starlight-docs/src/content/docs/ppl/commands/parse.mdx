@@ -166,6 +166,7 @@ Fields created by `parse` cannot be re-parsed by another `parse` command in the 
 - The source text field used by `parse` cannot be overridden and still produce correct results.
 - The pattern must match the entire string. Use `[\s\S]+` at the end to consume remaining content including trailing newlines.
 - Parsed fields cannot be filtered or sorted after they are used in a `stats` command.
+- To protect the cluster from patterns that backtrack excessively, each match is limited to 100,000 character reads by default, counting characters that backtracking reads again. A match that exceeds the limit fails the query with an error. Legitimate patterns are unaffected. To raise the limit for a heavy pattern, update the `plugins.ppl.regex.match.limit` cluster setting. The same limit applies to [`rex`](/docs/ppl/commands/rex/).
 
 ## See also
 
