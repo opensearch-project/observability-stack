@@ -32,7 +32,10 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "observability-stack.fullname" $ }}-{{ $demo }}-anomaly-detection-init-{{ $.Release.Revision }}
+  # The Job controller copies the Job name into a pod label (max 63 chars), so
+  # cap the fullname and keep the suffix short: "-otel-demo-ad-init-" plus a
+  # revision of up to 5 digits leaves 39 characters for the fullname.
+  name: {{ include "observability-stack.fullname" $ | trunc 39 | trimSuffix "-" }}-{{ $demo }}-ad-init-{{ $.Release.Revision }}
   labels:
     {{- include "observability-stack.labels" $ | nindent 4 }}
     app.kubernetes.io/component: init
