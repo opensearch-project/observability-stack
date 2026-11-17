@@ -28,7 +28,8 @@ The following image shows the visualization editor interface.
 To open the visualization editor, use one of the following methods:
 
 - From the left navigation menu, select **Explorer** > **Logs**, then select the **Visualization** tab.
-- From a dashboard, select the add panel icon, then select **Add visualization**.
+- From a dashboard, select the add panel icon, then select **Visualization editor**. Classic visualization types are grouped under **More** in the same menu.
+- From the **Create visualization** dialog, select **Create visualization**. For more information, see [Create visualization dialog](#create-visualization-dialog).
 
 To create a visualization, follow these steps:
 
@@ -50,6 +51,24 @@ To create a visualization, follow these steps:
 1. Select **Update** or press **Enter** to run the query.
 1. The editor automatically selects a chart type and maps fields to axes based on your query results. To change the chart type, use the **Visualization type** dropdown.
 1. To customize the field mapping, use the **Fields** panel.
+
+### Create visualization dialog
+
+The **Create visualization** dialog opens when you select **Create new** on an empty dashboard or create a new visualization from the **Visualize** page. The dialog presents the visualization editor as the recommended option, as shown in the following image.
+
+![Create visualization dialog with the recommended visualization editor, focused-workflow links, and the expanded list of classic visualization types](/docs/images/dashboards/create-visualization-dialog.png)
+
+The dialog contains the following options:
+
+- **Visualization editor** (marked **Recommended**): Select **Create visualization** to open the visualization editor.
+- **Or begin from a focused workflow**: Select **Visualize with Discover** or **Visualize with Metrics** to build the visualization from the Discover logs or metrics experience instead. Other links, such as **Maps**, appear when the plugin that provides them is installed.
+- **Classic visualization types**: Maps, markdown, controls, TSVB, Vega, and other specialized types that are not yet in the visualization editor. This section is collapsed by default. Select **Show types** to expand it, then use the filter box to search for a type. The dialog remembers whether you left the section expanded.
+
+### Building PPL queries without code
+
+When the query language is PPL, the query panel in the visualization editor includes a **Code** / **Builder** toggle. Select **Builder** to compose the query from menus with the PPL Query Builder instead of writing PPL by hand. The editor opens in **Code** mode.
+
+If a query you wrote in **Code** mode cannot be represented in the builder, **Builder** is disabled and its tooltip explains why. The toggle is not available for PromQL queries. For details about the builder controls, see [Building queries with the PPL Query Builder](/docs/investigate/discover-logs/#building-queries-with-the-ppl-query-builder).
 
 ## Using dashboard variables
 
@@ -94,6 +113,7 @@ The following table lists the supported visualization types and their expected d
 | [Line chart](/docs/dashboards/visualize/line-chart/) | One date field + one or more numeric fields |
 | [Metric chart](/docs/dashboards/visualize/metric-chart/) | One numeric field (single value) |
 | [Pie chart](/docs/dashboards/visualize/pie-chart/) | One categorical field + one numeric field |
+| [Sankey chart](/docs/dashboards/visualize/sankey-chart/) | Two categorical fields (source and target) + one numeric field (flow value) |
 | [Scatter plot](/docs/dashboards/visualize/scatter-chart/) | Two or more numeric fields |
 | [State timeline](/docs/dashboards/visualize/state-timeline-chart/) | One date field + one categorical field (state values) |
 | [Table](/docs/dashboards/visualize/table-chart/) | Any combination of fields (displays raw data) |

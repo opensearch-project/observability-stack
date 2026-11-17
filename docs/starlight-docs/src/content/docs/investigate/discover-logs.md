@@ -48,6 +48,15 @@ It consists of the following components:
   - **Visualization**: Displays aggregated data as charts when using `stats` commands.
 - **Time range selector**: Located in the upper-right corner, allows you to set the time range for your query.
 
+### Table settings
+
+Select the **Table settings** icon in the action bar above the **Logs** table to change how the table renders:
+
+- **Hide empty fields**: Hides columns that have no value in any row of the current results, and hides fields with no value when you expand a row. A column with a value in even one row stays visible, and `0`, `false`, and empty strings count as values. While columns are hidden, the hit count shows how many, for example **3 columns hidden**. Select it to show them again. The toggle is off by default, turns off when you change the dataset, and also applies to CSV exports.
+- **Wrap cell text**: Wraps long cell values onto multiple lines.
+
+![Table settings menu in Discover Logs with the Hide empty fields and Wrap cell text toggles](/docs/images/discover-logs/table-settings.png)
+
 ## Querying logs using PPL
 
 You can use PPL for querying log data. PPL allows you to chain commands using the pipe character (`|`) to filter, transform, and aggregate data.
@@ -77,6 +86,38 @@ The **Logs** page provides tools to help you organize and reuse your PPL queries
 
 - **Recent queries**: Select **Recent queries** to view and rerun previously executed queries.
 - **Saved queries**: Select **Saved queries** to access queries you have saved. To save the current query, select **Actions** > **Save query**.
+
+### Running and stopping queries
+
+Select **Refresh** to run the query. The button reads **Update** when you've changed the query or time range since the last run.
+
+While a query runs, the button changes to **Stop**. Select **Stop** to cancel the query. **Stop** stays available until every query in the run has finished, including the query behind the **Visualization** tab, which can run longer than the logs query. To run an edited query while another query is running, select **Stop** and then run the new query.
+
+The same **Refresh**/**Stop** button appears on the **Traces** and **Metrics** pages and in the visualization editor.
+
+### Streaming results
+
+By default, the **Logs** table shows a query's results when the query finishes. With streaming turned on, rows appear in the table as OpenSearch produces them. While the query runs, the hit count and elapsed time update, and the percentage of the scan completed appears next to them. If you select **Stop**, the rows already shown stay in the table, and the hit count shows where the query stopped, for example `20,000 hits · 3.651 s (Stopped at 1%)`.
+
+Streaming is off by default. To turn it on, do both of the following:
+
+1. Add the following setting to `opensearch_dashboards.yml` and restart OpenSearch Dashboards:
+
+   ```yaml
+   queryEnhancements.ppl.streaming.enabled: true
+   ```
+
+2. Turn on the **Stream results for long-running queries** advanced setting (`explore:enableStreamingResults`).
+
+Streaming applies to PPL queries on index and index pattern datasets, and requires an OpenSearch cluster that supports [asynchronous PPL queries](/docs/ppl/#asynchronous-queries). In any other case, the query runs without streaming.
+
+Only queries whose rows can't change as the scan continues stream rows. A query that sorts or aggregates returns its rows when it finishes, though it still shows progress and can be stopped. This includes the newest-first sort that Discover adds to a plain search. Discover doesn't add that sort when the query has a `fields` command, so to stream rows from a plain search, end the query with one, for example `| fields time, severityText, body`.
+
+### Time range and index pruning
+
+Discover sends the time range you pick alongside the PPL query. OpenSearch uses it to skip indexes that can't contain data in that range, so a query over an index pattern that spans months of rollover indexes reads only the indexes it needs. The rows returned are the same either way, because the time filter in the query still does the filtering. For details, see [Time-range index pruning](/docs/ppl/#time-range-index-pruning).
+
+Skipping indexes narrows the merged field mapping, so a field that exists only in skipped indexes isn't available to the query. If a saved query depends on such a field, turn off the **Send the picked time range so the cluster can prune indices** advanced setting (`query:enhancements:indexPruning`, on by default).
 
 ## Building queries with the PPL Query Builder
 
@@ -149,7 +190,7 @@ The **Sort** control adds a single `sort` command with a **Desc** or **Asc** dir
 
 ### Running the query
 
-Select **Refresh**, or press `Cmd`/`Ctrl` + `Enter` from anywhere in the builder.
+Select **Refresh**, or press `Cmd`/`Ctrl` + `Enter` from anywhere in the builder. While the query runs, you can cancel it with **Stop**. See [Running and stopping queries](#running-and-stopping-queries).
 
 Your edits do not run the query as you type. The builder holds the generated query as a draft until you run it, so the results table and histogram keep showing the last query you ran.
 

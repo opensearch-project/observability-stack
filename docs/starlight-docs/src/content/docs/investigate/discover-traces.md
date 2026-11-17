@@ -74,6 +74,7 @@ The **Timeline** tab shows the trace as a waterfall:
 - Each span's duration appears at the end of its bar.
 - Error spans are outlined in red and marked with a warning icon.
 - Light vertical guides show nesting depth. The service name appears only when it changes from the row above.
+- Spans that call a database, message broker, or external service show the dependency's icon, such as PostgreSQL or Kafka. Hover over the icon to see the dependency type and system, for example `Database: postgresql`. For more information, see [External dependencies](#external-dependencies).
 
 Use the toolbar above the waterfall to control the view:
 
@@ -110,6 +111,19 @@ The **Trace map** tab shows how the services in the trace call each other:
 You can drag cards, zoom, and fit the map to the view. A minimap appears on the full page but not in the flyout.
 
 ![Trace map tab showing service cards with request, error, and duration bars connected by call-count edges](/docs/images/discover-traces/trace-details-trace-map.png)
+
+#### External dependencies
+
+Calls from your services to databases, message brokers, and external services appear as dependencies in the trace map and the timeline, even though those systems don't emit spans of their own. Dependencies are detected from the OpenTelemetry attributes on the calling spans, so they need no extra ingestion configuration.
+
+In the **Trace map** tab:
+
+- Each dependency is a card labeled **Database**, **Messaging**, or **External**, with the system's icon (for example PostgreSQL, Redis, or Kafka) or a generic icon for the type. Like service cards, dependency cards show **Requests**, **Errors**, and **Duration** bars.
+- Dependencies are named from the span attributes, for example `redis:valkey-cart` for a database, `kafka:orders` for a message broker topic, or `api.openai.com` for an external service.
+- Edges point from the calling service to the dependency. For messages a service consumes, the edge points from the broker to the service.
+- Select a dependency card to filter the trace to the spans that call it, for example `attributes.server.address = valkey-cart`. Select it again to remove the filter. If no single attribute identifies the dependency, selecting the card doesn't add a filter.
+
+In the span details, attributes that describe the dependency, such as `db.*`, `messaging.*`, and `peer.service`, are grouped under **Dependency** on the **Metadata** tab.
 
 ## Correlating traces with logs
 

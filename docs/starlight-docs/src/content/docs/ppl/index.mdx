@@ -3,6 +3,7 @@ title: "Piped Processing Language (PPL)"
 description: "PPL is the native query language for OpenSearch Observability - a pipe-based, human-readable language for exploring logs, traces, and telemetry at scale."
 ---
 
+import { Aside } from '@astrojs/starlight/components';
 import PlaygroundLink from '../../../components/PlaygroundLink.astro';
 
 Piped Processing Language (PPL) is the **native query language** of the OpenSearch Observability Stack. Every log query, every trace investigation, and every pattern analysis flows through PPL - a pipe-delimited language designed for the way operators and engineers actually think about data.
@@ -116,6 +117,82 @@ The fastest way to learn PPL is to use it. Open the <PlaygroundLink query="" tex
 | stats count() as operations by `resource.attributes.service.name`, `attributes.gen_ai.operation.name`
 ```
 <PlaygroundLink query="%7C%20stats%20count%28%29%20as%20operations%20by%20%60resource.attributes.service.name%60%2C%20%60attributes.gen_ai.operation.name%60" />
+
+## Using the PPL API
+
+Discover runs PPL queries through the `POST /_plugins/_ppl` endpoint, and you can call the endpoint directly. The following options help with queries over large, time-based indexes.
+
+### Time-range index pruning
+
+When a query covers an index pattern or data stream that spans many indexes, OpenSearch first skips the indexes that can't contain data in the query's time range, and only then resolves the schema. Fewer indexes means fewer shards to search, fewer point-in-time contexts to open, and fewer mapping conflicts between old and new indexes. Pruning applies to regular indexes and to the backing indexes of data streams.
+
+OpenSearch takes the time range from either of two places:
+
+- A range on `@timestamp`, `timestamp`, or `time` in the query itself.
+- The `time_field`, `start_time`, and `end_time` request parameters. Discover sends these with the time range you pick. See [Time range and index pruning](/docs/investigate/discover-logs/#time-range-and-index-pruning).
+
+| Parameter | Description |
+|-----------|-------------|
+| `start_time`, `end_time` | The inclusive bounds of the time window. Both are required. Accepts date math (`now-7d`), ISO-8601 (`2026-02-01T00:00:00Z`, `2026-02-01`), epoch milliseconds, or `2026-02-01 00:00:00`. A value that can't be used is ignored, and nothing is pruned. |
+| `time_field` | The field the bounds apply to. Defaults to `@timestamp`. |
+
+```bash
+curl -X POST "localhost:9200/_plugins/_ppl" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "source=logs-otel-v1* | where `time` >= \"2026-02-01 00:00:00\" and `time` <= \"2026-02-01 01:00:00\" | stats count() by severityText",
+    "time_field": "time",
+    "start_time": "2026-02-01 00:00:00",
+    "end_time": "2026-02-01 01:00:00"
+  }'
+```
+
+<Aside type="caution">
+The request parameters select indexes. They don't filter rows. Send only a window that the query's own `where` clause already restricts. If the query's range is wider than the bounds, rows in the skipped indexes are missing from the results.
+</Aside>
+
+Only the outermost `source=` is pruned. The other side of a `join`, a subsearch, a `multisearch` dataset, and a `lookup` table are read in full.
+
+Pruning is experimental and is controlled by the `plugins.query.pruning.enabled` cluster setting, which is on by default. It needs the `indices:admin/resolve/index` and `indices:data/read/field_caps*` permissions, which the `ppl_full_access` role grants. Without them, the query reads every index that matches.
+
+### Asynchronous queries
+
+A long-running query can return before it finishes. Add `wait_for_completion_timeout` to the request body:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `wait_for_completion_timeout` | `30s` | How long the request waits for the query to finish, from `0s` to `60s`. If the query finishes in time, the response is a regular PPL response. Otherwise, the response contains the query's `id`. |
+| `keep_alive` | `5m` | How long OpenSearch keeps the result after the query finishes, up to `24h`. |
+
+```bash
+curl -X POST "localhost:9200/_plugins/_ppl" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "source=logs-otel-v1* | stats count() by `resource.attributes.service.name`", "wait_for_completion_timeout": "5s", "keep_alive": "10m"}'
+```
+
+If the query is still running when the wait expires, the response looks like this:
+
+```json
+{
+  "id": "<opaque-id>",
+  "status": "RUNNING",
+  "progress": {"fraction_done": 0.42},
+  "schema": [],
+  "datarows": [],
+  "total": 0
+}
+```
+
+`progress.fraction_done` is an estimate, from `0.0` to `1.0`, of how much of the query's index scans has completed. It never decreases between polls and is `1.0` once the query succeeds.
+
+Use the `id` to follow up on the query:
+
+| Request | Description |
+|---------|-------------|
+| `GET /_plugins/_async_query/<id>` | Returns the query's status. Poll until the status is `SUCCEEDED`, which returns the `schema` and `datarows`, or `FAILED`, which returns an `error` object. Returns `404` after `keep_alive` expires. |
+| `DELETE /_plugins/_async_query/<id>` | Cancels a running query, which returns the status `CANCELLED`, or discards a finished query's result. |
+
+The `_explain` endpoint, requests with `"profile": true`, and non-JSON response formats (`csv`, `raw`, `viz`) always run synchronously. Submitting a query requires the `cluster:admin/opensearch/ppl` permission, fetching a result requires `cluster:admin/opensearch/ql/async_query/result`, and deleting one requires `cluster:admin/opensearch/ql/async_query/delete`. With the Security plugin enabled, only the user who submitted a query can fetch or delete it.
 
 ## How PPL compares
 

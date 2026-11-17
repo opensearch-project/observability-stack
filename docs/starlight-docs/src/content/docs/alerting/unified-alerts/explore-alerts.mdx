@@ -15,6 +15,8 @@ Each row shows a signal's severity, state, message, start time, and duration. Th
 
 Select an alert to open its detail panel — **Alert Details**, **Labels**, **Annotations**, and **Raw Alert Data** — with an **Open rule** button that jumps to the rule that produced it. To edit, disable, or delete that rule, use the [Rules tab](/docs/alerting/unified-alerts/explore-rules/#inspect-and-manage-a-resource).
 
+An OpenSearch alert whose rule was deleted shows the state **Rule deleted**. It no longer fires, so it doesn't count as active in the summary counts or the alert timeline, and it can't be acknowledged. Its detail panel says whether the rule or only its trigger was deleted, and has no **Open rule** button when the rule is gone.
+
 ## Inspect anomalies
 
 Anomaly results appear directly in **All Alerts**. Results from the same detector and entity are grouped into one row with an occurrence count. Expand the row to compare the message, relative start time, and duration of each occurrence, then select an occurrence to inspect that exact anomaly.
@@ -42,7 +44,7 @@ The left rail scopes the list without editing any query:
 
 - **Datasource** — pick an OpenSearch data source (its alerts and anomaly results), a Prometheus data source (its alerts), or both.
 - **Severity** — `critical`, `high`, `medium`, and so on, with live counts.
-- **State** — `active`, `muted`, `anomaly`, and (for OpenSearch) `resolved`.
+- **State** — `active`, `muted`, `anomaly`, and (for OpenSearch) `resolved` and `Rule deleted`.
 - **Type** — `alert` or `anomaly`.
 - **Labels** — every label present on the current alert set (`alertname`, `component`, `service`, `job`, …) becomes a facet. This is where Prometheus label cardinality pays off: filter to one service, one exporter, or one component in a click.
 

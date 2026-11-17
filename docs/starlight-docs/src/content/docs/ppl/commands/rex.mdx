@@ -59,6 +59,13 @@ Backreferences (`\1`, `\2`, etc.) are supported in the replacement string.
 - Non-matching patterns return an empty string for the extracted fields. Use `where length(field) > 0` to filter non-matches.
 - Multiple `rex` commands can be chained to extract from different fields in the same query.
 - The `max_match` system limit defaults to `10` and can be configured via the `plugins.ppl.rex.max_match.limit` cluster setting. Requesting more than the limit results in an error.
+- To protect the cluster from patterns that backtrack excessively, each match is limited to 100,000 character reads by default, counting characters that backtracking reads again. A match that exceeds the limit fails the query with an error. Legitimate patterns are unaffected. To raise the limit for a heavy pattern, update the `plugins.ppl.regex.match.limit` cluster setting, which also applies to [`parse`](/docs/ppl/commands/parse/):
+
+  ```bash
+  curl -X PUT "localhost:9200/_plugins/_query/settings" \
+    -H "Content-Type: application/json" \
+    -d '{"transient": {"plugins.ppl.regex.match.limit": 200000}}'
+  ```
 
 ## Basic examples
 

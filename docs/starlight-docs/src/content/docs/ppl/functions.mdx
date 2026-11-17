@@ -111,6 +111,8 @@ Text manipulation and pattern matching.
 | `like(<str>, <pattern>)` | Wildcard pattern match (`%`, `_`) |
 | `ilike(<str>, <pattern>)` | Case-insensitive wildcard match |
 
+String literals can contain any Unicode characters, such as CJK characters or emoji, for example `eval label = '你好 🎉'`.
+
 **Example - Extract service name prefix:**
 ```sql
 | eval service_prefix = substring(`resource.attributes.service.name`, 0, locate('-', `resource.attributes.service.name`))
@@ -324,6 +326,8 @@ Convert between data types.
 ```sql
 | eval duration_str = tostring(durationInNanos / 1000000, 'commas')
 ```
+
+**`flat_object` fields:** PPL reads each leaf of a [`flat_object`](https://docs.opensearch.org/latest/mappings/supported-field-types/flat-object/) field as a string, addressed by its dotted path, such as `attributes.duration_ms`. A path that holds several values reads as a JSON array string. To compare a leaf as a number, cast it, for example `where cast(attributes.duration_ms as double) > 100`. Filters on a leaf that use `=`, `!=`, `in`, `like`, `isnull`, or `isnotnull` run in the index. Ordered comparisons, sorting, aggregating, and values computed from a leaf read each matching document's source and are slower on large indexes, so filter first.
 
 ---
 

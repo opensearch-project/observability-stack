@@ -52,11 +52,12 @@ For example, a **Label values** variable named `service` on the `service` label 
    - **Label** — optional display name shown above the dropdown.
    - **Type** — **Query**, **Custom**, or **Text**.
    - **Multi-select** — let viewers pick more than one value at a time.
-   - **Include All** — adds an **All** option that selects every value at once (only with multi-select).
+   - **Include All** — adds an **All** option that selects every value at once (only with multi-select). **All** always reflects the variable's current options.
+   - **Custom all value** — optional raw value substituted when **All** is selected, such as `.+` for PromQL (only with multi-select and **Include All**). Leave empty to expand every option.
    - **Sort** — alphabetical or numerical, ascending or descending.
    - **Hide** — keep the variable in memory but hide its dropdown.
    - For **Query** variables: choose a data source, write the query (PPL or PromQL) that returns the option list, optionally set a **Regex** filter, and pick when to **Refresh** the options — **On dashboard load** (default) or **On time range change**.
-   - For **Custom** variables: enter the static option list (up to 100 options are displayed).
+   - For **Custom** variables: enter the static option list. The dropdown displays up to 100 options at a time; viewers can search to find the rest.
    - **Allow custom values** — let viewers type a value that isn't in the option list.
 4. Use the **Preview** button to check that the query returns the values you expect, then **Save**.
 
@@ -111,6 +112,8 @@ When **multi-select** is on and the viewer picks several values, the substitutio
 | PromQL | `(api\|web)` (regex alternation) | `(1\|2)` |
 
 PromQL values are escaped for regex (e.g. `.`, `*`, `(` are backslash-escaped); PPL string values double single quotes and escape backslashes. This means the same `$service` reference works whether the viewer picks one service or ten — typically combined with the regex match operator (e.g. `service=~"$service"` in PromQL, `service IN $service` in PPL).
+
+When the viewer selects **All**, the variable expands to every current option in the same format, or to the variable's **Custom all value** if one is set. For details, see [Selecting all values](/docs/dashboards/variables/using-variables/#selecting-all-values).
 
 ## Chained (dependent) variables
 
