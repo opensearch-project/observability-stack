@@ -117,6 +117,18 @@ export async function storeIndexPatternFields(base, wsId, dsId, patterns, patter
   }
 }
 
+/**
+ * The application's data source for this stack: the one whose endpoint is the stack's domain or
+ * collection endpoint, else the first. An application reused across stacks has several, and the
+ * first is not necessarily this stack's.
+ */
+export function pickDataSource(dataSources, endpoint) {
+  const list = dataSources || [];
+  const norm = (u) => String(u || '').trim().toLowerCase().replace(/\/+$/, '');
+  const want = norm(endpoint);
+  return (want && list.find((d) => norm(d.attributes?.endpoint) === want)) || list[0];
+}
+
 // ── Init sequence ─────────────────────────────────────────────────────────────
 
 export async function initOpenSearchUI(cfg) {
@@ -146,10 +158,11 @@ export async function initOpenSearchUI(cfg) {
   // b. Find auto-created data-source (may take a few seconds to appear)
   let dsId;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const dsResp = await osuiGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
-    dsId = dsResp.data?.saved_objects?.[0]?.id;
+    const dsResp = await osuiGet(base, '/api/saved_objects/_find?type=data-source&per_page=100', region);
+    const ds = pickDataSource(dsResp.data?.saved_objects, cfg.opensearchEndpoint);
+    dsId = ds?.id;
     if (dsId) {
-      printSuccess(`Data source: ${dsResp.data.saved_objects[0].attributes?.title} (${dsId})`);
+      printSuccess(`Data source: ${ds.attributes?.title} (${dsId})`);
       break;
     }
     if (attempt < 5) await new Promise((res) => setTimeout(res, 10000));

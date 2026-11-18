@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ensureAgentEvalsSetup, evalsConfigBody, evalsDatasetAttributes, missingDatasetAttributes,
 } from '../src/agent-evals-ui.mjs';
+import { pickDataSource } from '../src/opensearch-ui-init.mjs';
 
 // We need to extract the pure functions for testing.
 // Since buildAppDataSources is not exported, we replicate the logic here
@@ -1495,5 +1496,23 @@ describe('Agent Evaluations UI setup', () => {
   it('lists only absent attributes as missing', () => {
     assert.deepEqual(missingDatasetAttributes(evalsDatasetAttributes()), {});
     assert.deepEqual(Object.keys(missingDatasetAttributes({ title: 'x' })).sort(), ['displayName', 'schemaMappings', 'signalType']);
+  });
+});
+
+describe('pickDataSource', () => {
+  const a = { id: 'a', attributes: { endpoint: 'https://search-other-x.us-west-2.es.amazonaws.com' } };
+  const b = { id: 'b', attributes: { endpoint: 'https://search-mine-y.us-west-2.es.amazonaws.com/' } };
+
+  it('picks the data source on the stack endpoint', () => {
+    assert.equal(pickDataSource([a, b], 'https://search-mine-y.us-west-2.es.amazonaws.com').id, 'b');
+  });
+
+  it('falls back to the first data source', () => {
+    assert.equal(pickDataSource([a, b], 'https://nope.example.com').id, 'a');
+    assert.equal(pickDataSource([a, b], undefined).id, 'a');
+  });
+
+  it('returns undefined without data sources', () => {
+    assert.equal(pickDataSource(undefined, 'x'), undefined);
   });
 });
