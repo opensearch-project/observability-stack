@@ -12,7 +12,37 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Starting observability stack..."
-docker compose --project-directory "$PROJECT_DIR" up -d --wait --wait-timeout "$WAIT_TIMEOUT"
+# `up --wait` also fails when a one-shot init job (restart: "no") has already exited 0 by the
+# time compose checks it, which depends on startup timing. So on failure, accept containers that
+# exited 0 and keep waiting until every other container is running and, if it has a health check,
+# healthy. A non-zero exit or an unhealthy container still fails.
+compose_ready() {
+  local pending=0 name state code health
+  while read -r name state code health; do
+    if [[ $state == exited ]]; then
+      [[ $code == 0 ]] || { echo "container $name exited ($code)" >&2; return 2; }
+    elif [[ $health == unhealthy ]]; then
+      echo "container $name is unhealthy" >&2; return 2
+    elif [[ $state != running || $health == starting ]]; then
+      pending=1
+    fi
+  done < <(docker compose --project-directory "$PROJECT_DIR" ps -a \
+    --format '{{.Name}} {{.State}} {{.ExitCode}} {{if .Health}}{{.Health}}{{else}}none{{end}}')
+  return $pending
+}
+if ! docker compose --project-directory "$PROJECT_DIR" up -d --wait --wait-timeout "$WAIT_TIMEOUT"; then
+  echo "==> compose --wait failed; checking containers directly..."
+  deadline=$((SECONDS + WAIT_TIMEOUT))
+  until compose_ready; do
+    rc=$?
+    if (( rc == 2 || SECONDS >= deadline )); then
+      docker compose --project-directory "$PROJECT_DIR" ps -a
+      exit 1
+    fi
+    sleep 5
+  done
+  echo "==> All containers are running or completed successfully"
+fi
 
 # Read .env values as literal strings; don't source or eval (values aren't shell-safe).
 while IFS='=' read -r key value; do
