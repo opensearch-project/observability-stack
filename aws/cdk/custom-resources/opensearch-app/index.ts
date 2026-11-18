@@ -1,4 +1,9 @@
 import { OpenSearchClient, CreateApplicationCommand, UpdateApplicationCommand, DeleteApplicationCommand, GetApplicationCommand, ListApplicationsCommand, AppConfig } from '@aws-sdk/client-opensearch';
+import { adminConfigs as buildAdminConfigs } from './admin-configs';
+
+/** The admin appConfigs (role ARNs under dashboardAdmin.groups), typed for the SDK. */
+export const adminConfigs = (adminRoleArns: string[], existing: AppConfig[] = [], revoked: string[] = []): AppConfig[] =>
+  buildAdminConfigs(adminRoleArns, existing, revoked) as AppConfig[];
 
 const client = new OpenSearchClient();
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -22,27 +27,6 @@ async function waitForEndpoint(appId: string, maxWaitMs = 300_000): Promise<stri
 async function findExistingApp(name: string) {
   const list = await client.send(new ListApplicationsCommand({}));
   return list.ApplicationSummaries?.find(a => a.name === name);
-}
-
-const ADMIN_USERS = 'opensearchDashboards.dashboardAdmin.users';
-const ADMIN_GROUPS = 'opensearchDashboards.dashboardAdmin.groups';
-
-function readList(configs: AppConfig[] | undefined, key: string): string[] {
-  const c = configs?.find((x) => x.key === key);
-  try { return c?.value ? JSON.parse(c.value) : []; } catch { return []; }
-}
-
-/**
- * Admin appConfigs: existing explicit admins minus `revoked`, plus adminRoleArns as `groups`
- * (IAM role ARNs).
- */
-export function adminConfigs(adminRoleArns: string[], existing: AppConfig[] = [], revoked: string[] = []): AppConfig[] {
-  const kept = readList(existing, ADMIN_GROUPS).filter((g) => g !== '*' && !revoked.includes(g));
-  const groups = [...new Set([...kept, ...adminRoleArns])];
-  const users = readList(existing, ADMIN_USERS).filter((u) => u !== '*');
-  const configs: AppConfig[] = [{ key: ADMIN_GROUPS, value: JSON.stringify(groups) }];
-  if (users.length) configs.push({ key: ADMIN_USERS, value: JSON.stringify(users) });
-  return configs;
 }
 
 export async function handler(event: any): Promise<any> {
