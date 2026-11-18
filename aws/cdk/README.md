@@ -92,7 +92,7 @@ The stacks are named `ObsInfra` and `ObservabilityStack`. To deploy a second cop
 cdk deploy --all -c stackNamePrefix=test-
 ```
 
-This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names derived from the stack name (pipeline, collection, application, Prometheus workspace alias) change with it.
+This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names derived from the stack name (pipeline, collection, application, Prometheus workspace alias) change with it. The OSIS pipeline is `obs-stack-<stack name>` lowercased when that fits in 28 characters; a longer name is cut and ends in a short hash of the full stack name, so different prefixes get different pipelines.
 
 ## Architecture
 
@@ -188,6 +188,9 @@ cdk destroy --all
 
 # Destroy only the app stack (keeps domain intact)
 cdk destroy ObservabilityStack
+
+# Unit tests (pipeline names, application admins, Agent Evaluations UI setup)
+npm test
 ```
 
 ## Project Structure
@@ -207,7 +210,7 @@ aws/cdk/
 │   ├── fgac-mapping/index.ts           # FGAC Security API role mapping
 │   ├── dqs-datasource/index.ts         # DQS Prometheus data source
 │   ├── opensearch-app/index.ts         # OpenSearch Application lifecycle
-│   └── ui-init/                        # Workspace, index patterns, dashboards
+│   └── ui-init/                        # Workspace, index patterns, Agent Evaluations config, dashboards
 │       ├── index.ts
 │       └── arch-image.mjs              # Architecture diagram (base64 PNG)
 ├── package.json
