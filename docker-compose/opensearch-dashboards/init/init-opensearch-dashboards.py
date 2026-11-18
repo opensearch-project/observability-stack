@@ -181,6 +181,31 @@ def ensure_evaluation_index():
         return False
 
 
+def run_evaluation_index_init(attempts=30, delay_seconds=5):
+    """Create the evaluation objects before Data Prepper starts writing results.
+
+    Data Prepper's sink would otherwise create a concrete otel-v1-genai-evaluation index on its
+    first start, which blocks the write alias. Retries while OpenSearch is still starting.
+    """
+    auth = (USERNAME, PASSWORD)
+    for attempt in range(1, attempts + 1):
+        if ensure_evaluation_index():
+            return True
+        try:
+            # A concrete index with the alias name (an older stack) is kept: Data Prepper writes
+            # to it, so there is nothing to wait for.
+            if (requests.get(f"{OPENSEARCH_ENDPOINT}/_alias/{EVALUATION_ALIAS}", auth=auth,
+                             verify=False, timeout=10).status_code == 404
+                    and requests.get(f"{OPENSEARCH_ENDPOINT}/{EVALUATION_ALIAS}", auth=auth,
+                                     verify=False, timeout=10).status_code == 200):
+                return True
+        except requests.exceptions.RequestException:
+            pass
+        print(f"  ⏳ Evaluation index not ready (attempt {attempt}/{attempts}), retrying...")
+        time.sleep(delay_seconds)
+    return False
+
+
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
     print("🔄 Initializing OpenSearch workspace...")
@@ -2227,8 +2252,12 @@ if __name__ == "__main__":
     # backstop never blocks init completion (or a Helm hook):
     #   (default)      → main(): fast one-shot setup + immediate field warm
     #   refresh-loop   → periodic field refresh until indices populate
+    #   evaluation-index → only the evaluation policy, template and write alias,
+    #                      retried until OpenSearch accepts them (runs before Data Prepper)
     mode = sys.argv[1] if len(sys.argv) > 1 else "init"
     if mode == "refresh-loop":
         run_field_refresh_backstop()
+    elif mode == "evaluation-index":
+        sys.exit(0 if run_evaluation_index_init() else 1)
     else:
         main()

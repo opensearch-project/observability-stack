@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sys
 import types
 import unittest
@@ -215,6 +216,52 @@ class EnsureEvaluationIndexTests(unittest.TestCase):
         })
         self.assertFalse(self.initializer.ensure_evaluation_index())
         self.initializer.requests.put.assert_not_called()
+
+    def test_evaluation_index_mode_retries_until_ready(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(side_effect=[False, False, True])
+        self._routes({})
+        self.assertTrue(self.initializer.run_evaluation_index_init(attempts=5, delay_seconds=0))
+        self.assertEqual(3, self.initializer.ensure_evaluation_index.call_count)
+
+    def test_evaluation_index_mode_accepts_a_concrete_index(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(return_value=False)
+        self._routes({("GET", "/otel-v1-genai-evaluation"): (200, {})})
+        self.assertTrue(self.initializer.run_evaluation_index_init(attempts=5, delay_seconds=0))
+        self.assertEqual(1, self.initializer.ensure_evaluation_index.call_count)
+
+    def test_evaluation_index_mode_gives_up(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(return_value=False)
+        self._routes({})
+        self.assertFalse(self.initializer.run_evaluation_index_init(attempts=3, delay_seconds=0))
+
+
+class DataPrepperEvaluationTemplateTests(unittest.TestCase):
+    """The local pipeline inlines the same template the init job and the AWS installer install."""
+
+    def test_inlined_template_matches_the_template_file(self):
+        directory = REPOSITORY_ROOT / "docker-compose/data-prepper"
+        lines = (directory / "pipelines.template.yaml").read_text().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.strip() == "template_content: |")
+        indent = len(lines[start]) - len(lines[start].lstrip()) + 2
+        block = []
+        for line in lines[start + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) < indent:
+                break
+            block.append(line[indent:])
+        inlined = json.loads("\n".join(block))
+        expected = json.loads((directory / "otel-v1-genai-evaluation-index-template.json").read_text())
+        expected.pop("index_patterns")
+        self.assertEqual(expected, inlined)
+        for target in ("aws/cli-installer/src", "aws/cdk/lib"):
+            path = REPOSITORY_ROOT / target / "genai-evaluation/otel-v1-genai-evaluation-index-template.json"
+            if path.exists():
+                with self.subTest(target=target):
+                    aws = json.loads(path.read_text())
+                    aws.pop("index_patterns", None)
+                    self.assertEqual(expected, aws)
 
 
 if __name__ == "__main__":

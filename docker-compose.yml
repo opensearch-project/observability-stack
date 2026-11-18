@@ -90,9 +90,6 @@ services:
     volumes:
       - ./docker-compose/data-prepper/pipelines.template.yaml:/tmp/pipelines.template.yaml
       - ./docker-compose/data-prepper/data-prepper-config.yaml:/usr/share/data-prepper/config/data-prepper-config.yaml
-      # GenAI evaluation index template and ISM rollover policy (otel-evaluations-pipeline)
-      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/usr/share/data-prepper/templates/otel-v1-genai-evaluation-index-template.json:ro
-      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json:/usr/share/data-prepper/templates/otel-v1-genai-evaluation-policy.json:ro
     ports:
       # OTLP gRPC receiver from OpenTelemetry Collector
       - "${DATA_PREPPER_OTLP_PORT}:21890"
@@ -108,6 +105,10 @@ services:
     depends_on:
       opensearch:
         condition: service_healthy
+        required: false
+      # Local OpenSearch only: the evaluation write alias must exist before the first write
+      genai-evaluation-index-init:
+        condition: service_completed_successfully
         required: false
     networks:
       - observability-stack-network

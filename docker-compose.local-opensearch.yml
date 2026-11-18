@@ -59,3 +59,28 @@ services:
       timeout: 10s
       retries: 30
     logging: *logging
+
+  # GenAI evaluation index init: one-shot job that creates the evaluation ISM rollover policy,
+  # index template and otel-v1-genai-evaluation-000001 behind the otel-v1-genai-evaluation write
+  # alias, before Data Prepper starts (as the AWS installer does for a managed domain). Idempotent.
+  genai-evaluation-index-init:
+    image: python:3.11-alpine
+    container_name: genai-evaluation-index-init
+    command: sh -c "pip install -q requests pyyaml && python -u /init.py evaluation-index"
+    environment:
+      - OPENSEARCH_USER=${OPENSEARCH_USER}
+      - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      - OPENSEARCH_HOST=${OPENSEARCH_HOST}
+      - OPENSEARCH_PORT=${OPENSEARCH_PORT}
+      - OPENSEARCH_PROTOCOL=${OPENSEARCH_PROTOCOL}
+    volumes:
+      - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py:ro
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/config/genai-evaluation/otel-v1-genai-evaluation-index-template.json:ro
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json:/config/genai-evaluation/otel-v1-genai-evaluation-policy.json:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - observability-stack-network
+    restart: "no"
+    logging: *logging
