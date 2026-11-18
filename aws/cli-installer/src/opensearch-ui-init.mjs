@@ -11,6 +11,7 @@ import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals-ui.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -234,10 +235,16 @@ export async function initOpenSearchUI(cfg) {
     printSuccess(`Index pattern created: ${p.title}`);
   }
 
+  // Agent Evaluations: the evaluations dataset and the workspace's config, as the UI's
+  // "Create evaluations dataset" and Settings save them (harmless with the feature flag off).
+  const evals = await setupAgentEvaluations(base, wsId, dsId, dsRefType, patternIds['otel-v1-apm-span*'], region);
+  const evalsPattern = { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD };
+  if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
+
   // Store each pattern's field list now. Explore builds its data view from the saved object
   // without fetching fields, so a pattern saved without them has no time field and the logs and
   // traces histograms fail with "Could not locate that index-pattern-field".
-  await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, region);
+  await storeIndexPatternFields(base, wsId, dsId, [...patterns, evalsPattern], patternIds, region);
 
   const logsId = patternIds['logs-otel-v1*'];
   const tracesId = patternIds['otel-v1-apm-span*'];
@@ -341,6 +348,28 @@ export async function initOpenSearchUI(cfg) {
   printInfo(`URL: ${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`);
   // app/home is not a workspace app and redirects to the workspace picker; open the overview dashboard instead.
   cfg.dashboardsUrl = `${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`;
+}
+
+// ── Agent Evaluations ─────────────────────────────────────────────────────────
+
+/** The evaluations dataset and config; a failure warns and leaves the rest of the setup alone. */
+export async function setupAgentEvaluations(base, wsId, dsId, dsRefType, tracesId, region) {
+  const api = {
+    get: (path) => osuiGet(base, path, region),
+    post: (path, body) => osuiPost(base, path, body, region),
+    put: (path, body) => osuiPut(base, path, body, region),
+  };
+  try {
+    const r = await ensureAgentEvalsSetup(api, { wsId, dsId, dsRefType, tracesId });
+    if (r.evalsId) printSuccess(`Evaluations dataset ${r.datasetCreated ? 'created' : 'exists'}: ${EVALS_DATASET_TITLE}`);
+    else printWarning('Could not create the evaluations dataset');
+    if (r.configId) printSuccess(`Agent Evaluations config ${r.configCreated ? 'created' : 'exists'}`);
+    else printWarning('Agent Evaluations config not created (no traces or evaluations dataset)');
+    return r;
+  } catch (err) {
+    printWarning(`Agent Evaluations setup failed: ${err.message}`);
+    return {};
+  }
 }
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────

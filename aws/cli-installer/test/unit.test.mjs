@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  ensureAgentEvalsSetup, evalsConfigBody, evalsDatasetAttributes, missingDatasetAttributes,
+} from '../src/agent-evals-ui.mjs';
 
 // We need to extract the pure functions for testing.
 // Since buildAppDataSources is not exported, we replicate the logic here
@@ -1349,5 +1352,140 @@ describe('ensureEvaluationIndex', () => {
 
     const bad = fakeDomain({ 'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [400, { error: 'bad' }] });
     await assert.rejects(ensureEvaluationIndex(bad.fetchFn, ep, { delayMs: 0 }), /returned 400/);
+  });
+});
+
+describe('Agent Evaluations UI setup', () => {
+  const WS = 'ws1';
+  const DS = 'ds-1';
+  const TRACES = 'traces-1';
+
+  // An in-memory saved objects API over one workspace: index patterns and correlations.
+  function fakeOsui(seed = {}) {
+    const objects = { 'index-pattern': [...(seed.patterns || [])], correlations: [...(seed.correlations || [])] };
+    const calls = [];
+    let n = 0;
+    const api = {
+      async get(path) {
+        calls.push(['GET', path]);
+        const type = /type=([a-z-]+)/.exec(path)[1];
+        return { status: 200, data: { saved_objects: objects[type] } };
+      },
+      async post(path, body) {
+        calls.push(['POST', path, body]);
+        const type = /saved_objects\/([a-z-]+)$/.exec(path)[1];
+        const o = { id: `${type}-new-${++n}`, ...body };
+        objects[type].push(o);
+        return { status: 200, data: o };
+      },
+      async put(path, body) {
+        calls.push(['PUT', path, body]);
+        const [, type, id] = /saved_objects\/([a-z-]+)\/(.+)$/.exec(path);
+        const o = objects[type].find((x) => x.id === id);
+        Object.assign(o.attributes, body.attributes);
+        return { status: 200, data: o };
+      },
+    };
+    return { api, objects, calls };
+  }
+
+  it('builds the dataset the UI\'s "Create evaluations dataset" makes', () => {
+    const a = evalsDatasetAttributes();
+    assert.equal(a.title, 'otel-v1-genai-evaluation*');
+    assert.equal(a.timeFieldName, '@timestamp');
+    assert.equal(a.signalType, 'logs');
+    assert.equal(a.displayName, 'Evaluation Dataset');
+    assert.deepEqual(JSON.parse(a.schemaMappings), {
+      otelLogs: { timestamp: '@timestamp', traceId: 'traceId', spanId: 'spanId', serviceName: 'resource.attributes.service.name' },
+    });
+  });
+
+  it('builds the AgentEvals-Config correlation with traces then evaluations references', () => {
+    assert.deepEqual(evalsConfigBody(WS, TRACES, 'ev-1'), {
+      attributes: {
+        correlationType: 'AgentEvals-Config-ws1',
+        title: 'AgentEvals-Config',
+        version: '1.0.0',
+        entities: [{ tracesDataset: { id: 'references[0].id' } }, { evaluationsDataset: { id: 'references[1].id' } }],
+      },
+      references: [
+        { name: 'entities[0].index', type: 'index-pattern', id: TRACES },
+        { name: 'entities[1].index', type: 'index-pattern', id: 'ev-1' },
+      ],
+    });
+  });
+
+  it('creates the dataset on the data source and the config in an empty workspace', async () => {
+    const { api, objects } = fakeOsui();
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, dsRefType: 'data-source', tracesId: TRACES });
+    assert.equal(r.datasetCreated, true);
+    assert.equal(r.configCreated, true);
+    const [pattern] = objects['index-pattern'];
+    assert.deepEqual(pattern.attributes, evalsDatasetAttributes());
+    assert.deepEqual(pattern.references, [{ id: DS, name: 'dataSource', type: 'data-source' }]);
+    const [config] = objects.correlations;
+    assert.equal(config.attributes.correlationType, 'AgentEvals-Config-ws1');
+    assert.deepEqual(config.references.map((x) => x.id), [TRACES, r.evalsId]);
+  });
+
+  it('uses the serverless data source reference type it is given', async () => {
+    const { api, objects } = fakeOsui();
+    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, dsRefType: 'OpenSearch Serverless', tracesId: TRACES });
+    assert.equal(objects['index-pattern'][0].references[0].type, 'OpenSearch Serverless');
+  });
+
+  it('is idempotent: a second run creates nothing', async () => {
+    const { api, objects, calls } = fakeOsui();
+    const first = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    const before = calls.length;
+    const second = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(second.datasetCreated, false);
+    assert.equal(second.configCreated, false);
+    assert.equal(second.evalsId, first.evalsId);
+    assert.equal(second.configId, first.configId);
+    assert.equal(objects['index-pattern'].length, 1);
+    assert.equal(objects.correlations.length, 1);
+    assert.ok(calls.slice(before).every(([m]) => m === 'GET'));
+  });
+
+  it('reuses a pattern with the title, filling only the attributes it lacks', async () => {
+    const existing = { id: 'old', attributes: { title: 'otel-v1-genai-evaluation*', timeFieldName: '@timestamp', displayName: 'Mine' }, references: [{ id: DS, name: 'dataSource', type: 'data-source' }] };
+    const { api, objects } = fakeOsui({ patterns: [existing] });
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(r.evalsId, 'old');
+    assert.equal(r.datasetCreated, false);
+    assert.equal(objects['index-pattern'].length, 1);
+    assert.equal(existing.attributes.signalType, 'logs');
+    assert.equal(existing.attributes.displayName, 'Mine');
+    assert.ok(existing.attributes.schemaMappings);
+  });
+
+  it('prefers the pattern on the same data source', async () => {
+    const other = { id: 'other', attributes: { ...evalsDatasetAttributes() }, references: [{ id: 'ds-other', name: 'dataSource', type: 'data-source' }] };
+    const mine = { id: 'mine', attributes: { ...evalsDatasetAttributes() }, references: [{ id: DS, name: 'dataSource', type: 'data-source' }] };
+    const { api } = fakeOsui({ patterns: [other, mine] });
+    assert.equal((await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES })).evalsId, 'mine');
+  });
+
+  it('keeps an existing config (a user\'s Settings choice) as is', async () => {
+    const config = { id: 'cfg', attributes: { correlationType: 'AgentEvals-Config-ws1', title: 'AgentEvals-Config' }, references: [] };
+    const { api, objects } = fakeOsui({ correlations: [{ id: 'apm', attributes: { correlationType: 'APM-Config-ws1' } }, config] });
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(r.configId, 'cfg');
+    assert.equal(r.configCreated, false);
+    assert.equal(objects.correlations.length, 2);
+  });
+
+  it('creates no config without a traces dataset', async () => {
+    const { api, objects } = fakeOsui();
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS });
+    assert.ok(r.evalsId);
+    assert.equal(r.configId, undefined);
+    assert.equal(objects.correlations.length, 0);
+  });
+
+  it('lists only absent attributes as missing', () => {
+    assert.deepEqual(missingDatasetAttributes(evalsDatasetAttributes()), {});
+    assert.deepEqual(Object.keys(missingDatasetAttributes({ title: 'x' })).sort(), ['displayName', 'schemaMappings', 'signalType']);
   });
 });

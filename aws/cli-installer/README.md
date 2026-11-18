@@ -24,7 +24,7 @@ Takes ~15 minutes for managed, ~5 minutes for serverless. When complete, the CLI
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
 | Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
-| OpenSearch Application | UI with workspace, index patterns, correlations, dashboards |
+| OpenSearch Application | UI with workspace, index patterns (including the Agent Evaluations dataset), correlations, the Agent Evaluations config, dashboards |
 | IAM roles | Pipeline role (OSIS → OpenSearch + AMP) and Connected Data Source role |
 | EC2 instance (t3.xlarge) | Runs OTel Demo + example agents (29 containers generating telemetry) |
 

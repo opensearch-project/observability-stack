@@ -9,6 +9,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
@@ -217,7 +218,22 @@ export async function handler(event: Event) {
     patternIds[p.title] = (resp.data as any)?.id;
   }
 
-  await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, Region);
+  // Agent Evaluations: the evaluations dataset and the workspace's config, as the UI's
+  // "Create evaluations dataset" and Settings save them (harmless with the feature flag off).
+  try {
+    const evals = await ensureAgentEvalsSetup({
+      get: (path) => osuiGet(base, path, Region),
+      post: (path, body) => osuiPost(base, path, body, Region),
+      put: (path, body) => osuiPut(base, path, body, Region),
+    }, { wsId: wsId!, dsId, dsRefType: 'data-source', tracesId: patternIds['otel-v1-apm-span*'] });
+    console.log('Agent Evaluations setup:', JSON.stringify(evals));
+    if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
+  } catch (e: any) {
+    console.warn(`Agent Evaluations setup failed: ${e.message}`);
+  }
+
+  await storeIndexPatternFields(base, wsId!, dsId,
+    [...patterns, { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD }], patternIds, Region);
 
   const logsId = patternIds['logs-otel-v1*'];
   const tracesId = patternIds['otel-v1-apm-span*'];
