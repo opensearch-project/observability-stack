@@ -80,7 +80,8 @@ export async function ensureAgentEvalsSetup(api, { wsId, dsId, dsRefType = 'data
   const result = { evalsId: undefined, configId: undefined, datasetCreated: false, configCreated: false };
 
   // a. The evaluations dataset: a pattern with its title (on the same data source) is reused.
-  const find = await api.get(`${w}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=${encodeURIComponent(EVALS_DATASET_TITLE)}&per_page=100`);
+  // Listed and matched here: OpenSearch UI's _find `search` does not match titles with `*`.
+  const find = await api.get(`${w}/api/saved_objects/_find?type=index-pattern&fields=title&fields=signalType&fields=displayName&fields=schemaMappings&per_page=10000`);
   const same = (find.data?.saved_objects || []).filter((o) => o.attributes?.title === EVALS_DATASET_TITLE);
   const existing = (dsId && same.find((o) => refsDataSource(o, dsId))) || same[0];
   if (existing) {

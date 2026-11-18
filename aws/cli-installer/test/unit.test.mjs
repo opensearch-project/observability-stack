@@ -1484,6 +1484,14 @@ describe('Agent Evaluations UI setup', () => {
     assert.equal(objects.correlations.length, 0);
   });
 
+  it('lists index patterns instead of searching (search does not match titles with *)', async () => {
+    const { api, calls } = fakeOsui();
+    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    const lookups = calls.filter(([m, p]) => m === 'GET' && p.includes('type=index-pattern'));
+    assert.ok(lookups.length > 0);
+    assert.ok(lookups.every(([, p]) => !p.includes('search=')));
+  });
+
   it('lists only absent attributes as missing', () => {
     assert.deepEqual(missingDatasetAttributes(evalsDatasetAttributes()), {});
     assert.deepEqual(Object.keys(missingDatasetAttributes({ title: 'x' })).sort(), ['displayName', 'schemaMappings', 'signalType']);

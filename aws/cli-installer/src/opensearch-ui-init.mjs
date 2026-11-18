@@ -217,11 +217,12 @@ export async function initOpenSearchUI(cfg) {
   ];
 
   const patternIds = {};
+  // Existing patterns are listed and matched by title here: the saved objects `search` does not
+  // match titles with `*`, so searching for them finds nothing and reruns made duplicates.
+  const findResp = await osuiGet(base, `/w/${wsId}/api/saved_objects/_find?type=index-pattern&fields=title&per_page=10000`, region);
+  const existingPatterns = findResp.data?.saved_objects || [];
   for (const p of patterns) {
-    // Check if exists
-    const findResp = await osuiGet(base,
-      `/w/${wsId}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=${encodeURIComponent(p.title)}`, region);
-    const existingPat = (findResp.data?.saved_objects || []).find((o) => o.attributes?.title === p.title);
+    const existingPat = existingPatterns.find((o) => o.attributes?.title === p.title);
     if (existingPat) {
       patternIds[p.title] = existingPat.id;
       printSuccess(`Index pattern exists: ${p.title}`);
