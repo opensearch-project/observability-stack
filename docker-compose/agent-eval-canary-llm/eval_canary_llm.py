@@ -1,39 +1,55 @@
-"""LLM-as-judge eval canary — periodically runs HelpfulnessEvaluator on recent traces.
+"""LLM eval canary: LLM-as-judge online and offline evaluations of the example agents (Bedrock).
 
-Complements the deterministic agent-eval-canary. Every cycle:
-  1. Lists recent agent root spans from OpenSearch
-  2. Dedupes against traces that already have a helpfulness score
-  3. Evaluates up to MAX_PER_CYCLE traces in parallel via Bedrock Claude
-  4. Writes score spans back via genai-observability-sdk score()
+Complements the deterministic agent-eval-canary. Every cycle (EVAL_CANARY_LLM_INTERVAL seconds):
 
-Score spans are OTel GenAI semconv compliant (gen_ai.operation.name=evaluation,
-gen_ai.evaluation.name=helpfulness) and attach to the evaluated trace so they
-render in the same waterfall as the agent spans.
+1. Online: lists recent agent roots in OpenSearch (OpenSearchTraceRetriever), skips the traces
+   each evaluator already graded (find_evaluated_trace_ids by evaluator), and grades up to
+   MAX_PER_CYCLE of them:
+   - answer_quality, by this canary's own judge (answer_quality_judge, a Bedrock Converse call).
+     The judge call is traced as its own chat span with the judge prompt as
+     gen_ai.system_instructions; the result carries the judge context (evaluator description,
+     judge model, judge prompt name and version) and links the judge's trace (judge_trace_id).
+   - helpfulness, by the Strands Evals HelpfulnessEvaluator: a library result that names the
+     library's evaluator (strands_evals.helpfulness), not this canary.
+2. Offline, every EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES: runs the travel_planner_judged suite
+   with evaluate() against the running travel planner, as a named run. The judge is a @scorer that
+   declares its judge context, so only its own results get it. One case injects a fault and is
+   expected to fail.
+
+Results are gen_ai.evaluation.result log events, routed by Data Prepper to the
+otel-v1-genai-evaluation write alias. A failed result is also logged at WARN with the evaluated
+span's trace and span ids, so Agent Traces shows it on that trace.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
 import time
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 
-from opensearch_genai_observability_sdk_py.retrieval import OpenSearchTraceRetriever
-from opensearch_genai_observability_sdk_py.score import score
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from strands_evals.evaluators import HelpfulnessEvaluator
-from strands_evals.providers import OpenSearchProvider, SessionNotFoundError
-from strands_evals.types.evaluation import EvaluationData
-from strands_evals.types.trace import AgentInvocationSpan
+import boto3
+import requests
+from opentelemetry import context, trace
+from opentelemetry._logs import get_logger_provider
+from opentelemetry.propagate import inject
+from opentelemetry.sdk._logs import LoggingHandler
+from opentelemetry.trace import NonRecordingSpan, SpanContext, SpanKind, Status, StatusCode, TraceFlags
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-log = logging.getLogger("agent-eval-canary-llm")
+from opensearch_genai_observability_sdk_py import (
+    EvalScore,
+    OpenSearchTraceRetriever,
+    Op,
+    enrich,
+    evaluate,
+    observe,
+    register,
+    score,
+    scorer,
+)
 
 OS_HOST = os.environ.get("OPENSEARCH_HOST", "https://opensearch:9200")
 OS_USER = os.environ.get("OPENSEARCH_USER", "admin")
@@ -43,139 +59,282 @@ INTERVAL = int(os.environ.get("EVAL_CANARY_LLM_INTERVAL", "60"))
 LOOKBACK_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_LOOKBACK_MINUTES", "10"))
 MAX_PER_CYCLE = int(os.environ.get("EVAL_CANARY_LLM_MAX_PER_CYCLE", "20"))
 CONCURRENCY = int(os.environ.get("EVAL_CANARY_LLM_CONCURRENCY", "8"))
-JUDGE_MODEL = os.environ.get(
-    "EVAL_JUDGE_MODEL", "us.anthropic.claude-sonnet-4-20250514-v1:0"
-)
-EVAL_NAME = "helpfulness"
+SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES", "60"))
+JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
+AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
+TRAVEL_PLANNER_URL = os.environ.get("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
+PLANNER_AGENT_NAME = "Travel Planner"
+PLANNER_AGENT_VERSION = os.environ.get("PLANNER_AGENT_VERSION", "1.1.0")
 
-TARGET_SERVICES = [
-    "example-weather-agent",
-    "example-travel-planner",
-    "example-events-agent",
-    "travel-planner",
-    "weather-agent",
-    "events-agent",
+JUDGE_EVALUATOR = "answer_quality_judge"
+JUDGE_PROMPT_NAME = "answer-quality"
+JUDGE_PROMPT_VERSION = "v2"
+JUDGE_DESCRIPTION = "Answer covers what the agent was asked for and is grounded in its tool results"
+JUDGE_PROMPT = (
+    "You grade the final answer of an AI travel agent. Its job is a short trip summary for one "
+    "destination: current weather, a few attractions, a flight option and the currency rate. "
+    "Do not expect hotels, itineraries or other details it was not asked for. Score from 1 "
+    "(wrong or useless) to 5 (covers its job, consistent and specific). Score 2 or lower when "
+    "the answer recommends attractions of another city than the destination, or says weather or "
+    "attractions are unavailable. "
+    'Reply with JSON only: {"score": <1-5>, "reason": "<one sentence>"}'
+)
+HELPFULNESS_EVALUATOR = "strands_evals.helpfulness"
+
+TARGET_SERVICES = ["travel-planner", "weather-agent", "events-agent"]
+
+register(
+    endpoint=f"grpc://{OTEL_ENDPOINT.replace('http://', '').replace('grpc://', '')}",
+    service_name="agent-eval-canary-llm",
+    service_version="0.3.0",
+)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=get_logger_provider()))
+for noisy in ("urllib3", "opensearch", "botocore", "strands", "httpx"):
+    logging.getLogger(noisy).setLevel(logging.ERROR)
+log = logging.getLogger("agent-eval-canary-llm")
+
+_bedrock = boto3.client("bedrock-runtime", region_name=AWS_REGION)
+
+
+def log_on_span(level: int, trace_id: str, span_id: str | None, message: str, *args, **attributes) -> None:
+    """Log with the evaluated span's trace context, so the record joins that trace."""
+    if not span_id:
+        log.log(level, message, *args, extra=attributes)
+        return
+    span_context = SpanContext(int(trace_id, 16), int(span_id, 16), is_remote=True, trace_flags=TraceFlags(1))
+    token = context.attach(trace.set_span_in_context(NonRecordingSpan(span_context)))
+    try:
+        log.log(level, message, *args, extra=attributes)
+    finally:
+        context.detach(token)
+
+
+# ---------------------------------------------------------------------------
+# The judge
+# ---------------------------------------------------------------------------
+
+@observe(name=JUDGE_EVALUATOR, op=Op.CHAT)
+def judge(question: str, answer: str) -> tuple[float, str, str]:
+    """One Bedrock call; returns (score 1-5, reason, judge trace id).
+
+    A chat span (no agent name), so Agent Traces and list_root_spans() never treat the judge as
+    an agent. The full judge prompt goes here, on the judge's own span, never on a result.
+    """
+    judge_trace_id = format(trace.get_current_span().get_span_context().trace_id, "032x")
+    user = f"Request:\n{question}\n\nAnswer:\n{answer}"
+    enrich(
+        model=JUDGE_MODEL,
+        provider="aws.bedrock",
+        system_instructions=JUDGE_PROMPT,
+        input_messages=[{"role": "user", "parts": [{"type": "text", "content": user}]}],
+    )
+    resp = _bedrock.converse(
+        modelId=JUDGE_MODEL,
+        system=[{"text": JUDGE_PROMPT}],
+        messages=[{"role": "user", "content": [{"text": user}]}],
+        inferenceConfig={"maxTokens": 300, "temperature": 0},
+    )
+    text = "".join(c.get("text", "") for c in resp["output"]["message"]["content"])
+    usage = resp.get("usage", {})
+    enrich(
+        input_tokens=usage.get("inputTokens"),
+        output_tokens=usage.get("outputTokens"),
+        finish_reason=resp.get("stopReason"),
+        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": text}]}],
+    )
+    match = re.search(r"\{.*\}", text, re.S)
+    verdict = json.loads(match.group(0) if match else text)
+    return float(verdict["score"]), str(verdict.get("reason", ""))[:1000], judge_trace_id
+
+
+JUDGE_CONTEXT = dict(
+    evaluator=JUDGE_EVALUATOR,
+    evaluator_type="llm_judge",
+    evaluator_description=JUDGE_DESCRIPTION,
+    judge_model=JUDGE_MODEL,
+    judge_prompt_name=JUDGE_PROMPT_NAME,
+    judge_prompt_version=JUDGE_PROMPT_VERSION,
+)
+
+
+# ---------------------------------------------------------------------------
+# Online
+# ---------------------------------------------------------------------------
+
+def _text(messages) -> str:
+    return "\n".join(m.content for m in messages if getattr(m, "content", None))
+
+
+def judge_trace(root) -> str:
+    question = _text(root.input_messages[:1])
+    answer = _text(root.output_messages[-1:])
+    if not answer:
+        return "skip:no_output"
+    common = dict(trace_id=root.trace_id, span_id=root.span_id,
+                  agent_name=root.agent_name or None, agent_version=root.agent_version or None)
+    try:
+        value, reason, judge_trace_id = judge(question, answer)
+    except Exception as e:  # noqa: BLE001 - an evaluator failure is an error result
+        score("answer_quality", error_type=type(e).__name__, **common, **JUDGE_CONTEXT)
+        log_on_span(logging.ERROR, root.trace_id, root.span_id, "Judge %s failed: %s",
+                    JUDGE_EVALUATOR, type(e).__name__)
+        return f"judge_err:{type(e).__name__}"
+    score(
+        "answer_quality", value,
+        explanation=reason, threshold=4, score_min=1, score_max=5,
+        judge_trace_id=judge_trace_id, **common, **JUDGE_CONTEXT,
+    )
+    if value < 4:
+        log_on_span(logging.WARNING, root.trace_id, root.span_id,
+                    "Evaluation failed for %s: answer_quality=%.0f (%s)", root.agent_name, value, reason[:200],
+                    **{"gen_ai.evaluation.evaluator": JUDGE_EVALUATOR})
+    return f"ok answer_quality={value:.0f}"
+
+
+def helpfulness_trace(provider, evaluator, root) -> str:
+    """Grade one trace with the Strands Evals HelpfulnessEvaluator (a library evaluator)."""
+    from strands_evals.providers import SessionNotFoundError
+    from strands_evals.types.evaluation import EvaluationData
+    from strands_evals.types.trace import AgentInvocationSpan
+
+    try:
+        data = provider.get_evaluation_data(session_id=root.trace_id)
+    except SessionNotFoundError:
+        return "skip:no_session"
+    session = data["trajectory"]
+    anchor = next((s for tr in reversed(session.traces) for s in reversed(tr.spans)
+                   if isinstance(s, AgentInvocationSpan)), None)
+    if anchor is None:
+        return "skip:no_anchor"
+    # The library runs its own judge agent. Run it below a chat span, so its spans form one judge
+    # trace (linked from the result with judge_trace_id) instead of an agent trace of their own.
+    with observe(HELPFULNESS_EVALUATOR, op=Op.CHAT):
+        enrich(model=JUDGE_MODEL, provider="aws.bedrock")
+        judge_trace_id = format(trace.get_current_span().get_span_context().trace_id, "032x")
+        results = evaluator.evaluate(EvaluationData(
+            input=anchor.user_prompt, actual_output=data["output"], actual_trajectory=session,
+            name=f"canary-{root.trace_id[:12]}",
+        ))
+    r = results[0]
+    score(
+        "helpfulness", float(r.score),
+        trace_id=root.trace_id, span_id=root.span_id,
+        # The library's category ("Very helpful", ...) with a pass rule: the SDK stores the
+        # verdict as the label and keeps the category as opensearch.gen_ai.evaluation.judge_label
+        label=str(r.label) if r.label else None,
+        threshold=0.5,
+        explanation=(r.reason or "")[:1000] or None,
+        score_min=0, score_max=1,
+        evaluator=HELPFULNESS_EVALUATOR, evaluator_type="llm_judge", judge_model=JUDGE_MODEL,
+        judge_trace_id=judge_trace_id,
+        agent_name=root.agent_name or None, agent_version=root.agent_version or None,
+    )
+    return f"ok helpfulness={r.score:.2f} {r.label}"
+
+
+def strands_evaluator():
+    """The Strands Evals reader and evaluator, or (None, None) if the library is unavailable."""
+    try:
+        from strands_evals.evaluators import HelpfulnessEvaluator
+        from strands_evals.providers import OpenSearchProvider
+    except ImportError as e:
+        log.warning("strands-agents-evals not available, helpfulness is skipped: %s", e)
+        return None, None
+    return (OpenSearchProvider(host=OS_HOST, auth=(OS_USER, OS_PASS), verify_certs=False),
+            HelpfulnessEvaluator(model=JUDGE_MODEL))
+
+
+# ---------------------------------------------------------------------------
+# Offline: the travel_planner_judged suite
+# ---------------------------------------------------------------------------
+
+SUITE = [
+    {"case_id": "rome-ok", "case_name": "Rome from Chicago",
+     "input": {"destination": "Rome", "origin": "Chicago"}},
+    {"case_id": "barcelona-ok", "case_name": "Barcelona from Austin",
+     "input": {"destination": "Barcelona", "origin": "Austin"}},
+    # Deliberately failing: the events agent answers for another city
+    {"case_id": "amsterdam-wrong-city-events", "case_name": "Amsterdam, events for Mumbai",
+     "input": {"destination": "Amsterdam", "origin": "Boston",
+               "fault": {"events": {"type": "wrong_city", "wrong_city": "mumbai"}}}},
 ]
 
 
-def setup_otel() -> TracerProvider:
-    resource = Resource.create({"service.name": "agent-eval-canary-llm"})
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True))
+@observe(name=PLANNER_AGENT_NAME, op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT)
+def plan_trip(case_input: dict) -> dict:
+    """The task: call the running travel planner; this CLIENT agent span is the trace's root."""
+    question = f"Plan a trip to {case_input['destination']} from {case_input['origin']}"
+    enrich(input_messages=[{"role": "user", "parts": [{"type": "text", "content": question}]}])
+    headers: dict[str, str] = {}
+    inject(headers)
+    resp = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=case_input, headers=headers, timeout=120)
+    resp.raise_for_status()
+    data = resp.json()
+    enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": data.get("recommendation", "")}]}])
+    if data.get("partial"):
+        trace.get_current_span().set_status(Status(StatusCode.ERROR, "partial plan"))
+        log.warning("Travel planner returned a partial plan for %s", case_input["destination"])
+    data["question"] = question
+    return data
+
+
+@scorer(
+    name="answer_quality",
+    evaluator=JUDGE_EVALUATOR,
+    threshold=4, score_min=1, score_max=5,
+    evaluator_type="llm_judge",
+    description=JUDGE_DESCRIPTION,
+    judge_model=JUDGE_MODEL,
+    judge_prompt_name=JUDGE_PROMPT_NAME,
+    judge_prompt_version=JUDGE_PROMPT_VERSION,
+)
+def answer_quality(input, output, expected):
+    """The judge as a scorer: the declaration (rule, judge context) goes on its own results only."""
+    events = ", ".join(e.get("name", "") for e in output.get("events", []))
+    answer = f"{output.get('recommendation', '')}\nAttractions returned: {events}"
+    value, reason, judge_trace_id = judge(output["question"], answer)
+    return EvalScore(name="answer_quality", value=value, explanation=reason, judge_trace_id=judge_trace_id)
+
+
+def complete_plan(input, output, expected):
+    """A code check next to the judge: names its own evaluator, so it gets none of the judge's fields."""
+    missing = [k for k in ("weather", "events", "flights", "currency") if not output.get(k)]
+    return EvalScore(name="plan_complete", value=0.0 if missing else 1.0, label="fail" if missing else "pass",
+                     evaluator="plan_sections_check", evaluator_type="code",
+                     explanation=f"missing: {', '.join(missing)}" if missing else "all sections present")
+
+
+def run_suite() -> None:
+    started = datetime.now(timezone.utc)
+    result = evaluate(
+        name="travel_planner_judged",
+        task=plan_trip,
+        data=SUITE,
+        scores=[answer_quality, complete_plan],
+        agent_name=PLANNER_AGENT_NAME,
+        agent_version=PLANNER_AGENT_VERSION,
+        run_name=f"llm judge {started:%Y-%m-%d %H:%M} UTC",
+        run_description=f"LLM-judged suite ({JUDGE_PROMPT_NAME}@{JUDGE_PROMPT_VERSION}); the Amsterdam case should fail",
     )
-    trace.set_tracer_provider(provider)
-    return provider
-
-
-def _last_agent_invocation(session) -> AgentInvocationSpan | None:
-    for tr in reversed(session.traces):
-        for s in reversed(tr.spans):
-            if isinstance(s, AgentInvocationSpan):
-                return s
-    return None
-
-
-def _find_scored_by_name(
-    retriever: OpenSearchTraceRetriever, trace_ids: list[str], eval_name: str
-) -> set[str]:
-    """Return subset of trace_ids that already have a score span for eval_name.
-
-    Extends retriever.find_evaluated_trace_ids by filtering on gen_ai.evaluation.name.
-    """
-    if not trace_ids:
-        return set()
-    body = {
-        "size": 0,
-        "query": {
-            "bool": {
-                "must": [
-                    {"terms": {"traceId": trace_ids}},
-                    {"term": {"attributes.gen_ai.operation.name": "evaluation"}},
-                    {"term": {"attributes.gen_ai.evaluation.name": eval_name}},
-                ]
-            }
-        },
-        "aggs": {
-            "scored": {"terms": {"field": "traceId", "size": len(trace_ids)}}
-        },
-    }
-    resp = retriever._client.search(index=retriever._index, body=body)
-    return {
-        b["key"]
-        for b in resp.get("aggregations", {}).get("scored", {}).get("buckets", [])
-    }
-
-
-def judge_one(
-    provider: OpenSearchProvider,
-    evaluator: HelpfulnessEvaluator,
-    trace_id: str,
-    run_id: str,
-) -> str:
-    try:
-        data = provider.get_evaluation_data(session_id=trace_id)
-    except SessionNotFoundError:
-        return "no_session"
-    except Exception as e:  # noqa: BLE001
-        return f"fetch_err:{type(e).__name__}"
-
-    session = data["trajectory"]
-    output = data["output"]
-    anchor = _last_agent_invocation(session)
-    if not anchor:
-        return "no_anchor"
-
-    try:
-        results = evaluator.evaluate(
-            EvaluationData(
-                input=anchor.user_prompt,
-                actual_output=output,
-                actual_trajectory=session,
-                name=f"canary-{trace_id[:12]}",
-            )
-        )
-    except Exception as e:  # noqa: BLE001
-        return f"eval_err:{type(e).__name__}"
-
-    r = results[0]
-    try:
-        score(
-            name=EVAL_NAME,
-            value=float(r.score),
-            trace_id=anchor.span_info.trace_id,
-            span_id=anchor.span_info.span_id,
-            label=str(r.label),
-            explanation=r.reason[:500] if r.reason else None,
-            attributes={
-                "test.suite.run.id": run_id,
-                "test.suite.name": "eval_canary_llm",
-                "test.case.id": f"canary-{trace_id[:12]}",
-                "test.case.result.status": "pass" if r.test_pass else "fail",
-            },
-        )
-    except Exception as e:  # noqa: BLE001
-        return f"score_err:{type(e).__name__}"
-
-    return f"ok {r.score:.3f} {r.label}"
+    for case in result.cases:
+        log.info("Suite case %s: %s scores=%s", case.case_id, case.status, case.scores)
+        if case.status != "pass" and case.trace_id:
+            failed = sorted(k for k, v in (case.verdicts or {}).items() if v == "fail")
+            log_on_span(logging.WARNING if case.status == "fail" else logging.ERROR, case.trace_id, case.span_id,
+                        "Test case %s %s: %s", case.case_id, case.status,
+                        ", ".join(failed) or case.error_type or "error",
+                        **{"test.case.id": case.case_id, "test.suite.name": "travel_planner_judged"})
+    s = result.summary
+    log.info("Suite run %s done: %d pass, %d fail, %d error", s.run_id, s.pass_count, s.fail_count, s.error_count)
 
 
 def run() -> None:
-    tp = setup_otel()
-    retriever = OpenSearchTraceRetriever(
-        host=OS_HOST, auth=(OS_USER, OS_PASS), verify_certs=False
-    )
-    provider = OpenSearchProvider(
-        host=OS_HOST, auth=(OS_USER, OS_PASS), verify_certs=False
-    )
-    evaluator = HelpfulnessEvaluator(model=JUDGE_MODEL)
+    retriever = OpenSearchTraceRetriever(host=OS_HOST, auth=(OS_USER, OS_PASS), verify_certs=False)
+    provider, helpfulness = strands_evaluator()
+    log.info("LLM eval canary started: interval=%ds lookback=%dm max/cycle=%d model=%s",
+             INTERVAL, LOOKBACK_MINUTES, MAX_PER_CYCLE, JUDGE_MODEL)
 
-    log.info(
-        "LLM eval canary started — interval=%ds lookback=%dm max/cycle=%d model=%s",
-        INTERVAL, LOOKBACK_MINUTES, MAX_PER_CYCLE, JUDGE_MODEL,
-    )
-
-    # Wait for OpenSearch
     for attempt in range(30):
         try:
             retriever.list_root_spans(max_results=1)
@@ -185,59 +344,57 @@ def run() -> None:
             log.info("Waiting for OpenSearch... (%d/30): %s", attempt + 1, e)
             time.sleep(10)
 
-    # Track recently scored traces to avoid duplicates from batch flush delay
-    recently_scored: dict[str, float] = {}  # trace_id -> timestamp
+    recently: dict[str, float] = {}
+    next_suite = time.time() + 90
+    tracer_provider = trace.get_tracer_provider()
 
     while True:
         cycle_start = time.time()
         try:
-            # Expire entries older than lookback window
-            cutoff = time.time() - (LOOKBACK_MINUTES * 60)
-            recently_scored = {k: v for k, v in recently_scored.items() if v > cutoff}
-
+            recently = {k: v for k, v in recently.items() if v > time.time() - LOOKBACK_MINUTES * 60}
             roots = retriever.list_root_spans(
                 services=TARGET_SERVICES,
                 since=datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES),
             )
-            if not roots:
-                log.info("No recent traces; sleeping")
-            else:
-                trace_ids = [r.trace_id for r in roots]
-                scored = _find_scored_by_name(retriever, trace_ids, EVAL_NAME)
-                pending = [
-                    tid for tid in trace_ids
-                    if tid not in scored and tid not in recently_scored
-                ][:MAX_PER_CYCLE]
-                log.info(
-                    "Found %d recent, %d already scored, %d in-mem dedup, %d pending",
-                    len(trace_ids), len(scored), len(recently_scored), len(pending),
-                )
-                if pending:
-                    run_id = str(uuid.uuid4())
-                    ok = 0
-                    with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
-                        futs = {
-                            pool.submit(judge_one, provider, evaluator, tid, run_id): tid
-                            for tid in pending
-                        }
-                        for fut in as_completed(futs):
-                            tid = futs[fut]
+            ids = [r.trace_id for r in roots]
+            judged = retriever.find_evaluated_trace_ids(ids, evaluator=JUDGE_EVALUATOR) if ids else set()
+            helped = (retriever.find_evaluated_trace_ids(ids, evaluator=HELPFULNESS_EVALUATOR)
+                      if ids and helpfulness else set(ids))
+            jobs = []
+            for r in roots:
+                if r.trace_id not in judged and ("j", r.trace_id) not in recently:
+                    jobs.append(("j", r))
+                if r.trace_id not in helped and ("h", r.trace_id) not in recently:
+                    jobs.append(("h", r))
+            jobs = jobs[:MAX_PER_CYCLE]
+            log.info("Online: %d recent agent traces, %d evaluations to run", len(roots), len(jobs))
+            if jobs:
+                with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
+                    futures = {
+                        pool.submit(judge_trace if kind == "j" else (lambda root: helpfulness_trace(provider, helpfulness, root)), r): (kind, r)
+                        for kind, r in jobs
+                    }
+                    for fut in as_completed(futures):
+                        kind, r = futures[fut]
+                        try:
                             res = fut.result()
-                            if res.startswith("ok"):
-                                ok += 1
-                                recently_scored[tid] = time.time()
-                                log.info("Scored %s → %s", tid[:12], res[3:])
-                            else:
-                                log.warning("Failed %s → %s", tid[:12], res)
-                    tp.force_flush(timeout_millis=10000)
-                    log.info("Cycle done in %.1fs, ok=%d/%d", time.time() - cycle_start, ok, len(pending))
-        except Exception:
-            log.exception("Cycle failed")
+                        except Exception as e:  # noqa: BLE001
+                            res = f"err:{type(e).__name__}"
+                        recently[(kind, r.trace_id)] = time.time()
+                        log.info("Trace %s %s -> %s", r.trace_id[:12], kind, res)
 
-        elapsed = time.time() - cycle_start
-        sleep_for = max(0, INTERVAL - elapsed)
-        if sleep_for:
-            time.sleep(sleep_for)
+            if SUITE_INTERVAL_MINUTES > 0 and time.time() >= next_suite:
+                try:
+                    requests.get(f"{TRAVEL_PLANNER_URL}/health", timeout=5).raise_for_status()
+                    run_suite()
+                    next_suite = time.time() + SUITE_INTERVAL_MINUTES * 60
+                except requests.RequestException:
+                    log.info("Travel planner not reachable, suite postponed")
+            tracer_provider.force_flush()
+            log.info("Cycle done in %.1fs", time.time() - cycle_start)
+        except Exception:  # noqa: BLE001
+            log.exception("Cycle failed")
+        time.sleep(max(0, INTERVAL - (time.time() - cycle_start)))
 
 
 if __name__ == "__main__":
