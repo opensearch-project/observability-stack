@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   ensureAgentEvalsSetup, evalsConfigBody, evalsDatasetAttributes, missingDatasetAttributes,
 } from '../src/agent-evals-ui.mjs';
-import { pickDataSource } from '../src/opensearch-ui-init.mjs';
+import { pickDataSource, repairDataSourceRefs, DS_REF_TYPE } from '../src/opensearch-ui-init.mjs';
 
 // We need to extract the pure functions for testing.
 // Since buildAppDataSources is not exported, we replicate the logic here
@@ -1514,5 +1514,22 @@ describe('pickDataSource', () => {
 
   it('returns undefined without data sources', () => {
     assert.equal(pickDataSource(undefined, 'x'), undefined);
+  });
+});
+
+describe('index pattern data source references', () => {
+  it('uses data-source for every engine type', () => {
+    assert.equal(DS_REF_TYPE, 'data-source');
+  });
+
+  it('repairs a serverless reference written by older installers', () => {
+    const refs = [{ id: 'ds1', name: 'dataSource', type: 'OpenSearch Serverless' }, { id: 'x', name: 'other', type: 'foo' }];
+    assert.deepEqual(repairDataSourceRefs(refs), [{ id: 'ds1', name: 'dataSource', type: 'data-source' }, { id: 'x', name: 'other', type: 'foo' }]);
+  });
+
+  it('leaves correct or missing references alone', () => {
+    assert.equal(repairDataSourceRefs([{ id: 'ds1', name: 'dataSource', type: 'data-source' }]), null);
+    assert.equal(repairDataSourceRefs([]), null);
+    assert.equal(repairDataSourceRefs(undefined), null);
   });
 });

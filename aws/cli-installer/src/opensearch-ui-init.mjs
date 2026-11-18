@@ -122,6 +122,18 @@ export async function storeIndexPatternFields(base, wsId, dsId, patterns, patter
  * collection endpoint, else the first. An application reused across stacks has several, and the
  * first is not necessarily this stack's.
  */
+// OpenSearch Dashboards references a data source with type `data-source`, for managed domains
+// and serverless collections alike (the engine type is an attribute of the data source). Code
+// that resolves a dataset's data source, such as Agent Evaluations, only reads that type.
+export const DS_REF_TYPE = 'data-source';
+
+/** Returns references with every `dataSource` reference set to DS_REF_TYPE, or null when none needs repair. */
+export function repairDataSourceRefs(references) {
+  const refs = references || [];
+  if (!refs.some((r) => r.name === 'dataSource' && r.type !== DS_REF_TYPE)) return null;
+  return refs.map((r) => (r.name === 'dataSource' ? { ...r, type: DS_REF_TYPE } : r));
+}
+
 export function pickDataSource(dataSources, endpoint) {
   const list = dataSources || [];
   const norm = (u) => String(u || '').trim().toLowerCase().replace(/\/+$/, '');
@@ -220,8 +232,6 @@ export async function initOpenSearchUI(cfg) {
   // f. Create index patterns with dataSource reference
   const svcMapPattern = 'otel-v2-apm-service-map*';
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
-  const isServerless = cfg.opensearchType === 'serverless';
-  const dsRefType = isServerless ? 'OpenSearch Serverless' : 'data-source';
 
   const patterns = [
     { title: 'logs-otel-v1*', timeFieldName: 'time', signalType: 'logs', schemaMappings: logsSchema },
@@ -238,12 +248,23 @@ export async function initOpenSearchUI(cfg) {
     const existingPat = existingPatterns.find((o) => o.attributes?.title === p.title);
     if (existingPat) {
       patternIds[p.title] = existingPat.id;
-      printSuccess(`Index pattern exists: ${p.title}`);
+      // Earlier installer versions referenced serverless data sources with type
+      // `OpenSearch Serverless`; repair those references to `data-source`.
+      const repaired = repairDataSourceRefs(existingPat.references);
+      if (repaired) {
+        await osuiPut(base, `/w/${wsId}/api/saved_objects/index-pattern/${existingPat.id}`, {
+          attributes: { title: p.title },
+          references: repaired,
+        }, region);
+        printSuccess(`Index pattern data source reference repaired: ${p.title}`);
+      } else {
+        printSuccess(`Index pattern exists: ${p.title}`);
+      }
       continue;
     }
     const resp = await osuiPost(base, `/w/${wsId}/api/saved_objects/index-pattern`, {
       attributes: p,
-      references: dsId ? [{ id: dsId, name: 'dataSource', type: dsRefType }] : [],
+      references: dsId ? [{ id: dsId, name: 'dataSource', type: DS_REF_TYPE }] : [],
     }, region);
     patternIds[p.title] = resp.data?.id;
     printSuccess(`Index pattern created: ${p.title}`);
