@@ -84,6 +84,16 @@ The group's indexing and search capacity defaults to 0 to 16 OCU. The demo workl
 cdk deploy --all -c opensearchType=serverless -c aossMinOcu=1 -c aossMaxOcu=8
 ```
 
+### Stack names
+
+The stacks are named `ObsInfra` and `ObservabilityStack`. To deploy a second copy next to an existing one in the same account and region, prefix both names:
+
+```bash
+cdk deploy --all -c stackNamePrefix=test-
+```
+
+This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names derived from the stack name (pipeline, collection, application, Prometheus workspace alias) change with it.
+
 ## Architecture
 
 ```
