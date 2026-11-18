@@ -487,7 +487,7 @@ async def plan_trip(request: PlanRequest):
             logger.warning(
                 "Returning a partial plan for %s: %s unavailable", request.destination,
                 ", ".join(e["agent"] for e in errors),
-                extra={"gen_ai.conversation.id": session_id, "response.errors_count": len(errors)},
+                extra={"gen_ai.conversation.id": session_id, "plan.errors_count": len(errors)},
             )
         else:
             logger.info("Plan ready for %s", request.destination, extra={"gen_ai.conversation.id": session_id})

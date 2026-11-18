@@ -546,7 +546,7 @@ class WeatherAgent:
                         "gen_ai.agent.id": self.agent_id,
                         "gen_ai.response.id": response_id,
                         "gen_ai.conversation.id": conversation_id,
-                        "response": final_response
+                        "agent.response": final_response
                     }
                 )
 
@@ -572,7 +572,7 @@ class WeatherAgent:
                         "gen_ai.operation.name": "invoke_agent",
                         "gen_ai.agent.id": self.agent_id,
                         "gen_ai.conversation.id": conversation_id,
-                        "error": str(e)
+                        "exception.message": str(e)
                     }
                 )
                 span.set_attribute("error.type", type(e).__name__)
