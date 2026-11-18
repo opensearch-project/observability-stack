@@ -121,14 +121,29 @@ exporters:
     logs_endpoint: ${osiEndpoint}/${cfg.pipelineName}/v1/logs
     auth: { authenticator: sigv4auth }
     compression: none
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 1800s
   otlphttp/osis-traces:
     traces_endpoint: ${osiEndpoint}/${cfg.pipelineName}/v1/traces
     auth: { authenticator: sigv4auth }
     compression: none
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 1800s
   otlphttp/osis-metrics:
     metrics_endpoint: ${osiEndpoint}/${cfg.pipelineName}/v1/metrics
     auth: { authenticator: sigv4auth }
     compression: none
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 60s
+      max_elapsed_time: 1800s
 
 service:
   extensions: [sigv4auth]
