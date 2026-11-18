@@ -1251,10 +1251,18 @@ describe('evaluationTemplateContent', () => {
     for (const f of [
       'error.type', 'gen_ai.evaluation.name', 'gen_ai.evaluation.score.label', 'gen_ai.agent.name',
       'gen_ai.agent.version', 'gen_ai.conversation.id', 'test.suite.name', 'test.suite.run.id', 'test.case.id',
+      'gen_ai.prompt.version', 'opensearch.gen_ai.evaluation.evaluator.version',
       'opensearch.gen_ai.evaluation.level', 'opensearch.gen_ai.evaluation.score.direction',
     ]) assert.deepEqual(fields[`attributes.${f}`], keyword, f);
     assert.deepEqual(fields['attributes.gen_ai.evaluation.score.value'], { type: 'double' });
     assert.deepEqual(fields['attributes.gen_ai.evaluation.explanation'], { type: 'text' });
+    for (const f of ['min', 'max', 'threshold']) {
+      assert.deepEqual(fields[`attributes.opensearch.gen_ai.evaluation.score.${f}`], { type: 'double' }, f);
+    }
+    assert.deepEqual(fields.traceId, { type: 'keyword', ignore_above: 32 });
+    assert.deepEqual(fields.spanId, { type: 'keyword', ignore_above: 16 });
+    assert.deepEqual(fields['@timestamp'], { type: 'date_nanos' });
+    assert.equal(JSON.parse(evaluationTemplateContent()).template.mappings.date_detection, false);
   });
 });
 
