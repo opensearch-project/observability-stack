@@ -9,12 +9,17 @@ Generates traces with varying depths and shapes:
 - "normal": standard orchestrator call (40+ spans, 5 services, includes flights + currency)
 - "shallow": direct sub-agent call bypassing orchestrator (5-8 spans, 1-2 services)
 - "deep": multi-destination comparison via sequential orchestrator calls (100+ spans)
+
+Every travel-planner call carries a session id (gen_ai.conversation.id). A "deep" comparison
+sends all of its destinations in one session, so it shows up as a multi-turn session in Agent
+Traces and the eval canaries can grade the whole session.
 """
 
 import json
 import os
 import random
 import time
+import uuid
 import requests
 from datetime import datetime
 
@@ -107,11 +112,15 @@ def check_health():
         return False
 
 
+def new_session_id():
+    return f"canary_{uuid.uuid4().hex[:12]}"
+
+
 def invoke_normal(destination, fault_weights):
     """Standard orchestrator call — produces normal-depth traces with flights + currency."""
     fault_name, fault_config = select_fault(fault_weights)
     origin = random.choice(ORIGINS)
-    payload = {"destination": destination, "origin": origin}
+    payload = {"destination": destination, "origin": origin, "session_id": new_session_id()}
     if fault_config:
         payload["fault"] = fault_config
 
@@ -141,7 +150,7 @@ def invoke_shallow(destination):
 
     if agent == "weather":
         url = f"{WEATHER_AGENT_URL}/invoke"
-        payload = {"message": f"What is the weather in {destination}?"}
+        payload = {"message": f"What is the weather in {destination}?", "conversation_id": new_session_id()}
     else:
         url = f"{EVENTS_AGENT_URL}/events"
         payload = {"destination": destination}
@@ -159,10 +168,11 @@ def invoke_shallow(destination):
 def invoke_deep(destinations):
     """Sequential multi-destination calls — produces deep traces."""
     origin = random.choice(ORIGINS)
-    print(f"  [deep] comparing {len(destinations)} destinations from {origin}: {', '.join(destinations)}")
+    session_id = new_session_id()
+    print(f"  [deep] session {session_id}: comparing {len(destinations)} destinations from {origin}: {', '.join(destinations)}")
     results = 0
     for dest in destinations:
-        payload = {"destination": dest, "origin": origin}
+        payload = {"destination": dest, "origin": origin, "session_id": session_id}
         try:
             response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
             if response.status_code == 200:
