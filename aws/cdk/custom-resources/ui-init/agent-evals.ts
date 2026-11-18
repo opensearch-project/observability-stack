@@ -91,13 +91,15 @@ const refsDataSource = (o: SavedObject, dsId: string) =>
  * Creates (or reuses) the evaluations dataset and the workspace's config.
  *
  * `api` is `{ get(path), post(path, body), put(path, body) }` returning `{ status, data }`, with
- * paths relative to the application endpoint. `dsId`/`dsRefType` reference the data source the
- * evaluation indices are on (the same reference the traces and logs patterns get). Returns
+ * paths relative to the application endpoint. `dsId` is the data source the evaluation indices
+ * are on. It is referenced as type `data-source` on managed domains and collections alike, as the
+ * UI's create path does: the Evaluations page only reads a `data-source` reference, and with
+ * another type (`OpenSearch Serverless`) it queries no data source and reports it unreachable. Returns
  * `{ evalsId, configId, datasetCreated, configCreated }`; ids are undefined when a step failed.
  */
 export async function ensureAgentEvalsSetup(
   api: OsuiApi,
-  { wsId, dsId, dsRefType = 'data-source', tracesId }: { wsId: string; dsId?: string; dsRefType?: string; tracesId?: string },
+  { wsId, dsId, tracesId }: { wsId: string; dsId?: string; tracesId?: string },
 ): Promise<AgentEvalsSetupResult> {
   const w = `/w/${wsId}`;
   const result: AgentEvalsSetupResult = { evalsId: undefined, configId: undefined, datasetCreated: false, configCreated: false };
@@ -116,7 +118,7 @@ export async function ensureAgentEvalsSetup(
   } else {
     const created = await api.post(`${w}/api/saved_objects/index-pattern`, {
       attributes: evalsDatasetAttributes(),
-      references: dsId ? [{ id: dsId, name: 'dataSource', type: dsRefType }] : [],
+      references: dsId ? [{ id: dsId, name: 'dataSource', type: 'data-source' }] : [],
     });
     result.evalsId = created.data?.id;
     result.datasetCreated = !!result.evalsId;

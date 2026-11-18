@@ -227,7 +227,7 @@ export async function handler(event: Event) {
       get: (path) => osuiGet(base, path, Region),
       post: (path, body) => osuiPost(base, path, body, Region),
       put: (path, body) => osuiPut(base, path, body, Region),
-    }, { wsId: wsId!, dsId, dsRefType: 'data-source', tracesId: patternIds['otel-v1-apm-span*'] });
+    }, { wsId: wsId!, dsId, tracesId: patternIds['otel-v1-apm-span*'] });
     console.log('Agent Evaluations setup:', JSON.stringify(evals));
     if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
   } catch (e: any) {

@@ -238,7 +238,7 @@ export async function initOpenSearchUI(cfg) {
 
   // Agent Evaluations: the evaluations dataset and the workspace's config, as the UI's
   // "Create evaluations dataset" and Settings save them (harmless with the feature flag off).
-  const evals = await setupAgentEvaluations(base, wsId, dsId, dsRefType, patternIds['otel-v1-apm-span*'], region);
+  const evals = await setupAgentEvaluations(base, wsId, dsId, patternIds['otel-v1-apm-span*'], region);
   const evalsPattern = { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD };
   if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
 
@@ -354,14 +354,14 @@ export async function initOpenSearchUI(cfg) {
 // ── Agent Evaluations ─────────────────────────────────────────────────────────
 
 /** The evaluations dataset and config; a failure warns and leaves the rest of the setup alone. */
-export async function setupAgentEvaluations(base, wsId, dsId, dsRefType, tracesId, region) {
+export async function setupAgentEvaluations(base, wsId, dsId, tracesId, region) {
   const api = {
     get: (path) => osuiGet(base, path, region),
     post: (path, body) => osuiPost(base, path, body, region),
     put: (path, body) => osuiPut(base, path, body, region),
   };
   try {
-    const r = await ensureAgentEvalsSetup(api, { wsId, dsId, dsRefType, tracesId });
+    const r = await ensureAgentEvalsSetup(api, { wsId, dsId, tracesId });
     if (r.evalsId) printSuccess(`Evaluations dataset ${r.datasetCreated ? 'created' : 'exists'}: ${EVALS_DATASET_TITLE}`);
     else printWarning('Could not create the evaluations dataset');
     if (r.configId) printSuccess(`Agent Evaluations config ${r.configCreated ? 'created' : 'exists'}`);

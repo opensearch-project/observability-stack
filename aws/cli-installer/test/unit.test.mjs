@@ -1417,7 +1417,7 @@ describe('Agent Evaluations UI setup', () => {
 
   it('creates the dataset on the data source and the config in an empty workspace', async () => {
     const { api, objects } = fakeOsui();
-    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, dsRefType: 'data-source', tracesId: TRACES });
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
     assert.equal(r.datasetCreated, true);
     assert.equal(r.configCreated, true);
     const [pattern] = objects['index-pattern'];
@@ -1428,10 +1428,10 @@ describe('Agent Evaluations UI setup', () => {
     assert.deepEqual(config.references.map((x) => x.id), [TRACES, r.evalsId]);
   });
 
-  it('uses the serverless data source reference type it is given', async () => {
+  it('references the data source as data-source, as the UI does, also on serverless', async () => {
     const { api, objects } = fakeOsui();
-    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, dsRefType: 'OpenSearch Serverless', tracesId: TRACES });
-    assert.equal(objects['index-pattern'][0].references[0].type, 'OpenSearch Serverless');
+    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(objects['index-pattern'][0].references[0].type, 'data-source');
   });
 
   it('is idempotent: a second run creates nothing', async () => {
