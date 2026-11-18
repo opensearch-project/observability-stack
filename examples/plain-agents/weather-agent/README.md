@@ -8,7 +8,8 @@ This example demonstrates how to instrument a plain Python AI agent with OpenTel
 - Full Gen-AI semantic convention coverage (invoke_agent, execute_tool)
 - Three weather tools: current, forecast, historical
 - Fault injection for debugging demonstrations
-- Structured logging with trace correlation
+- Structured logging with trace correlation: Python logs go through the LoggerProvider that `register()` installs, so each record carries the active span's trace and span ids (WARN on fallbacks and degraded answers, ERROR on tool failures)
+- `mark_agent_root()` on the agent span when the agent is called directly; only the `invoke_agent` span names the agent
 - Token usage metrics
 
 ## Tools

@@ -241,6 +241,8 @@ View in OpenSearch Dashboards (http://localhost:5601):
   - `gen_ai.bedrock.fallback` — true if Bedrock failed and agent used mock
   - `tool.fallback` — true if external API failed and MCP used mock data
   - `response.partial` — true if any sub-agent failed
+  - `gen_ai.conversation.id` — the session the turn belongs to
+  - `derived.gen_ai.is_root` — on the agent root span (`mark_agent_root()`)
 
 ## Trace Structure
 
@@ -272,6 +274,53 @@ travel-planner | POST /plan (3200ms)
 │   │       └── frankfurter exchange (140ms)           # Real ECB rates
 │   └── chat summarize (1000ms)                        # Bedrock: synthesize recommendation
 ```
+
+The `invoke_agent Travel Planner` span below `POST /plan` is the trace's agent root: it calls
+`mark_agent_root()` (`derived.gen_ai.is_root`), so Agent Traces lists the trace by it, and it is
+the only span that names the agent (the HTTP spans carry no `gen_ai.agent.name`). The weather and
+events agents mark their own agent span only when they are called directly (no caller trace).
+
+## SDK
+
+The agents use the [OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py)
+(`register()`, `observe()`, `enrich()`, `mark_agent_root()`), installed from git `main` until
+0.3.0 is on PyPI. The MCP server uses plain OpenTelemetry.
+
+## Sessions
+
+`POST /plan` takes an optional `session_id` (`gen_ai.conversation.id`; generated when omitted),
+sets it on the planner's agent span, passes it to the weather and events agents and returns it.
+The canary sends each "deep" multi-destination comparison as one session, so Agent Traces shows
+multi-turn sessions and the [eval canary](../../../docker-compose/agent-eval-canary/README.md)
+grades each finished session.
+
+```bash
+curl -s localhost:8003/plan -H 'content-type: application/json' \
+  -d '{"destination": "Paris", "origin": "Seattle", "session_id": "demo-session-1"}'
+```
+
+## Application logs
+
+Each service sends its Python logs as OTel logs (a `LoggingHandler` on the LoggerProvider that
+`register()` installs), so every record carries the trace and span ids of the span that was active
+and Agent Traces shows it in the trace flyout (**Related logs**, and **Logs** on the span):
+
+| Level | When |
+|---|---|
+| INFO | normal steps: planning, sub-agent answers, MCP tool calls, plan ready |
+| WARN | fallbacks (Bedrock unavailable, tool fallback data, unknown currency), injected faults, degraded or wrong answers (partial plan, events for another city, no events, ungrounded weather answer, truncated response) |
+| ERROR | tool and sub-agent failures (tool errors, timeouts, HTTP errors) |
+
+The eval canaries log failed results and test cases at WARN on the evaluated span, so a failing
+evaluation and the agent's own WARN / ERROR logs sit on the same trace.
+
+## Evaluations
+
+With a local OpenSearch, the [agent eval canary](../../../docker-compose/agent-eval-canary/README.md)
+grades these agents with code checks (online per trace and per session, plus a scheduled
+`travel_planner_smoke` test suite with deliberately failing cases), and the opt-in
+[LLM eval canary](../../../docker-compose/agent-eval-canary-llm/README.md) adds a Bedrock judge.
+Results are stored in `otel-v1-genai-evaluation`.
 
 ## Canary
 

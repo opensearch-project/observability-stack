@@ -110,6 +110,7 @@ Included by default via `.env`. Comment out the corresponding `INCLUDE_COMPOSE_*
 
 - **opensearch**: Stores logs and traces with security enabled (port 9200, 9600). Controlled by `INCLUDE_COMPOSE_LOCAL_OPENSEARCH`.
   - Default credentials: admin/My_password_123!@# (configured in .env file)
+- **genai-evaluation-index-init**: One-shot job (with the local OpenSearch) that creates the ISM rollover policy, the index template and `otel-v1-genai-evaluation-000001` behind the `otel-v1-genai-evaluation` write alias before Data Prepper starts. Evaluation results (`gen_ai.evaluation.result` log events) are routed there, not to `logs-otel-v1-*`.
 - **opensearch-dashboards**: Visualization UI (port 5601). Controlled by `INCLUDE_COMPOSE_LOCAL_OPENSEARCH_DASHBOARDS`.
 
 ### Example Services
@@ -144,7 +145,8 @@ All configuration files are organized by service in subdirectories:
 - **docker-compose.yml**: Main service definitions for core observability stack (in repository root)
 - **docker-compose.examples.yml**: Example services (weather-agent, canary) included via .env (in repository root)
 - **otel-collector/config.yaml**: OpenTelemetry Collector receivers, processors, and exporters
-- **data-prepper/pipelines.template.yaml**: Data transformation pipeline template for logs and traces (credentials injected at container startup)
+- **data-prepper/pipelines.template.yaml**: Data transformation pipeline template for logs, traces and evaluation results (credentials injected at container startup). The evaluation sink inlines the whole evaluation index template
+- **data-prepper/otel-v1-genai-evaluation-index-template.json** / **otel-v1-genai-evaluation-policy.json**: Evaluation index template and ISM rollover policy, installed by `genai-evaluation-index-init` (the same JSON as the AWS installer)
 - **data-prepper/data-prepper-config.yaml**: Data Prepper server settings
 - **prometheus/prometheus.yml**: Prometheus scrape targets and storage configuration
 - **opensearch-dashboards/opensearch_dashboards.template.yml**: Dashboard UI settings template (OpenSearch host is injected at container startup)
