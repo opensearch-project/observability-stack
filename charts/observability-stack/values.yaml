@@ -14,7 +14,7 @@ opensearch:
   replicas: 3
   image:
     repository: "opensearchproject/opensearch"
-    tag: "3.8.0"
+    tag: "3.10.0"
   resources:
     requests:
       memory: "4Gi"
@@ -78,7 +78,7 @@ opensearch-dashboards:
   replicaCount: 3
   image:
     repository: "opensearchproject/opensearch-dashboards"
-    tag: "3.8.0"
+    tag: "3.10.0"
   resources:
     requests:
       cpu: "500m"
