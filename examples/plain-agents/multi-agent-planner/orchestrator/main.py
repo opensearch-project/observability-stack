@@ -4,12 +4,16 @@ Travel Planner - Orchestrates weather, events, flights, and currency agents.
 Supports fault injection at orchestrator level and pass-through to sub-agents.
 
 Instrumented with opensearch-genai-observability-sdk-py:
-- register() replaces ~20 lines of manual TracerProvider/exporter setup
+- register() sets up the OTLP traces and logs pipelines in one call
 - observe() + enrich() replace manual span creation + set_attribute() calls
+- mark_agent_root() marks the agent span below the HTTP handler as the trace's agent root
+- Python logging goes through the SDK's logger provider, so every log line carries the trace
+  and span ids of the span that was active when it was logged (Agent Traces shows them)
 """
 
 import asyncio
 import json
+import logging
 import os
 import random
 import threading
@@ -21,9 +25,11 @@ import httpx
 import requests
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
+from opentelemetry._logs import get_logger_provider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
@@ -31,7 +37,7 @@ from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
-from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
 from bedrock_client import (
     get_bedrock_client, converse, extract_text, get_usage,
     openai_tools_to_bedrock, BedrockUnavailableError, BEDROCK_MODEL_ID,
@@ -40,6 +46,7 @@ from bedrock_client import (
 
 AGENT_ID = "travel-planner-001"
 AGENT_NAME = "Travel Planner"
+AGENT_VERSION = os.getenv("AGENT_VERSION", "1.1.0")
 
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
@@ -159,11 +166,15 @@ class FaultConfig(BaseModel):
 class PlanRequest(BaseModel):
     destination: str
     origin: Optional[str] = None
+    # Conversation the request belongs to (gen_ai.conversation.id). Turns that share it form one
+    # session in Agent Traces and can be evaluated together (session-level evaluations).
+    session_id: Optional[str] = None
     fault: Optional[FaultConfig] = None
 
 
 class PlanResponse(BaseModel):
     destination: str
+    session_id: Optional[str] = None
     weather: Optional[dict] = None
     events: list = []
     flights: Optional[dict] = None
@@ -181,6 +192,14 @@ register(
     service_name="travel-planner",
     service_version="1.0.0",
 )
+
+# Application logs: register() installed the global LoggerProvider (OTLP logs, same resource as
+# the traces). A LoggingHandler on the root logger sends every Python log record through it with
+# the active span's trace and span ids, so Agent Traces can show a span's logs next to it.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=get_logger_provider()))
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger("travel_planner")
 
 resource = Resource.create({"service.name": "travel-planner"})
 metric_reader = PeriodicExportingMetricReader(
@@ -218,6 +237,7 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
         enrich(
             input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(arguments)}]}],
         )
+        logger.info("Calling MCP tool %s", tool_name, extra={"gen_ai.tool.name": tool_name})
 
         headers = {"mcp-session-id": session_id}
         inject(headers)
@@ -225,40 +245,66 @@ async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
             "jsonrpc": "2.0", "method": "tools/call", "id": request_id,
             "params": {"name": tool_name, "arguments": arguments}
         }
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers)
-            result = resp.json()
-            if "error" in result:
-                raise Exception(result["error"].get("message", "MCP tool call failed"))
-            tool_result = result.get("result", {})
-            enrich(
-                output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(tool_result)}]}],
-            )
-            return tool_result
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers)
+                result = resp.json()
+        except Exception as e:
+            # Logged inside the tool span, so the ERROR record carries this span's id
+            logger.error("MCP tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
+            span.set_attribute("error.type", type(e).__name__)
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            raise
+        if "error" in result:
+            message = result["error"].get("message", "MCP tool call failed")
+            logger.error("MCP tool %s returned an error: %s", tool_name, message, extra={"gen_ai.tool.name": tool_name, "error.type": "tool_error"})
+            span.set_attribute("error.type", "tool_error")
+            span.set_status(Status(StatusCode.ERROR, message))
+            raise Exception(message)
+        tool_result = result.get("result", {})
+        if tool_result.get("source") == "fallback":
+            logger.warning("MCP tool %s answered from fallback data", tool_name, extra={"gen_ai.tool.name": tool_name})
+        enrich(
+            output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(tool_result)}]}],
+        )
+        return tool_result
+
+
+def _has_remote_parent() -> bool:
+    """True when the HTTP request continued a trace started by another service (or a test run)."""
+    parent = getattr(trace.get_current_span(), "parent", None)
+    return bool(parent is not None and parent.is_remote)
 
 
 @inner_app.post("/plan")
 async def plan_trip(request: PlanRequest):
     model = random.choice(MODELS)
     provider = SYSTEMS[model]
+    session_id = request.session_id or f"trip_{uuid4().hex[:12]}"
+    user_message = f"Plan a trip to {request.destination}" + (f" from {request.origin}" if request.origin else "")
+    called_remotely = _has_remote_parent()
 
-    enrich(
-        model=model,
-        provider=provider,
-        agent_id=AGENT_ID,
-        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {request.destination}"}]}],
-    )
-    root_span = trace.get_current_span()
-    root_span.set_attribute("gen_ai.agent.name", AGENT_NAME)
-    root_span.set_attribute("gen_ai.operation.name", "invoke_agent")
-
+    # The HTTP server span stays a plain HTTP span: only the invoke_agent span below names the agent.
     with observe(AGENT_NAME, op=Op.INVOKE_AGENT) as span:
+        # This agent span sits below the HTTP handler span. Mark it as the trace's agent root, so
+        # Agent Traces lists the trace by it, unless a caller (an evaluation run or another agent)
+        # already started the trace with its own agent span.
+        if not called_remotely:
+            mark_agent_root()
         enrich(
             model=model,
             provider=provider,
             agent_id=AGENT_ID,
+            agent_description="Plans a trip: weather, attractions, flights and currency for a destination",
+            session_id=session_id,
             tool_definitions=TOOL_DEFINITIONS,
+            input_messages=[{"role": "user", "parts": [{"type": "text", "content": user_message}]}],
             destination=request.destination,
+            **{"gen_ai.agent.version": AGENT_VERSION},
+        )
+        logger.info(
+            "Planning trip to %s", request.destination,
+            extra={"gen_ai.conversation.id": session_id, "destination": request.destination, "origin": request.origin or ""},
         )
 
         fault = request.fault
@@ -290,6 +336,7 @@ async def plan_trip(request: PlanRequest):
                 except BedrockUnavailableError as e:
                     planning_span.set_attribute("gen_ai.bedrock.fallback", True)
                     planning_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    logger.warning("Bedrock unavailable for planning, using the simulated model: %s", str(e)[:200])
                     enrich(model=model, provider=provider, input_tokens=random.randint(500, 2000), output_tokens=random.randint(100, 500), finish_reason="tool_calls")
                     time.sleep(random.uniform(0.1, 0.3))
             else:
@@ -297,8 +344,8 @@ async def plan_trip(request: PlanRequest):
                 time.sleep(random.uniform(0.1, 0.3))
 
         # Build sub-agent payloads with fault pass-through
-        weather_payload = {"message": f"What's the weather in {request.destination}?"}
-        events_payload = {"destination": request.destination}
+        weather_payload = {"message": f"What's the weather in {request.destination}?", "conversation_id": session_id}
+        events_payload = {"destination": request.destination, "session_id": session_id}
 
         if fault:
             if fault.weather:
@@ -309,6 +356,7 @@ async def plan_trip(request: PlanRequest):
         # Orchestrator-level fault injection
         if fault and fault.orchestrator:
             span.set_attribute("fault.orchestrator", fault.orchestrator)
+            logger.warning("Fault injection active: %s", fault.orchestrator, extra={"fault.orchestrator": fault.orchestrator})
             timeout = 0.001 if fault.orchestrator == "fan_out_timeout" else 30.0
         else:
             timeout = 30.0
@@ -316,22 +364,24 @@ async def plan_trip(request: PlanRequest):
         # Fan out to sub-agents (weather + events in parallel)
         async with httpx.AsyncClient(timeout=timeout) as client:
             with observe("weather-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
-                agent_span.set_attribute("gen_ai.agent.name", "weather-agent")
                 try:
                     if fault and fault.orchestrator == "partial_failure" and random.random() < 0.5:
                         raise Exception("Simulated partial failure - skipping weather")
                     resp = await client.post(f"{WEATHER_AGENT_URL}/invoke", json=weather_payload)
                     if resp.status_code == 200:
                         weather_data = resp.json()
+                        logger.info("weather-agent answered")
                     else:
                         errors.append({"agent": "weather", "error": resp.text})
                         agent_span.set_status(Status(StatusCode.ERROR, resp.text))
+                        logger.error("weather-agent failed with HTTP %s, continuing without weather", resp.status_code,
+                                     extra={"http.response.status_code": resp.status_code})
                 except Exception as e:
                     errors.append({"agent": "weather", "error": str(e)})
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    logger.error("weather-agent call failed, continuing without weather: %s", e, extra={"error.type": type(e).__name__})
 
             with observe("events-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
-                agent_span.set_attribute("gen_ai.agent.name", "events-agent")
                 try:
                     if fault and fault.orchestrator == "partial_failure" and random.random() < 0.5:
                         raise Exception("Simulated partial failure - skipping events")
@@ -340,15 +390,24 @@ async def plan_trip(request: PlanRequest):
                         data = resp.json()
                         if "error" not in data:
                             events_data = data.get("events", [])
+                            if events_data:
+                                logger.info("events-agent returned %d events", len(events_data))
+                            else:
+                                logger.warning("events-agent returned no events for %s", request.destination)
                         else:
                             errors.append({"agent": "events", "error": data["error"]})
                             agent_span.set_status(Status(StatusCode.ERROR, str(data["error"])))
+                            logger.error("events-agent returned an error, continuing without events: %s",
+                                         data["error"].get("message", data["error"]), extra={"error.type": data["error"].get("type", "error")})
                     else:
                         errors.append({"agent": "events", "error": resp.text})
                         agent_span.set_status(Status(StatusCode.ERROR, resp.text))
+                        logger.error("events-agent failed with HTTP %s, continuing without events", resp.status_code,
+                                     extra={"http.response.status_code": resp.status_code})
                 except Exception as e:
                     errors.append({"agent": "events", "error": str(e)})
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
+                    logger.error("events-agent call failed, continuing without events: %s", e, extra={"error.type": type(e).__name__})
 
         # Sequential MCP calls for flights and currency (produces deeper trace waterfall)
         origin = request.origin or "Portland"
@@ -361,7 +420,10 @@ async def plan_trip(request: PlanRequest):
             errors.append({"agent": "flights", "error": str(e)})
 
         dest_lower = request.destination.lower()
-        target_currency = DESTINATION_CURRENCIES.get(dest_lower, "EUR")
+        target_currency = DESTINATION_CURRENCIES.get(dest_lower)
+        if target_currency is None:
+            target_currency = "EUR"
+            logger.warning("No currency known for %s, falling back to EUR", request.destination)
         if target_currency != "USD":
             try:
                 currency_data = await call_mcp_tool("convert_currency", {
@@ -396,6 +458,7 @@ async def plan_trip(request: PlanRequest):
                 except BedrockUnavailableError as e:
                     summarize_span.set_attribute("gen_ai.bedrock.fallback", True)
                     summarize_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    logger.warning("Bedrock unavailable for the summary, using the template answer: %s", str(e)[:200])
                     recommendation = None
                     enrich(model=model, provider=provider, input_tokens=random.randint(200, 800), output_tokens=random.randint(50, 200), finish_reason="stop")
                     time.sleep(random.uniform(0.05, 0.15))
@@ -416,12 +479,22 @@ async def plan_trip(request: PlanRequest):
         if not recommendation:
             recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
 
-    enrich(
-        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],
-    )
+        enrich(
+            output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],
+        )
+        if partial:
+            # A degraded answer: logged on the agent span, next to the evaluation results for it
+            logger.warning(
+                "Returning a partial plan for %s: %s unavailable", request.destination,
+                ", ".join(e["agent"] for e in errors),
+                extra={"gen_ai.conversation.id": session_id, "response.errors_count": len(errors)},
+            )
+        else:
+            logger.info("Plan ready for %s", request.destination, extra={"gen_ai.conversation.id": session_id})
 
     return PlanResponse(
         destination=request.destination,
+        session_id=session_id,
         weather=weather_data,
         events=events_data,
         flights=flights_data,

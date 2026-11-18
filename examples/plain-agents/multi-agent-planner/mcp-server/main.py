@@ -8,8 +8,12 @@ Uses real free APIs (no API keys required):
 - Wikipedia for attractions/points of interest
 - Frankfurter for currency conversion
 - Mock data for flights (no free flight API exists)
+
+Telemetry: plain OpenTelemetry (no GenAI SDK). Traces and application logs go over OTLP; Python
+log records carry the trace and span ids of the active tool span.
 """
 
+import logging
 import os
 import random
 import time
@@ -18,7 +22,11 @@ from uuid import uuid4
 import httpx
 from fastapi import FastAPI, Request
 from opentelemetry import trace
+from opentelemetry._logs import set_logger_provider
+from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
@@ -87,10 +95,18 @@ def setup_telemetry():
     endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317")
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True)))
     trace.set_tracer_provider(provider)
+
+    logger_provider = LoggerProvider(resource=resource)
+    logger_provider.add_log_record_processor(BatchLogRecordProcessor(OTLPLogExporter(endpoint=endpoint, insecure=True)))
+    set_logger_provider(logger_provider)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=logger_provider))
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     return trace.get_tracer("mcp-server")
 
 
 tracer = setup_telemetry()
+logger = logging.getLogger("mcp_server")
 # FastAPI >= 0.142 adds its own OpenTelemetry spans (e.g. fastapi.endpoint around each handler).
 # This service instruments itself, and enrich()/get_current_span() must reach the request span,
 # so turn FastAPI's built-in telemetry off. Older FastAPI versions ignore the argument.
@@ -143,9 +159,11 @@ async def handle_mcp(request: Request, body: ToolCallRequest):
             },
         ) as tool_span:
             try:
+                logger.info("tools/call %s", tool_name, extra={"gen_ai.tool.name": tool_name, "mcp.session.id": session_id})
                 result = await execute_tool(tool_name, arguments, tool_span)
                 return {"jsonrpc": "2.0", "id": request_id, "result": result}
             except Exception as e:
+                logger.error("Tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
                 tool_span.set_status(Status(StatusCode.ERROR, str(e)))
                 mcp_span.set_status(Status(StatusCode.ERROR, str(e)))
                 return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(e)}}
@@ -376,6 +394,8 @@ async def execute_tool(name: str, args: dict, span) -> dict:
         except Exception as e:
             span.set_attribute("tool.fallback", True)
             span.set_attribute("tool.fallback.reason", str(e)[:200])
+            logger.warning("%s: upstream API failed, answering from fallback data: %s", name, str(e)[:200],
+                           extra={"gen_ai.tool.name": name, "tool.fallback": True})
             result = _fallback_weather(location)
         return result
 
@@ -386,6 +406,8 @@ async def execute_tool(name: str, args: dict, span) -> dict:
         except Exception as e:
             span.set_attribute("tool.fallback", True)
             span.set_attribute("tool.fallback.reason", str(e)[:200])
+            logger.warning("%s: upstream API failed, answering from fallback data: %s", name, str(e)[:200],
+                           extra={"gen_ai.tool.name": name, "tool.fallback": True})
             result = _fallback_attractions(destination)
         return result
 
@@ -405,6 +427,8 @@ async def execute_tool(name: str, args: dict, span) -> dict:
         except Exception as e:
             span.set_attribute("tool.fallback", True)
             span.set_attribute("tool.fallback.reason", str(e)[:200])
+            logger.warning("%s: upstream API failed, answering from fallback data: %s", name, str(e)[:200],
+                           extra={"gen_ai.tool.name": name, "tool.fallback": True})
             result = _fallback_currency(amount, from_currency, to_currency)
         return result
 

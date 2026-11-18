@@ -3,8 +3,9 @@
 Weather Agent Example - OpenTelemetry Instrumentation
 
 Instrumented with opensearch-genai-observability-sdk-py:
-- register() replaces ~30 lines of manual TracerProvider/exporter setup
+- register() sets up the OTLP traces and logs pipelines in one call
 - @observe decorator + enrich() replace manual span creation + set_attribute() calls
+- mark_agent_root() marks the agent span when the agent is called directly
 
 Key features demonstrated:
 - OTLP exporter configuration for traces, metrics, and logs
@@ -33,12 +34,10 @@ from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-from opentelemetry._logs import set_logger_provider
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+from opentelemetry._logs import get_logger_provider
+from opentelemetry.sdk._logs import LoggingHandler
 
-from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
 from bedrock_client import (
     get_bedrock_client, converse, extract_text, extract_tool_use, get_usage,
     openai_tools_to_bedrock, BedrockUnavailableError, BEDROCK_MODEL_ID,
@@ -121,12 +120,12 @@ def setup_telemetry(
     otlp_endpoint: str = "http://localhost:4317"
 ) -> tuple:
     """
-    Set up telemetry using the SDK for tracing, plus manual setup for metrics and logs.
+    Set up telemetry: the SDK for traces and logs, plus manual setup for metrics.
 
-    The SDK's register() replaces ~30 lines of TracerProvider/exporter config.
-    Metrics and logs still use manual OTel setup (SDK handles tracing only).
+    register() configures the OTLP traces pipeline and a global LoggerProvider (OTLP logs, used
+    for evaluation events and for the application logs below). Metrics use manual OTel setup.
     """
-    # Tracing — one line via SDK
+    # Traces and logs — one call via the SDK
     register(
         endpoint=f"grpc://{otlp_endpoint.replace('http://', '').replace('https://', '')}",
         service_name=service_name,
@@ -146,15 +145,12 @@ def setup_telemetry(
     metrics.set_meter_provider(meter_provider)
     meter = metrics.get_meter(__name__)
 
-    # Logging — manual setup
-    logger_provider = LoggerProvider(resource=resource)
-    otlp_log_exporter = OTLPLogExporter(endpoint=otlp_endpoint, insecure=True)
-    logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_log_exporter))
-    set_logger_provider(logger_provider)
-
-    handler = LoggingHandler(level=logging.INFO, logger_provider=logger_provider)
+    # Application logs through the SDK's LoggerProvider: every record carries the trace and
+    # span ids of the span active when it is logged, so Agent Traces shows it on that span.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    handler = LoggingHandler(level=logging.INFO, logger_provider=get_logger_provider())
     logging.getLogger().addHandler(handler)
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     logger = logging.getLogger(__name__)
 
@@ -337,7 +333,8 @@ class WeatherAgent:
             return False
         return random.random() < fault.probability
 
-    def invoke(self, user_message: str, conversation_id: str, fault: Optional[FaultConfig] = None) -> str:
+    def invoke(self, user_message: str, conversation_id: str, fault: Optional[FaultConfig] = None,
+               agent_root: bool = False) -> str:
         """
         Invoke the agent with a user message.
 
@@ -356,6 +353,9 @@ class WeatherAgent:
 
         # Create invoke_agent span with observe() + enrich()
         with observe(self.agent_name, op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as span:
+            if agent_root:
+                # Called directly: this agent span below the HTTP handler is the trace's agent root
+                mark_agent_root()
             try:
                 # enrich() sets all gen_ai.* attributes in one call
                 enrich(
@@ -392,12 +392,16 @@ class WeatherAgent:
                         time.sleep(fault.delay_ms / 1000)
 
                     if fault.type == "rate_limited":
+                        self.logger.warning("Rate limit exceeded, rejecting the request", extra={"error.type": "rate_limit_exceeded"})
                         span.set_status(Status(StatusCode.ERROR, "Rate limit exceeded"))
                         span.set_attribute("error.type", "rate_limit_exceeded")
                         raise RateLimitError("Rate limit exceeded. Retry after 60 seconds.")
 
                     if fault.type == "hallucination":
                         hallucinated_response = "The weather is 22°C and sunny with light winds."
+                        # A bad answer: no tool was called, the reply is not grounded in data
+                        self.logger.warning("Answering without calling a weather tool (ungrounded answer)",
+                                            extra={"gen_ai.conversation.id": conversation_id, "fault.type": "hallucination"})
                         enrich(
                             response_id=f"chatcmpl-hallucinated-{conversation_id[:8]}",
                             finish_reason="stop",
@@ -450,7 +454,8 @@ class WeatherAgent:
                             # Second Bedrock call with tool result for final answer
                             bedrock_messages.append(bedrock_response["output"]["message"])
                             bedrock_messages.append({"role": "user", "content": [{"toolResult": {"toolUseId": tool_use_id, "content": [{"json": tool_result}]}}]})
-                            final_response_obj = converse(_bedrock_client, bedrock_messages, system=system_instructions[0]["content"])
+                            # Bedrock requires the toolConfig when the conversation has toolUse / toolResult blocks
+                            final_response_obj = converse(_bedrock_client, bedrock_messages, system=system_instructions[0]["content"], tool_config=tool_config)
                             final_response = extract_text(final_response_obj)
                             usage2 = get_usage(final_response_obj)
                             self.token_counter.add(usage["input_tokens"] + usage2["input_tokens"], attributes={"gen_ai.token.type": "input", "gen_ai.provider.name": "aws_bedrock", "gen_ai.request.model": BEDROCK_MODEL_ID})
@@ -461,6 +466,7 @@ class WeatherAgent:
                     except BedrockUnavailableError as e:
                         span.set_attribute("gen_ai.bedrock.fallback", True)
                         span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                        self.logger.warning("Bedrock unavailable, falling back to the simulated model: %s", str(e)[:200])
                         # Fall through to mock path below
                         llm_response = call_llm(self.model, messages, self.tools)
                         tool_call = llm_response["choices"][0]["message"].get("tool_calls", [None])[0]
@@ -477,6 +483,7 @@ class WeatherAgent:
                     llm_response = call_llm(self.model, messages, self.tools)
 
                     if self._should_inject_fault(fault) and fault.type == "token_limit_exceeded":
+                        self.logger.warning("Response truncated at the token limit", extra={"gen_ai.response.finish_reasons": "length"})
                         enrich(response_id=llm_response["id"], finish_reason="length", input_tokens=llm_response["usage"]["prompt_tokens"], output_tokens=1024)
                         span.set_attribute("gen_ai.response.model", llm_response["model"])
                         truncated_response = "The weather in the requested location is currently showing temperatures around—"
@@ -504,6 +511,7 @@ class WeatherAgent:
 
                         if self._should_inject_fault(fault) and fault.type == "wrong_tool":
                             wrong_tools = {"get_current_weather": "get_forecast", "get_forecast": "get_historical_weather", "get_historical_weather": "get_current_weather"}
+                            self.logger.warning("Calling %s instead of %s", wrong_tools.get(tool_name, tool_name), tool_name)
                             tool_name = wrong_tools.get(tool_name, tool_name)
                             if tool_name == "get_historical_weather":
                                 tool_args["date"] = "2026-01-25"

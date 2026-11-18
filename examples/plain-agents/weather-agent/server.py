@@ -17,9 +17,7 @@ from pydantic import BaseModel, Field
 from opentelemetry import trace as trace_api
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 
-from opensearch_genai_observability_sdk_py import enrich
-
-from main import WeatherAgent, setup_telemetry, FaultConfig, AgentError, SYSTEMS
+from main import WeatherAgent, setup_telemetry, FaultConfig, AgentError
 
 
 # Request/Response models
@@ -90,24 +88,14 @@ async def invoke(request: InvokeRequest):
             tool=request.fault.tool
         )
 
-    # Promote gen_ai attributes to the root HTTP span so the UI can read them
-    enrich(
-        model=agent.model,
-        provider=SYSTEMS.get(agent.model, "openai"),
-        input_messages=[{"role": "user", "parts": [{"type": "text", "content": request.message}]}],
-    )
-    root_span = trace_api.get_current_span()
-    root_span.set_attribute("gen_ai.agent.name", agent.agent_name)
-    root_span.set_attribute("gen_ai.operation.name", "invoke_agent")
+    # The HTTP server span stays a plain HTTP span; the agent's invoke_agent span (in
+    # agent.invoke) names the agent and carries its input and output messages. Called directly
+    # (no caller trace), that span is marked as the trace's agent root.
+    parent = getattr(trace_api.get_current_span(), "parent", None)
+    agent_root = not (parent is not None and parent.is_remote)
 
     try:
-        response = agent.invoke(request.message, conversation_id, fault_config)
-        # Set output on the parent HTTP request span. agent.invoke() runs inside
-        # its own observe() block, so by the time we return here the current
-        # span is the HTTP request span — enrich() intentionally targets it.
-        enrich(
-            output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": response}]}],
-        )
+        response = agent.invoke(request.message, conversation_id, fault_config, agent_root=agent_root)
         return InvokeResponse(response=response, conversation_id=conversation_id)
     except AgentError as e:
         return JSONResponse(
