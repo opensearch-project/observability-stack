@@ -607,7 +607,7 @@ Results arrive on the OTLP logs path, mixed with your application logs. Route by
 - the logs route excludes them, so a result is never stored twice.
 
 <Aside type="caution" title="Data Prepper version">
-Routing on `eventName` needs Data Prepper 2.17.0 or later. It is the first release that stores the OTLP event name of a log record ([opensearch-project/data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148)). With 2.16.0 and earlier, the evaluation route never matches and results stay in `logs-otel-v1-*`. The local stack uses the public `opensearchproject/data-prepper:2.17.0` image.
+Routing on `eventName` needs Data Prepper 2.17.0 or later. It is the first release that stores the OTLP event name of a log record ([opensearch-project/data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148)). With 2.16.0 and earlier, the evaluation route never matches and results stay in `logs-otel-v1-*`. The local stack and the Helm chart use the `sgguruda62324/opensearch-data-prepper:2.18.0-SNAPSHOT-rc1` image.
 </Aside>
 
 Routing matches the `eventName` field of the log record, not an `event.name` attribute. Matching producers that set only the attribute is a planned follow-up.

@@ -48,7 +48,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     For evaluations, the stack:
 
     - runs the one-shot `genai-evaluation-index-init` job before Data Prepper starts. It creates the ISM rollover policy, the index template and the first index `otel-v1-genai-evaluation-000001` behind the `otel-v1-genai-evaluation` write alias. See [The evaluation index](/docs/agent-evals/data-model/#the-evaluation-index).
-    - runs Data Prepper 2.17.0, which routes `gen_ai.evaluation.result` events, and only those, to the write alias. All other logs still go to `logs-otel-v1-*`.
+    - runs a Data Prepper 2.18.0 snapshot (2.17.0 or later is needed), which routes `gen_ai.evaluation.result` events, and only those, to the write alias. All other logs still go to `logs-otel-v1-*`.
 
     The OTel Collector listens on `4318` (OTLP/HTTP) and `4317` (gRPC), OpenSearch on `9200`, Dashboards on `5601`. The admin password is `OPENSEARCH_PASSWORD` in `.env`.
 
