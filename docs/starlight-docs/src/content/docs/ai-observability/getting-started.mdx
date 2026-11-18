@@ -86,12 +86,14 @@ flowchart LR
 1. **Install the SDK**
 
     ```bash
-    pip install "opensearch-genai-observability-sdk-py>=0.3.0"
+    pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
     ```
+
+    0.3.0 is not on PyPI yet, so this installs from the `main` branch. After the release, use `pip install "opensearch-genai-observability-sdk-py>=0.3.0"`.
 
     For auto-instrumentation of your LLM provider:
     ```bash
-    pip install "opensearch-genai-observability-sdk-py[openai]>=0.3.0"   # or [anthropic], [bedrock], etc.
+    pip install "opensearch-genai-observability-sdk-py[openai] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"   # or [anthropic], [bedrock], etc.
     ```
 
 2. **Start the observability stack**
@@ -163,7 +165,7 @@ flowchart LR
     )
     ```
 
-    Each score is a `gen_ai.evaluation.result` event linked to the trace. It shows in the trace's **Evaluations** tab in Agent Traces and in **Agent monitoring > Evaluations**. See the [Agent Evals Quickstart](/docs/agent-evals/quickstart/).
+    Each score is a `gen_ai.evaluation.result` log event linked to the trace by `traceId` and `spanId`. Data Prepper stores it in the `otel-v1-genai-evaluation` index. See the [Agent Evals Quickstart](/docs/agent-evals/quickstart/).
 
 6. **Run an experiment** (optional)
 
@@ -197,7 +199,7 @@ Four fully instrumented agents ship with the repository, each with its own READM
 | Example | Framework | What it shows |
 | --- | --- | --- |
 | [weather-agent](https://github.com/opensearch-project/observability-stack/tree/main/examples/plain-agents/weather-agent) | OpenTelemetry SDK | Standalone assistant with fault injection, and OTLP traces, metrics and logs |
-| [multi-agent-planner](https://github.com/opensearch-project/observability-stack/tree/main/examples/plain-agents/multi-agent-planner) | OpenTelemetry SDK | Trace context propagation across sub-agents |
+| [multi-agent-planner](https://github.com/opensearch-project/observability-stack/tree/main/examples/plain-agents/multi-agent-planner) | GenAI SDK | Travel planner with sub-agents, sessions, trace-correlated application logs and evaluations. See [Example Agents](/docs/ai-observability/examples/) |
 | [code-assistant](https://github.com/opensearch-project/observability-stack/tree/main/examples/strands/code-assistant) | Strands SDK | Multi-agent coding assistant with auto-instrumented GenAI spans |
 | [bedrock-financial-assistant](https://github.com/opensearch-project/observability-stack/tree/main/examples/langchain/bedrock-financial-assistant) | LangChain | Automatic LangChain tracing against Bedrock Claude |
 

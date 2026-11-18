@@ -277,6 +277,7 @@ export default defineConfig({
 						{ label: 'Framework Integrations', link: '/send-data/ai-agents/integrations/' },
 						{ label: 'Agent Tracing', link: '/ai-observability/agent-tracing/' },
 						{ label: 'Agent Graph & Path', link: '/ai-observability/agent-tracing/graph/' },
+						{ label: 'Example Agents', link: '/ai-observability/examples/' },
 					],
 				},
 				{

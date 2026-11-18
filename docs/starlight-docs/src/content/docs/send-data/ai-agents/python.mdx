@@ -8,31 +8,39 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `opensearch-genai-observability-sdk-py` instruments Python AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides a unified `observe()` primitive for tracing agents and tools, and enriches spans with GenAI semantic convention attributes automatically.
 
-- **PyPI:** [`opensearch-genai-observability-sdk-py`](https://pypi.org/project/opensearch-genai-observability-sdk-py/)
+- **PyPI:** [`opensearch-genai-observability-sdk-py`](https://pypi.org/project/opensearch-genai-observability-sdk-py/) (0.3.0 is not released yet; install from `main`)
 - **Python:** 3.10+
 - **Source:** [github.com/opensearch-project/genai-observability-sdk-py](https://github.com/opensearch-project/genai-observability-sdk-py)
 
 ## Installation
 
-```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0"
-```
-
-Auto-instrumentation for LLM providers is opt-in:
+These docs use the SDK 0.3.0 APIs: `endpoint=` as the OTLP base URL, the logs pipeline for evaluation events, `mark_agent_root()`, judge context and run names. 0.3.0 is not on PyPI yet. Until it is, install from the `main` branch:
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[openai]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[anthropic]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[bedrock]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[google]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[langchain]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[llamaindex]>=0.3.0"
-pip install "opensearch-genai-observability-sdk-py[otel-instrumentors]>=0.3.0"  # all providers
-pip install "opensearch-genai-observability-sdk-py[opensearch]>=0.3.0"          # trace retrieval
-pip install "opensearch-genai-observability-sdk-py[all]>=0.3.0"                 # SDK development: instrumentors + pytest, ruff, mypy, ...
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
 ```
 
-Quote the extra: zsh treats unquoted brackets as a glob. An extra installs only the OpenTelemetry instrumentor, not the library it instruments: install that yourself (for example `boto3`, `anthropic[bedrock]`, `langgraph langchain-aws`, `llama-index-core llama-index-llms-bedrock-converse`). `[all]` is meant for SDK development and also installs pytest, ruff, mypy, bandit, safety and pre-commit; applications should use single extras or `[otel-instrumentors]`.
+After the release, use `pip install "opensearch-genai-observability-sdk-py>=0.3.0"`. Upgrading from 0.2.x changes `endpoint=`: see [Upgrading to 0.3.0](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md#upgrading-to-030).
+
+Auto-instrumentation for LLM providers is opt-in. Add the extra for your provider, for example:
+
+```bash
+pip install "opensearch-genai-observability-sdk-py[bedrock] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
+pip install "opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"   # OpenSearchTraceRetriever
+```
+
+The extras are `openai`, `anthropic`, `bedrock`, `google`, `langchain`, `llamaindex`, `otel-instrumentors` (all providers and frameworks) and `opensearch`. Quote the requirement: zsh treats unquoted brackets as a glob. An extra installs only the OpenTelemetry instrumentor, not the library it instruments: install that yourself (for example `boto3`, `langgraph langchain-aws`). The full list is in [Auto-instrumentation](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md#auto-instrumentation).
+
+## SDK documentation
+
+This page covers what the Observability Stack needs from the SDK. The SDK repository has the full reference:
+
+| Document | What it covers |
+|---|---|
+| [api-reference.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/api-reference.md) | Every public API and its arguments |
+| [configuration.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md) | Endpoints, protocols, environment variables, AWS SigV4, auto-instrumentation |
+| [agent-evaluations.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/agent-evaluations.md) | Evaluation data model, `score()`, `evaluate()`, `Benchmark`, the evaluation index, ingestion |
+| [getting-started-evaluations.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/getting-started-evaluations.md) | A guided path from an instrumented agent to online and offline results |
 
 ## API overview
 
@@ -42,7 +50,7 @@ The SDK exports these functions and classes. This page covers the instrumentatio
 |---|---|---|
 | `register()` | Configure the OTLP traces and logs pipelines | [This page](#register) |
 | `observe()` | Trace agents, tools, LLM calls | [This page](#observe) |
-| `Op` | Operation name constants | [This page](#op-constants) |
+| `Op` | Operation name constants | [This page](#observe) |
 | `enrich()` | Set GenAI attributes on the active span | [This page](#enrich) |
 | `mark_agent_root()` | Mark the active span as the trace's agent root | [This page](#mark_agent_root) |
 | `score()` | Record an evaluation result on a span, trace or session | [Evaluation & Scoring](/docs/agent-evals/evaluation/#online-evaluation-score) |
@@ -93,28 +101,13 @@ provider = register(
 )
 ```
 
-| Parameter | Default | Description |
-|---|---|---|
-| `endpoint` | resolved | OTLP **base** URL for both signals (like `OTEL_EXPORTER_OTLP_ENDPOINT`). Over HTTP the SDK appends `/v1/traces` and `/v1/logs`. A base ending in `/v1/traces` or `/v1/logs` raises `ValueError` |
-| `traces_endpoint`, `logs_endpoint` | resolved | Full URLs, one per signal. Pass both or neither |
-| `protocol` | from the URL | `"http"` or `"grpc"`. `grpc://` is insecure gRPC, `grpcs://` gRPC with TLS |
-| `compression` | `none` | `"none"` or `"gzip"`; must match the receiving pipeline |
-| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | Extra headers for both exporters |
-| `sigv4` | `None` | `True` or `{"service": "osis", "region": ...}`: sign both exporters with SigV4 |
-| `service_name` | `OTEL_SERVICE_NAME` | `service.name` |
-| `service_version` | `OTEL_SERVICE_VERSION` | `service.version` |
-| `agent_name`, `agent_version` | `None` | Default agent for evaluation results |
-| `batch` | `True` | Batch or simple span and log processors |
-| `auto_instrument` | `True` | Discover and activate installed instrumentor packages |
-| `exporter`, `log_exporter` | `None` | Custom exporters, used as-is |
-| `enable_logs` | `True` | Set up the logs pipeline for evaluation events |
-| `set_global` | `True` | Register as the global providers |
+The main arguments are `endpoint` (an OTLP base URL for both signals), `traces_endpoint` and `logs_endpoint` (full URLs, always together), `protocol`, `compression`, `sigv4`, `service_name`, `agent_name`, `agent_version`, `batch` and `auto_instrument`. Every argument is in the [API reference](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/api-reference.md#register).
 
 Returns the `TracerProvider`. Its `force_flush()` and `shutdown()` also flush the logs pipeline, so call `provider.force_flush()` before a script exits.
 
 ### Endpoint resolution
 
-Per signal, the first that is set wins: `traces_endpoint=` / `logs_endpoint=`, then `endpoint=`, then `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` / `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`, then `OTEL_EXPORTER_OTLP_ENDPOINT`, then `http://localhost:4318`.
+Per signal, the first that is set wins: `traces_endpoint=` / `logs_endpoint=`, then `endpoint=`, then the `OTEL_EXPORTER_OTLP_*` environment variables, then `http://localhost:4318`. The full rules are in [configuration.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md).
 
 <Aside type="caution" title="Upgrading to 0.3.0">
 Before 0.3.0, `endpoint=` was the full traces URL; it is now the OTLP base URL, and the default moved from `http://localhost:21890/opentelemetry` to `http://localhost:4318`. Remove a `/v1/traces` suffix, or pass `traces_endpoint=` and `logs_endpoint=`.
@@ -167,29 +160,7 @@ with observe("llm_call", op=Op.CHAT) as span:
     response = llm.chat(messages)
 ```
 
-### Parameters
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `name` | `str` | function `__qualname__` | Span entity name. |
-| `op` | `str` | | Sets `gen_ai.operation.name`. Span name becomes `"{op} {name}"`. |
-| `kind` | `SpanKind` | `INTERNAL` | OTel `SpanKind`. |
-| `name_from` | `str` | | Function parameter whose runtime value becomes the span name. |
-
-### `Op` constants
-
-| Constant | Value | Use for |
-|---|---|---|
-| `Op.INVOKE_AGENT` | `"invoke_agent"` | Agent invocations and orchestration |
-| `Op.EXECUTE_TOOL` | `"execute_tool"` | Tool/function calls |
-| `Op.CHAT` | `"chat"` | LLM chat completions |
-| `Op.CREATE_AGENT` | `"create_agent"` | Agent initialization |
-| `Op.RETRIEVAL` | `"retrieval"` | RAG retrieval |
-| `Op.EMBEDDINGS` | `"embeddings"` | Embedding generation |
-| `Op.GENERATE_CONTENT` | `"generate_content"` | Content generation |
-| `Op.TEXT_COMPLETION` | `"text_completion"` | Text completions |
-
-Any custom string also works for `op`.
+The arguments are `name`, `op` (sets `gen_ai.operation.name`; the span name becomes `"{op} {name}"`), `kind` and `name_from`. `Op` has constants for the GenAI operations, for example `Op.INVOKE_AGENT`, `Op.EXECUTE_TOOL` and `Op.CHAT`; any string also works. See [`observe()`](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/api-reference.md#observe).
 
 ### Automatic behavior
 
@@ -307,29 +278,7 @@ def call_llm(messages: list) -> str:
     return response.choices[0].message.content
 ```
 
-### Parameter-to-attribute mapping
-
-| Parameter | OTel Attribute |
-|---|---|
-| `model` | `gen_ai.request.model` |
-| `provider` | `gen_ai.provider.name` |
-| `input_tokens` | `gen_ai.usage.input_tokens` |
-| `output_tokens` | `gen_ai.usage.output_tokens` |
-| `total_tokens` | `gen_ai.usage.total_tokens` |
-| `response_id` | `gen_ai.response.id` |
-| `finish_reason` | `gen_ai.response.finish_reasons` |
-| `temperature` | `gen_ai.request.temperature` |
-| `max_tokens` | `gen_ai.request.max_tokens` |
-| `session_id` | `gen_ai.conversation.id` |
-| `agent_id` | `gen_ai.agent.id` |
-| `agent_description` | `gen_ai.agent.description` |
-| `tool_definitions` | `gen_ai.tool.definitions` |
-| `system_instructions` | `gen_ai.system_instructions` |
-| `input_messages` | `gen_ai.input.messages` |
-| `output_messages` | `gen_ai.output.messages` |
-| `**extra` | key used as-is |
-
-All parameters are optional. Only provided values are set.
+Each argument sets one GenAI attribute, for example `model` sets `gen_ai.request.model`, `session_id` sets `gen_ai.conversation.id`, and `input_messages` sets `gen_ai.input.messages`. Other keyword arguments are set as-is. The full mapping is in [`enrich()`](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/api-reference.md#enrich).
 
 ---
 
@@ -397,25 +346,41 @@ OpenSearch Ingestion accepts OTLP over HTTP (protobuf) only. SigV4 with gRPC is 
 
 ---
 
+## Application logs
+
+`register()` also installs the global OpenTelemetry `LoggerProvider`. Attach a `LoggingHandler` to Python logging, and every log record is sent as an OTel log with the trace and span ids of the active span. Agent Traces then shows the logs next to the span that wrote them (**Related logs** in the trace flyout).
+
+```python
+import logging
+
+from opentelemetry._logs import get_logger_provider
+from opentelemetry.sdk._logs import LoggingHandler
+
+from opensearch_genai_observability_sdk_py import register
+
+register(service_name="my-agent")
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=get_logger_provider()))
+logger = logging.getLogger("my_agent")
+
+logger.warning("tool fallback used", extra={"gen_ai.tool.name": "fetch_weather"})
+```
+
+- Log at INFO for normal steps, and at WARNING or ERROR for tool failures, fallbacks and bad answers, so the failing spans have logs on them.
+- `extra=` keys become log attributes in `logs-otel-v1-*`. Do not use one key both as a value and as a prefix of another key (for example `response` and `response.errors_count`): the logs index maps it once, and records with the other shape are rejected.
+- Evaluation events use the same logs pipeline. Data Prepper routes them to the evaluation index by event name, so they never mix with your application logs.
+
+The [travel planner example](/docs/ai-observability/examples/#travel-planner) logs this way.
+
 ## Environment variables
 
-| Variable | Description |
-|---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP URL for both signals |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL per signal |
-| `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_TRACES_PROTOCOL`, `OTEL_EXPORTER_OTLP_LOGS_PROTOCOL` | `http/protobuf` or `grpc` |
-| `OTEL_EXPORTER_OTLP_COMPRESSION` | `none` or `gzip` |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Extra headers |
-| `OTEL_SERVICE_NAME`, `OTEL_SERVICE_VERSION` | Service name and version |
-| `OTEL_BSP_MAX_EXPORT_BATCH_SIZE`, `OTEL_BLRP_MAX_EXPORT_BATCH_SIZE` | Lower these if a pipeline rejects large requests |
-
-Arguments passed in code always win over environment variables.
+The SDK reads the standard `OTEL_EXPORTER_OTLP_*` variables, `OTEL_SERVICE_NAME` and the batch size variables. Arguments passed in code always win. See [configuration.md](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md).
 
 ---
 
 ## Prompt for your coding agent
 
-Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and Agent Evaluations:
+Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and add evaluations:
 
 <Code code={codingAgentPrompt} lang="markdown" title="Prompt for your coding agent" />
 
@@ -428,4 +393,5 @@ Paste this into your coding agent, in your agent's repository, to instrument the
 - [Agent Evals Quickstart](/docs/agent-evals/quickstart/): first offline and online evaluation results
 - [Evaluation & Scoring](/docs/agent-evals/evaluation/): `score()`, `evaluate()`, `Benchmark`
 - [Agent Traces](/docs/ai-observability/agent-tracing/): viewing traces in OpenSearch Dashboards
+- [Example Agents](/docs/ai-observability/examples/): the travel planner and the eval canaries
 - [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/): OTel spec reference

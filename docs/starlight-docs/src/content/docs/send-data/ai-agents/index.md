@@ -3,7 +3,7 @@ title: "AI Agents"
 description: "Instrument AI agent applications with the GenAI Observability SDKs"
 ---
 
-The GenAI Observability SDKs provide purpose-built instrumentation for AI agent applications. They handle the gap between general-purpose OpenTelemetry and what agent developers actually need: tracing orchestration logic, capturing GenAI semantic attributes, and and evaluating agent quality, all through the standard OTLP pipeline.
+The GenAI Observability SDKs provide purpose-built instrumentation for AI agent applications. They handle the gap between general-purpose OpenTelemetry and what agent developers actually need: tracing orchestration logic, capturing GenAI semantic attributes, and evaluating agent quality, all through the standard OTLP pipeline.
 
 ## Why use the SDK?
 

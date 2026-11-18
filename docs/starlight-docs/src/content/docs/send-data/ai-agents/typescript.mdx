@@ -8,19 +8,31 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `@opensearch-project/genai-observability-sdk-ts` instruments JavaScript and TypeScript AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides an `observe()` wrapper for tracing agents and tools, and enriches spans with GenAI semantic convention attributes. It is the TypeScript counterpart of the [Python SDK](/docs/send-data/ai-agents/python/).
 
-- **npm:** [`@opensearch-project/genai-observability-sdk-ts`](https://www.npmjs.com/package/@opensearch-project/genai-observability-sdk-ts)
-- **Node.js:** 20+
+- **npm:** [`@opensearch-project/genai-observability-sdk-ts`](https://www.npmjs.com/package/@opensearch-project/genai-observability-sdk-ts) (0.2.0 is not released yet; install from `main`)
+- **Node.js:** ^18.19.0 or 20.6.0 and later
 - **Source:** [github.com/opensearch-project/genai-observability-sdk-ts](https://github.com/opensearch-project/genai-observability-sdk-ts)
 
 ## Installation
 
+These docs use the SDK 0.2.0 APIs: `endpoint` as the OTLP base URL, the logs pipeline for evaluation events, `markAgentRoot()`, async `evaluate()`, judge context and run names. 0.2.0 is not on npm yet.
+
+### Install from main
+
+Until 0.2.0 is on npm, build a package from the `main` branch and install it:
+
 ```bash
-npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
-# or: pnpm add "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
-# or: yarn add "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"
+git clone --depth 1 https://github.com/opensearch-project/genai-observability-sdk-ts.git
+(cd genai-observability-sdk-ts && npm install && npm run build && npm pack)
+npm install ./genai-observability-sdk-ts/opensearch-project-genai-observability-sdk-ts-0.2.0.tgz
 ```
 
-Some features rely on optional peer dependencies, installed only when you need them:
+The repository has no install-time build step, so `npm install github:...` does not work: it installs the package without its `dist/` folder.
+
+After the release, use `npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"` (or `pnpm add` / `yarn add`).
+
+### Optional packages
+
+Some features rely on optional dependencies, installed only when you need them:
 
 ```bash
 # OpenSearch trace retrieval (OpenSearchTraceRetriever)
@@ -37,6 +49,17 @@ npm install @opentelemetry/context-async-hooks
 The SDK uses OpenTelemetry JS 1.x. With a framework that peers on 2.x (for example Strands Agents for TypeScript), npm stops with ERESOLVE: add `legacy-peer-deps=true` to `.npmrc`, install `@opentelemetry/api@~1.9.0` and `@opentelemetry/context-async-hooks@^1`, and add back any peer the framework needs that npm then skips (Strands: `@modelcontextprotocol/client`).
 </Aside>
 
+## SDK documentation
+
+This page covers what the Observability Stack needs from the SDK. The SDK repository has the full reference:
+
+| Document | What it covers |
+|---|---|
+| [api-reference.md](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/api-reference.md) | Every public API and its options |
+| [configuration.md](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/configuration.md) | Endpoints, protocols, environment variables, AWS SigV4, auto-instrumentation |
+| [agent-evaluations.md](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/agent-evaluations.md) | Evaluation data model, `score()`, `evaluate()`, `Benchmark`, the evaluation index, ingestion |
+| [getting-started-evaluations.md](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/getting-started-evaluations.md) | A guided path from an instrumented agent to online and offline results |
+
 ## API overview
 
 The SDK exports these functions and classes. This page covers the full API surface.
@@ -50,8 +73,8 @@ The SDK exports these functions and classes. This page covers the full API surfa
 | `enrich()` | Set GenAI attributes on the active span | [This page](#enrich) |
 | `markAgentRoot()` | Mark the active span as the trace's agent root | [This page](#markagentroot) |
 | `score()` | Record an evaluation result on a span, trace or session | [Evaluation & Scoring](/docs/agent-evals/evaluation/#online-evaluation-score) |
-| `evaluate()`, `defineScorer()` | Run a synchronous task over a test suite with scorers | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-evaluate) |
-| `Benchmark` | Log offline results for cases you ran yourself (async agents) | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-benchmark) |
+| `evaluate()`, `defineScorer()` | Run a task (sync or async) over a test suite with scorers | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-evaluate) |
+| `Benchmark` | Log offline results for cases you ran yourself | [Evaluation & Scoring](/docs/agent-evals/evaluation/#offline-evaluation-benchmark) |
 | `OpenSearchTraceRetriever` | Read stored traces back from OpenSearch | [This page](#opensearchtraceretriever) |
 | `AWSSigV4OTLPExporter` | SigV4-signed OTLP exporter | [This page](#aws-authentication) |
 
@@ -114,20 +137,7 @@ const provider = await register({
 });
 ```
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `endpoint` | `string` | `http://localhost:4318` | OTLP **base** URL for both signals (like `OTEL_EXPORTER_OTLP_ENDPOINT`). The SDK appends `/v1/traces` and `/v1/logs` over HTTP |
-| `tracesEndpoint`, `logsEndpoint` | `string` | | Full URLs, one per signal. Pass both |
-| `protocol` | `"http"` \| `"grpc"` | from the URL | `grpc://` is insecure gRPC, `grpcs://` gRPC with TLS |
-| `compression` | `"none"` \| `"gzip"` | `none` | Must match the receiving pipeline |
-| `sigv4` | `{ service?, region? }` | | Sign traces and logs with SigV4 (OTLP/HTTP only) |
-| `headers` | `Record<string, string>` | | Headers for every export |
-| `serviceName`, `serviceVersion` | `string` | `unknown_service` | Resource attributes |
-| `agentName`, `agentVersion` | `string` | | Default agent for evaluation results |
-| `batch` | `boolean` | `true` | Batch or simple processors |
-| `autoInstrument` | `boolean` | `true` | Discover installed instrumentor packages |
-| `exporter`, `logExporter` | | | Custom exporters, used as given |
-| `logs` | `boolean` | `true` | Set up the logs pipeline for evaluation events |
+The main options are `endpoint` (an OTLP base URL for both signals), `tracesEndpoint` and `logsEndpoint` (full URLs, always together), `protocol`, `compression`, `sigv4`, `serviceName`, `agentName`, `agentVersion`, `batch` and `autoInstrument`. Every option is in the [API reference](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/api-reference.md#register).
 
 ### Endpoint resolution
 
@@ -379,7 +389,7 @@ Marks the active span as its trace's agent root (`derived.gen_ai.is_root` = `tru
 
 ## Evaluations
 
-`score()`, `evaluate()`, `defineScorer()` and `Benchmark` record evaluation results as `gen_ai.evaluation.result` log events, linked to these traces. `evaluate()` needs a synchronous task and scorers; for async agents run each case yourself and log it with `Benchmark`. See [Evaluation & Scoring](/docs/agent-evals/evaluation/) and the [Quickstart](/docs/agent-evals/quickstart/).
+`score()`, `evaluate()`, `defineScorer()` and `Benchmark` record evaluation results as `gen_ai.evaluation.result` log events, linked to these traces. `evaluate()` awaits async tasks and scorers: always `await evaluate(...)`. See [Evaluation & Scoring](/docs/agent-evals/evaluation/) and the [Quickstart](/docs/agent-evals/quickstart/).
 
 ```typescript
 import { score } from "@opensearch-project/genai-observability-sdk-ts";
@@ -406,7 +416,7 @@ import { OpenSearchTraceRetriever } from "@opensearch-project/genai-observabilit
 
 const retriever = new OpenSearchTraceRetriever({
   host: "https://localhost:9200",
-  auth: { username: "admin", password: "admin" },
+  auth: { username: "admin", password: process.env.OPENSEARCH_PASSWORD! },
   verifyCerts: false,
 });
 
@@ -456,19 +466,13 @@ OpenSearch Ingestion accepts OTLP over HTTP only. SigV4 over gRPC is not support
 
 ## Environment variables
 
-| Variable | Description |
-|---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base OTLP URL for both signals |
-| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Full URL per signal |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` and the per-signal variants | `http/protobuf` or `grpc` |
-| `OTEL_EXPORTER_OTLP_COMPRESSION` | `none` or `gzip` |
-| `AWS_DEFAULT_REGION`, `AWS_REGION` | Region for SigV4 signing |
+The SDK reads the standard `OTEL_EXPORTER_OTLP_*` variables, and `AWS_DEFAULT_REGION` / `AWS_REGION` for SigV4. Options passed in code always win. See [configuration.md](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/configuration.md).
 
 ---
 
 ## Prompt for your coding agent
 
-Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and Agent Evaluations:
+Paste this into your coding agent, in your agent's repository, to instrument the agent for Agent Traces and add evaluations:
 
 <Code code={codingAgentPrompt} lang="markdown" title="Prompt for your coding agent" />
 

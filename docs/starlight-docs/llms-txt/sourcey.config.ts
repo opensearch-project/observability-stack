@@ -36,7 +36,7 @@ export default defineConfig({
         tab: "AI Observability",
         slug: "ai-observability",
         source: markdown({
-          groups: [{ group: "ai-observability", pages: ["ai-observability","ai-observability/agent-tracing","ai-observability/agent-tracing/graph","ai-observability/getting-started"] }],
+          groups: [{ group: "ai-observability", pages: ["ai-observability","ai-observability/agent-tracing","ai-observability/agent-tracing/graph","ai-observability/examples","ai-observability/getting-started"] }],
         }),
       },
       {
