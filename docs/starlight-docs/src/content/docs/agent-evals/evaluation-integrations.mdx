@@ -7,19 +7,19 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 
-Keep the evaluation library you already use. Run it as usual, then send its numbers with the SDK, so they land as `gen_ai.evaluation.result` events next to your agent traces and show up in **Agent monitoring > Evaluations**:
+Keep the evaluation library you already use. Run it as usual, then send its numbers with the SDK, so they land as `gen_ai.evaluation.result` events in the evaluation index, linked to your agent traces:
 
 - **Offline** (a dataset run): `evaluate()` with a `@scorer` around the library's metric, or `Benchmark` with one `log()` per case when the library runs the agent itself. Each case gets `test.suite.name`, `test.suite.run.id` and `test.case.id`, and each result links to the case's agent trace.
 - **Online** (scoring live traces): `score()` with the trace and span ids of the judged agent run.
 
 For every result, declare:
 
-- a pass rule (`threshold`, or a `pass` / `fail` label), so results get a verdict instead of a neutral "Scored";
-- the evaluator: `evaluator` (for example `deepeval.AnswerRelevancyMetric`) and `evaluator_type` (`llm_judge`, `code`, `human` or `external`), on the `@scorer`, on each `EvalScore`, or once per case on `b.log()` (a score's own value wins). The result flyout shows which library and metric produced it;
+- a pass rule (`threshold`, or a `pass` / `fail` label), so results get a verdict instead of being only scored;
+- the evaluator: `evaluator` (for example `deepeval.AnswerRelevancyMetric`) and `evaluator_type` (`llm_judge`, `code`, `human` or `external`), on the `@scorer`, on each `EvalScore`, or once per case on `b.log()` (a score's own value wins), so each result names the library and metric that produced it. A wrapper `@scorer` should declare the library metric as its `evaluator`, as the examples below do: its declaration applies only to results whose evaluator is unset or the same (see [Scorer ownership](/docs/agent-evals/evaluation/#scorer-ownership));
 - a stable `case_id`, so runs can be compared case by case;
-- the agent: `agent_name` and `agent_version` on `register()` (or on `evaluate()` / `Benchmark`), or the results show as "(no agent name)" or "(no version)".
+- the agent: `agent_name` and `agent_version` on `register()` (or on `evaluate()` / `Benchmark`), or the results have no agent name or version.
 
-Results are routed and stored as described in [Data Model & Ingestion](/docs/agent-evals/data-model/). Every example on this page ran against a real agent and real LLM judges on Amazon Bedrock and was checked in OpenSearch and in the Evaluations pages.
+Results are routed and stored as described in [Data Model & Ingestion](/docs/agent-evals/data-model/). Every example on this page ran against a real agent and real LLM judges on Amazon Bedrock and was checked in OpenSearch.
 
 <Aside type="note">
 Third-party evaluation APIs change often. The examples were run with DeepEval 4.3, RAGAS 0.4, MLflow 3.18 and pytest 9.2; adapt imports and method calls to your installed version. The SDK side (`evaluate()`, `scorer`, `Benchmark`, `log()`, `score()`, `EvalScore`) is what this page documents.
@@ -30,7 +30,7 @@ Third-party evaluation APIs change often. The examples were run with DeepEval 4.
 All examples evaluate the same agent: a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock with one retrieval tool, `search_docs`, over a small in-memory doc set. Save it as `my_agent.py` next to the examples.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents
 export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
 ```
 
@@ -99,7 +99,7 @@ def ask(question: str) -> AgentRun:
     agent = Agent(name=AGENT_NAME, model=BedrockModel(model_id=MODEL_ID, region_name=REGION),
                   tools=[search_docs], system_prompt=SYSTEM_PROMPT, callback_handler=None)
     answer = str(agent(question)).strip()
-    enrich(output_messages=_text("assistant", answer))  # the agent's output in Agent Traces and on the run page
+    enrich(output_messages=_text("assistant", answer))  # the agent's output in Agent Traces and for online evaluators
     ctx = trace.get_current_span().get_span_context()
     return AgentRun(answer, list(_retrieved), format(ctx.trace_id, "032x"), format(ctx.span_id, "016x"))
 ```
@@ -116,7 +116,7 @@ def ask(question: str) -> AgentRun:
 [DeepEval](https://github.com/confident-ai/deepeval) provides LLM-as-judge metrics like faithfulness, answer relevancy, and hallucination detection. Wrap each metric in a `@scorer` and run the suite with `evaluate()`.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents deepeval aiobotocore
 ```
 
 Install `aiobotocore` in the same command: DeepEval's Bedrock model needs it, and installing it later can leave mismatched `boto3` and `botocore` versions.
@@ -124,7 +124,7 @@ Install `aiobotocore` in the same command: DeepEval's Bedrock model needs it, an
 ```python
 """deepeval_suite.py: an offline suite run, with DeepEval metrics on an Amazon Bedrock judge.
 
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents deepeval aiobotocore
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents deepeval aiobotocore
 """
 from deepeval.metrics import AnswerRelevancyMetric, FaithfulnessMetric
 from deepeval.models import AmazonBedrockModel
@@ -180,7 +180,7 @@ provider.force_flush()
 ```
 
 - `evaluate()` runs `ask()` per case, stamps `test.*` on each case's agent span and links every result to it, without passing ids.
-- A metric that raises becomes an evaluator error result. In this suite, the `greeting` case retrieves nothing, so `FaithfulnessMetric` raises `MissingTestCaseParamsError`: the run gets one result with `error.type = MissingTestCaseParamsError` and no value or label, the run page counts it under **Evaluator errors**, and the summary prints `Errors: 1`. The error message stays local.
+- A metric that raises becomes an evaluator error result. In this suite, the `greeting` case retrieves nothing, so `FaithfulnessMetric` raises `MissingTestCaseParamsError`: the run gets one result with `error.type = MissingTestCaseParamsError` and no value or label, and the summary prints `Errors: 1`. The error message stays local.
 - Set `DEEPEVAL_TELEMETRY_OPT_OUT=YES` if you don't want DeepEval's own telemetry.
 
 Online, score a live agent run with the same metric:
@@ -224,13 +224,13 @@ provider.force_flush()
 [RAGAS](https://docs.ragas.io/) evaluates RAG pipelines with metrics like context precision, faithfulness, and answer correctness. RAGAS judges a dataset, so run the agent on each case first, build the dataset from its answers and retrieved passages, then log each case with `Benchmark`.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
 ```
 
 ```python
 """ragas_suite.py: an offline suite run, with RAGAS metrics on an Amazon Bedrock judge.
 
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents ragas datasets "langchain-community<0.4" langchain-aws
 """
 from datasets import Dataset
 from langchain_aws import BedrockEmbeddings, ChatBedrockConverse
@@ -287,9 +287,9 @@ provider.force_flush()
 ```
 
 - Pass `raise_exceptions=True`. By default RAGAS turns a failed judge call into `NaN`, which would be sent as a score.
-- Pass `trace_id` and `span_id` from the agent run to `b.log()`, or the results have no **View trace** link and the result flyout cannot show what the judge saw.
+- Pass `trace_id` and `span_id` from the agent run to `b.log()`, or the results are not linked to the agent's trace, and nothing links them to the agent's input and output.
 - RAGAS returns no reason text, so these results have no explanation. On RAGAS 0.4 the `ragas.metrics` imports and the Langchain wrappers print deprecation warnings; they are harmless.
-- `Benchmark` logs all results at the end, so the run page shows a duration of a few milliseconds, not the time the agent and judges took.
+- `Benchmark` logs all results at the end, so the result timestamps span a few milliseconds, not the time the agent and judges took.
 
 Online, give the metric its judge first: outside `ragas.evaluate()` a metric has no LLM.
 
@@ -333,13 +333,13 @@ provider.force_flush()
 [MLflow](https://mlflow.org/) 3 evaluates GenAI apps with `mlflow.genai.evaluate()` and built-in LLM judges (scorers). Run it with your agent as `predict_fn`, then log each case's judgments with `Benchmark`.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents "mlflow>=3"
 ```
 
 ```python
 """mlflow_suite.py: an offline suite run, with MLflow 3 built-in judges on Amazon Bedrock.
 
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents "mlflow>=3"
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents "mlflow>=3"
 The bedrock:/ judge provider reads AWS keys from environment variables (AWS_ACCESS_KEY_ID, ...).
 """
 import mlflow
@@ -448,7 +448,7 @@ provider.force_flush()
 Use `evaluate()` in your test suite and gate the test on the run's summary:
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents pytest
+pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents pytest
 ```
 
 ```python
@@ -517,10 +517,10 @@ def test_agent_quality():
     assert s.scores["response_length"].avg <= 500, f"answers average {s.scores['response_length'].avg:.0f} characters"
 ```
 
-Run it with `pytest test_agent.py`. Each test run is one eval run of the suite in OpenSearch Dashboards.
+Run it with `pytest test_agent.py`. Each test run is one run (`test.suite.run.id`) of the suite in the evaluation index.
 
 - The scorers show the three kinds of verdict: a `bool` (`mentions_expected`), a number with a threshold and `direction="minimize"` (`response_length`), and an LLM judge that returns a `pass` / `fail` label with its reply as the explanation (`grounded`).
-- The asserts gate on **means** over the run; the Evaluations pages show each result's own verdict. A case can therefore fail (for example `grounded` on one case) while the test passes.
+- The asserts gate on **means** over the run; each stored result keeps its own verdict. A case can therefore fail (for example `grounded` on one case) while the test passes.
 - Pick realistic bars: two-sentence answers from a real model ran 200 to 420 characters, so a 400-character rule failed now and then, and 500 did not.
 - The session fixture flushes the provider at the end, so the last results are exported before pytest exits. For CI gates and links back to the CI job, see [Run evaluations in CI](/docs/agent-evals/ci/).
 
@@ -799,7 +799,7 @@ provider.force_flush()
 - Map each Langfuse evaluation to an `EvalScore` with the verdict rule you want: a `pass` / `fail` label for boolean checks, `threshold` (and `direction="minimize"` for "lower is better") for numbers.
 - Give each dataset item an explicit id (`create_dataset_item(id=...)`) so runs compare case by case.
 - Langfuse derives the experiment id from the dataset and the run name. Reusing a run name adds the new results to the earlier run, in Langfuse and here.
-- The results are logged after the experiment finishes, so the run's duration on the run page is not the experiment's duration.
+- The results are logged after the experiment finishes, so their timestamps do not show the experiment's duration.
 
 ---
 

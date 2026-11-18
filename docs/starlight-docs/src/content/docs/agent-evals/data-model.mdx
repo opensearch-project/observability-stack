@@ -1,13 +1,13 @@
 ---
 title: "Data Model & Ingestion"
-description: "The evaluation result event, every attribute and how it is indexed, case identity, the evaluation index template and ISM policy, and how to route results with Data Prepper"
+description: "The evaluation result event, every attribute and how it is indexed, case identity, the evaluation index template and ISM policy, and how to route results with Data Prepper or OpenSearch Ingestion"
 sidebar:
   order: 4
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Every evaluation result is one OpenTelemetry log event named `gen_ai.evaluation.result`, as defined by the [OTel GenAI events conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/). Results travel the OTLP logs path next to your application logs. Data Prepper routes them to their own index, `otel-v1-genai-evaluation`, where they join the agent spans in `otel-v1-apm-span-*` on `traceId` and `spanId`. The Evaluations pages in OpenSearch Dashboards read nothing else.
+Every evaluation result is one OpenTelemetry log event named `gen_ai.evaluation.result`, as defined by the [OTel GenAI events conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/). Results travel the OTLP logs path next to your application logs. Data Prepper routes them to their own index, `otel-v1-genai-evaluation`, where they join the agent spans in `otel-v1-apm-span-*` on `traceId` and `spanId`.
 
 This page is the reference for that record and its storage. To send your first results, start with the [Quickstart](/docs/agent-evals/quickstart/). The SDK side, including every argument that sets these attributes, is in the SDK guides: [Python](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/agent-evaluations.md) and [TypeScript](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/agent-evaluations.md).
 
@@ -44,7 +44,7 @@ Test suite  "travel-planner-golden"                 test.suite.name
 | Expected output | `opensearch.test.case.expected`, when the case has one | None |
 | Linked to | The root span of the agent run for that case | The span, trace or session it judged |
 
-A result without `test.suite.run.id` is online. The **Online** source filter on the Evaluations pages shows exactly those. When each offline case runs in its own conversation id (as in the [framework examples](/docs/send-data/ai-agents/integrations/#how-the-examples-are-built), so cases don't share history), the Agent Traces **Sessions** tab shows every case as a one-turn session next to your real conversations.
+A result without `test.suite.run.id` is online. When each offline case runs in its own conversation id (as in the [framework examples](/docs/send-data/ai-agents/integrations/#how-the-examples-are-built), so cases don't share history), the Agent Traces **Sessions** tab shows every case as a one-turn session next to your real conversations.
 
 ### Levels
 
@@ -52,7 +52,7 @@ A result without `test.suite.run.id` is online. The **Online** source filter on 
 
 ### Verdicts
 
-The verdict is `gen_ai.evaluation.score.label`: `pass` or `fail` (lowercase). Your evaluator, or the SDK from your `threshold` and `direction`, decides it. OpenSearch Dashboards shows the stored label and never computes one:
+The verdict is `gen_ai.evaluation.score.label`: `pass` or `fail` (lowercase). Your evaluator, or the SDK from your `threshold` and `direction`, decides it. Readers use the stored label and never compute one:
 
 - `error.type` is set: **evaluator error** (no value, no label).
 - `gen_ai.evaluation.score.label` is `pass` or `fail`: **Pass** or **Fail**.
@@ -62,11 +62,11 @@ Pass rate = pass / (pass + fail).
 
 ## Case identity
 
-Compare, deltas against the previous run and "new failure" all match cases by id, so keep ids stable:
+Comparing runs matches cases by id, so keep ids stable:
 
 - **Across runs**, a case is `test.suite.name` + `test.case.id`.
 - **Within a run**, a case is `test.suite.run.id` + `test.case.id`. All results of a case in one run share these two values.
-- **SDK default:** when you don't pass a case id, the SDK uses the first 16 hex characters of the SHA-256 of the input. Editing the input therefore makes a new case, and the old one shows as removed in Compare. Pass an explicit `case_id` (`caseId` in TypeScript) for an identity that survives edits.
+- **SDK default:** when you don't pass a case id, the SDK uses the first 16 hex characters of the SHA-256 of the input. Editing the input therefore makes a new case, and the old one no longer matches. Pass an explicit `case_id` (`caseId` in TypeScript) for an identity that survives edits.
 - `test.case.name` is a display name only. Renaming a case does not change its identity.
 - Online results have no suite, run or case.
 
@@ -82,9 +82,9 @@ Data Prepper stores the attributes under `attributes` with their dotted OTel nam
 
 ### Attributes
 
-**Index type** is how the [evaluation index template](#the-index-template) stores the field. **Explicit** fields are mapped by the template; **dynamic** fields take the template's dynamic rules (strings become `keyword` with `ignore_above` 256, whole numbers `long`, other numbers `double`, booleans `boolean`). **Required** means the Evaluations pages need it; recommended fields make the pages more useful.
+**Index type** is how the [evaluation index template](#the-index-template) stores the field. **Explicit** fields are mapped by the template; **dynamic** fields take the template's dynamic rules (strings become `keyword` with `ignore_above` 256, whole numbers `long`, other numbers `double`, booleans `boolean`). **Required** means every result should carry it; recommended fields make results easier to group and filter.
 
-The template maps every field the Evaluations pages query explicitly, so each new index (a fresh install, or a rollover) can be queried before its first document carries the field. Without the template, a query that references a field no index behind `otel-v1-genai-evaluation*` has mapped yet fails with `Field [...] not found`, so on a fresh install create the template before the first result arrives.
+The template maps every field that readers filter or group on explicitly, so each new index (a fresh install, or a rollover) can be queried before its first document carries the field. Without the template, a query that references a field no index behind `otel-v1-genai-evaluation*` has mapped yet fails with `Field [...] not found`, so on a fresh install create the template before the first result arrives.
 
 #### Document fields
 
@@ -145,7 +145,7 @@ OTel does not define these yet. They mirror the OTel names under `opensearch.`.
 | `test.case.name` | `keyword` (256) | dynamic | Optional | Readable case name |
 | `opensearch.test.suite.run.name` | `keyword` (256) | dynamic | Optional | Readable run name, shown in place of the short run id |
 | `opensearch.test.suite.run.description` | `keyword` (256) | dynamic | Optional | What changed in this run, up to 1024 characters |
-| `opensearch.test.case.expected` | `keyword` (256) | dynamic | Optional | Expected output of the case, up to 32768 characters. Strings as is, other values JSON-encoded |
+| `opensearch.test.case.expected` | `keyword` (256) | dynamic | Optional | Expected output of the case, up to 8192 characters. Strings as is, other values JSON-encoded |
 | `opensearch.test.case.expected_truncated` | `boolean` | dynamic | Optional | `true` when the expected output was cut |
 
 #### CI/CD
@@ -156,7 +156,7 @@ OTel `cicd.pipeline.*` attributes. The SDK sets them inside GitHub Actions, GitL
 |---|---|---|---|---|
 | `cicd.pipeline.name` | `keyword` (256) | dynamic | Optional | CI workflow or job |
 | `cicd.pipeline.run.id` | `keyword` (256) | dynamic | Optional | CI run id |
-| `cicd.pipeline.run.url.full` | `keyword` (256) | dynamic | Optional | Link to the CI run, shown on the run page and in the result flyout |
+| `cicd.pipeline.run.url.full` | `keyword` (256) | dynamic | Optional | Link to the CI run |
 
 Your own attributes (`score(attributes=...)`, run and case `metadata`) are added under `attributes` too and mapped dynamically. The SDK never lets them overwrite the fields above.
 
@@ -170,7 +170,7 @@ Record which prompt a judge used by name and version, not by content:
 
 - Every result carries `gen_ai.prompt.name` and `gen_ai.prompt.version` (for example `answer-quality` and `v3`, read together as `answer-quality@v3`), with the judge model in `gen_ai.request.model`. Bump the version whenever the prompt changes, so two judge versions are never mixed in one pass rate.
 - Result events do not carry the judge's system prompt. The same prompt would be copied onto every result, it can hold sensitive data, and it would bloat the index.
-- If you want the full prompt, trace the judge and put the prompt on the judge's own LLM span as `gen_ai.system_instructions` (its OTel location), for example with `enrich(system_instructions=...)` inside the judge call. Pass the judge's trace id to `score()` (`judge_trace_id=`) or `EvalScore`, so the result links to `opensearch.gen_ai.evaluation.judge.trace_id` and the result flyout can open the judge's run.
+- If you want the full prompt, trace the judge and put the prompt on the judge's own LLM span as `gen_ai.system_instructions` (its OTel location), for example with `enrich(system_instructions=...)` inside the judge call. Pass the judge's trace id to `score()` (`judge_trace_id=`) or `EvalScore`, so the result links to the judge's run through `opensearch.gen_ai.evaluation.judge.trace_id`.
 
 ## The evaluation index
 
@@ -179,18 +179,21 @@ Results are written to `otel-v1-genai-evaluation`:
 - On backends with ISM and aliases (OpenSearch, Amazon OpenSearch Service), it is a **write alias** over rolling indices `otel-v1-genai-evaluation-000001`, `-000002`, ..., managed by an ISM policy.
 - On OpenSearch Serverless, which has no ISM or aliases, it is **one index** named `otel-v1-genai-evaluation`, with the same mappings.
 
-Either way, the Evaluations setup in OpenSearch Dashboards finds the results through the index pattern `otel-v1-genai-evaluation*`.
+Either way, query the results through the index pattern `otel-v1-genai-evaluation*`.
 
 | Where you run | Who creates the index |
 |---|---|
-| Local stack (Docker Compose) | Data Prepper, from the template and ISM policy files in `docker-compose/data-prepper/`. The init job creates the same objects if they are missing. |
-| AWS CLI installer and CDK, managed domain | The installer, before it creates the OpenSearch Ingestion pipeline: ISM policy, template and first index with the write alias |
-| AWS CLI installer and CDK, OpenSearch Serverless | The pipeline sink, from the template in the pipeline configuration, on first start |
+| Local stack (Docker Compose) | The one-shot `genai-evaluation-index-init` job, before Data Prepper starts: ISM policy, template and first index with the write alias. It reads `docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json` and `otel-v1-genai-evaluation-policy.json`, and is safe to re-run. |
+| AWS CLI installer, managed domain | The installer, before it creates the OpenSearch Ingestion pipeline: ISM policy, template and first index with the write alias |
+| AWS CDK, managed domain | A custom resource, before the pipeline is created: the same three objects |
+| AWS CLI installer and CDK, OpenSearch Serverless (NextGen time series collection) | The pipeline sink, on first write: one index `otel-v1-genai-evaluation` from the template in the pipeline configuration |
 | Your own cluster | You, once, with the three requests below |
+
+Every one of these uses the same template JSON. The pipeline sinks also carry the whole template inline (`template_content`), so an index the sink creates itself still gets the evaluation mappings. See [Route results with Data Prepper](#route-results-with-data-prepper).
 
 ### The index template
 
-A composable index template named `otel-v1-genai-evaluation-index-template`, `"version": 1`, priority 100, for the indices `otel-v1-genai-evaluation-*`. It starts from Data Prepper's standard OTel logs template (`date_detection` off, string attributes `keyword` with `ignore_above` 256, numbers dynamic) and adds the evaluation fields listed in [Attributes](#attributes). Data Prepper, the AWS installer and this page use the same name and version, so installs converge: a tool replaces the template only when its own version is higher.
+A composable index template named `otel-v1-genai-evaluation-index-template`, `"version": 1`, priority 100, for the indices `otel-v1-genai-evaluation-*`. It starts from Data Prepper's standard OTel logs template (`date_detection` off, string attributes `keyword` with `ignore_above` 256, numbers dynamic) and adds the evaluation fields listed in [Attributes](#attributes). The local stack, the AWS installer, the CDK and this page use the same name and version, so installs converge: the init job, the installer and Data Prepper replace an installed template only when their own version is higher. A `PUT` from Dev Tools always replaces it.
 
 <details>
 <summary>otel-v1-genai-evaluation-index-template</summary>
@@ -578,7 +581,8 @@ Create the alias before the pipeline starts writing. If a writer creates a concr
 
 Serverless collections have no ISM and no aliases:
 
-- Use a variant of the template with the same `mappings`, `"index_patterns": ["otel-v1-genai-evaluation"]` (the single index, no `-*`), and no `plugins.index_state_management.rollover_alias` setting, which is ISM-only. On a time series collection, set `"settings": {"index.timestamp_field": "time"}` instead: every document must carry the collection's timestamp field. Then write to the index `otel-v1-genai-evaluation`; the first write creates it from the template. The AWS installer's pipeline passes exactly this variant as `template_content`.
+- Write to one index named `otel-v1-genai-evaluation`. No ISM policy, no alias, no rollover.
+- Use a variant of the template with the same `mappings`, `"index_patterns": ["otel-v1-genai-evaluation"]` (the single index, no `-*`), and no `plugins.index_state_management.rollover_alias` setting, which is ISM-only. On a NextGen time series collection, set `"settings": {"index.timestamp_field": "time"}` instead: every document must carry the collection's timestamp field. The first write creates the index from the template. The AWS CLI installer and CDK pipelines pass exactly this variant as `template_content`.
 - Retention is set on the collection, with a [data lifecycle policy](https://docs.aws.amazon.com/opensearch-service/latest/developerguide/serverless-lifecycle.html), not with ISM.
 
 ### Field limit
@@ -603,7 +607,7 @@ Results arrive on the OTLP logs path, mixed with your application logs. Route by
 - the logs route excludes them, so a result is never stored twice.
 
 <Aside type="caution" title="Data Prepper version">
-Routing on `eventName` needs a Data Prepper build that includes [opensearch-project/data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148), which stores the OTLP event name of a log record. Data Prepper 2.16.0 and earlier do not set `eventName`: the evaluation route never matches, and results stay in `logs-otel-v1-*`. The same applies to the Data Prepper version behind Amazon OpenSearch Ingestion.
+Routing on `eventName` needs Data Prepper 2.17.0 or later. It is the first release that stores the OTLP event name of a log record ([opensearch-project/data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148)). With 2.16.0 and earlier, the evaluation route never matches and results stay in `logs-otel-v1-*`. The local stack uses the public `opensearchproject/data-prepper:2.17.0` image.
 </Aside>
 
 Routing matches the `eventName` field of the log record, not an `event.name` attribute. Matching producers that set only the attribute is a planned follow-up.
@@ -646,24 +650,9 @@ otel-evaluations-pipeline:
         index: "otel-v1-genai-evaluation"  # the write alias
 ```
 
-`otel-logs-pipeline` and `otel-traces-pipeline` are your existing pipelines. The `copy_values` step is required: the Evaluations pages use `@timestamp` as the time field.
+`otel-logs-pipeline` and `otel-traces-pipeline` are your existing pipelines. The `copy_values` step is required: `@timestamp` is the time field of the evaluation index.
 
-The sink above writes to an alias you created. To let Data Prepper create the policy, the template and the first index itself, point the sink at the two files, as the local stack does:
-
-```yaml
-        index: "otel-v1-genai-evaluation"
-        template_type: index-template
-        template_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-index-template.json
-        ism_policy_file: /usr/share/data-prepper/templates/otel-v1-genai-evaluation-policy.json
-```
-
-Data Prepper names the policy `otel-v1-genai-evaluation-policy`, installs the template only when it is missing or has a lower version, and creates `otel-v1-genai-evaluation-000001` with the write alias when the alias does not exist.
-
-On Amazon OpenSearch Ingestion, use the same routes. The pipeline cannot read local files, so create the index first (the AWS installer does) or pass the template inline with `template_content`. See [AWS Managed Services](/docs/deploy/aws/#agent-evaluation-results).
-
-### Experimental: `index_type: genai-evaluation-plain`
-
-[opensearch-project/data-prepper#7243](https://github.com/opensearch-project/data-prepper/pull/7243) adds an index type for evaluation results to the OpenSearch sink. It is experimental and not in a Data Prepper release yet; its mappings may change in a minor release.
+The sink above writes to an alias you created. The local stack and the AWS pipelines also pass the whole template inline, so the sink installs it when it is missing:
 
 ```yaml
   sink:
@@ -671,20 +660,26 @@ On Amazon OpenSearch Ingestion, use the same routes. The pipeline cannot read lo
         hosts: ["https://opensearch:9200"]
         username: "admin"
         password: "<password>"
-        index_type: genai-evaluation-plain  # experimental
-        routes: ["evaluations"]
+        index_type: custom
+        index: otel-v1-genai-evaluation   # the write alias
+        template_type: index-template
+        template_content: |
+          { "version": 1, "priority": 100, "template": { ... } }   # the whole template, without index_patterns
 ```
 
-The sink sets up the evaluation index itself, with the same names as this page, so it converges with a manual install or the AWS installer:
+- The sink sets the index pattern itself, so the inline copy has no `index_patterns`. Otherwise it is identical to [the template above](#the-index-template).
+- Data Prepper does not replace an installed template with the same or a higher version.
+- The inline template is a fallback. If the sink starts before the alias exists, it creates a concrete index `otel-v1-genai-evaluation` from it, with the evaluation mappings but no rollover. That index then blocks the alias. This is why the local stack and the AWS installer create the alias first.
 
-- On backends with ISM: the template `otel-v1-genai-evaluation-index-template` (`"version": 1`, priority 100), the ISM policy `otel-v1-genai-evaluation-policy`, and the first index `otel-v1-genai-evaluation-000001` behind the write alias `otel-v1-genai-evaluation`.
-- On OpenSearch Serverless (`aws.serverless: true`): a template for `["otel-v1-genai-evaluation"]` without the ISM setting, and the plain index `otel-v1-genai-evaluation`.
+On Amazon OpenSearch Ingestion, use the same routes and sink. The pipeline cannot create ISM policies, so create the policy, template and first index before the pipeline starts (the AWS installer does). See [AWS Managed Services](/docs/deploy/aws/#agent-evaluation-results).
 
-Data Prepper skips a template that already exists with the same name and the same or a higher version, so a manual install must keep the name and `"version": 1`. Until the index type is in a Data Prepper release, the local stack and the AWS installer create the template, policy and first index themselves and write with a plain sink (`index: otel-v1-genai-evaluation`).
+### No evaluation index type yet
+
+[opensearch-project/data-prepper#7243](https://github.com/opensearch-project/data-prepper/pull/7243) proposes an `index_type: genai-evaluation-plain` for the OpenSearch sink, which would create the template, policy and alias itself. It is not merged. It is not in a Data Prepper release or in Amazon OpenSearch Ingestion. Do not use it: use `index_type: custom` with the alias and the inline template, as above. When the index type ships, it uses the same template name and version, so it keeps the template you installed.
 
 ### Attribute names must stay OTel names
 
-The template maps attributes under `attributes.` with their dotted OTel names, for example `attributes.gen_ai.evaluation.score.value`, and the Evaluations pages read those names. That is what the `otlp` source produces by default (`output_format: otel`). A source that writes another shape (for example `log.attributes.*`) gets none of the evaluation mappings, and the pages find no results. Check a stored result:
+The template maps attributes under `attributes.` with their dotted OTel names, for example `attributes.gen_ai.evaluation.score.value`, and readers query those names. That is what the `otlp` source produces by default (`output_format: otel`). A source that writes another shape (for example `log.attributes.*`) gets none of the evaluation mappings, and queries on those names find no results. Check a stored result:
 
 ```bash
 curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/otel-v1-genai-evaluation/_search?size=1&filter_path=hits.hits._source.attributes'
@@ -692,11 +687,11 @@ curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/otel-v1-genai-e
 
 ## Migrate from the logs index
 
-Earlier versions of the stack stored evaluation results in the logs index (`logs-otel-v1-*`) or in daily indices. To move to the evaluation index:
+Earlier versions of the stack stored evaluation results in the logs index (`logs-otel-v1-*`) or in daily indices. A pipeline that started before the alias existed may also have created a concrete `otel-v1-genai-evaluation` index. To move to the evaluation index:
 
 1. Create the evaluation index ([above](#the-evaluation-index)) and update your pipeline's routes, so new results go only to `otel-v1-genai-evaluation`.
-2. In OpenSearch Dashboards, open **Agent monitoring > Evaluations**, select **Settings** (Agent evaluations settings), choose **Create evaluations dataset** for `otel-v1-genai-evaluation*` or select it, and select **Update**. The Evaluations pages and the Evaluations column in Agent Traces read the dataset from this setting.
-3. Optional: copy the old results across, so their history stays on the pages:
+2. Point your queries, saved searches and index patterns at `otel-v1-genai-evaluation*` instead of the logs index.
+3. Optional: copy the old results across, so their history stays in one place:
 
     ```json
     POST _reindex

@@ -12,8 +12,8 @@ The GenAI Observability SDKs ([Python](/docs/send-data/ai-agents/python/), [Type
 | API | Use it for | Result has suite, run, case |
 |---|---|---|
 | `score()` | **Online**: grade live traffic, inline or from a separate evaluator job | No |
-| `evaluate()` | **Offline**: run a synchronous agent over a test suite with scorer functions | Yes |
-| `Benchmark` | **Offline**: log cases you ran yourself (async agents, other harnesses, imported results) | Yes |
+| `evaluate()` | **Offline**: run your agent over a test suite with scorer functions | Yes |
+| `Benchmark` | **Offline**: log cases you ran yourself (other harnesses, imported results) | Yes |
 
 None of them creates spans: the agent's own spans are the trace, and the results attach to it. Every attribute they set is listed in [Data Model & Ingestion](/docs/agent-evals/data-model/#attributes). The full argument reference is in the SDK guides: [Python](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/agent-evaluations.md), [TypeScript](https://github.com/opensearch-project/genai-observability-sdk-ts/blob/main/docs/agent-evaluations.md).
 
@@ -81,10 +81,10 @@ The level defaults to `span` with a span context, `trace` with only a trace id, 
 
 ### Pass rules
 
-The verdict is `gen_ai.evaluation.score.label` = `pass` or `fail`. Your code decides it; Dashboards shows it and never computes one. The same rule applies to `score()`, `evaluate()` and `Benchmark`:
+The verdict is `gen_ai.evaluation.score.label` = `pass` or `fail`. Your code decides it; readers use the stored label and never compute one. The same rule applies to `score()`, `evaluate()` and `Benchmark`:
 
 1. The verdict comes from the first source that gives one: a `pass` / `fail` `label` (any case), then `EvalScore.passed`, then `threshold` + `direction` (`maximize` by default).
-2. A label that is not a verdict (for example `partially_relevant`) moves to `opensearch.gen_ai.evaluation.judge_label` when the result has a verdict. Without a verdict it stays the label, and the result shows as **Scored**, outside pass rates.
+2. A label that is not a verdict (for example `partially_relevant`) moves to `opensearch.gen_ai.evaluation.judge_label` when the result has a verdict. Without a verdict it stays the label, and the result is only scored: it is left out of pass rates.
 3. A scorer that returns a `bool` returns a verdict.
 
 ```python
@@ -143,7 +143,7 @@ Results identify the prompt by name and version (`answer-quality@v3`). The full 
 
 ### Errors
 
-If the evaluator fails, send an error result: `error.type` set, no value, no label. It shows as **Evaluator error** and is left out of pass rates.
+If the evaluator fails, send an error result: `error.type` set, no value, no label. It is an evaluator error, left out of pass rates.
 
 ```python
 score("relevance", trace_id=agent_trace_id, span_id=agent_span_id, error_type="TimeoutError", evaluator="relevance_judge")
@@ -212,7 +212,7 @@ await provider.forceFlush();
 </TabItem>
 </Tabs>
 
-Run it on a schedule. `find_evaluated_trace_ids(..., evaluator=...)` makes it safe to re-run: it skips traces this judge already scored, while results from other evaluators don't count. Pass the agent version from the span record too, or the judge's results group under "(no version)" on the agent page. The stack's eval canary (`docker-compose/agent-eval-canary/`) is a working example with deterministic checks.
+Run it on a schedule. `find_evaluated_trace_ids(..., evaluator=...)` makes it safe to re-run: it skips traces this judge already scored, while results from other evaluators don't count. Pass the agent version from the span record too, or the judge's results have no agent version. The stack's eval canaries are working examples: see [Example Agents](/docs/ai-observability/examples/#eval-canaries).
 
 ---
 
@@ -274,9 +274,9 @@ const travelPlanner = observe({ name: "travel_planner", op: Op.INVOKE_AGENT }, (
 
 const exactMatch = defineScorer({ name: "exact_match", evaluatorType: "code" }, (_i, output, expected) => output === expected);
 
-const result = evaluate({
+const result = await evaluate({
   name: "travel-capitals",
-  task: (input) => travelPlanner(String(input)), // synchronous; use Benchmark for async agents
+  task: (input) => travelPlanner(String(input)), // async tasks work too
   data: [
     { caseId: "fr", caseName: "France", input: "Capital of France?", expected: "Paris" },
     { caseId: "pe", caseName: "Peru", input: "Capital of Peru?", expected: "Lima" },
@@ -290,14 +290,34 @@ process.exitCode = result.summary.failCount || result.summary.errorCount ? 1 : 0
 </TabItem>
 </Tabs>
 
-- A scorer receives `(input, output, expected)` and returns a `bool` (a verdict), a number, an `EvalScore`, or a list of `EvalScore`. Scorers are synchronous; wrap an async judge yourself, or use `Benchmark`.
-- `@scorer(...)` (`defineScorer()`) declares the evaluation name, `threshold`, `direction`, `score_min`, `score_max`, `evaluator`, `evaluator_type`, the description and the judge context. Fields set on a returned `EvalScore` win.
+- A scorer receives `(input, output, expected)` and returns a `bool` (a verdict), a number, an `EvalScore`, or a list of `EvalScore`.
+- Python `evaluate()` is synchronous: call an async agent or judge with `asyncio.run(...)` inside the task or scorer. TypeScript `evaluate()` awaits async tasks and scorers, so always `await evaluate(...)`.
+- `@scorer(...)` (`defineScorer()`) declares the evaluation name, `threshold`, `direction`, `score_min`, `score_max`, `evaluator`, `evaluator_type`, the description and the judge context. Fields set on a returned `EvalScore` win over the declaration. See [Scorer ownership](#scorer-ownership) for which results the declaration applies to.
 - A task that raises is not scored: each scorer emits an error result with `error.type` set to the exception class. A scorer that raises emits one error result. The run continues.
-- `evaluate()` prints a summary and returns it (`result.summary`: run id, pass, fail and error counts, and per-evaluation `avg`, `min`, `max`, `count`). The summary is computed locally and is not sent.
+- `evaluate()` prints a summary and returns it (`result.summary`: run id, pass, fail and error counts, and per-evaluation `avg`, `min`, `max`, `count`). The summary is computed locally and is not sent. Its keys are described in [Result keys](#result-keys).
+
+### Scorer ownership
+
+A scorer's declaration goes only on the scorer's **own** results. A returned `EvalScore` is the scorer's own when its `evaluator` is unset (or `""`) or equals the scorer's evaluator (the declared `evaluator`, else the function name). Ownership is decided by evaluator only, never by the evaluation name.
+
+- A result that names a different evaluator, for example `EvalScore(name="faithfulness", evaluator="deepeval.faithfulness")`, keeps its own type, pass rule and judge fields. It gets none of the scorer's declaration. So its evaluator name, type and judge fields always describe the same evaluator.
+- Run and case `metadata` is not part of a declaration. It goes on every result of the run, other evaluators' results included. Use the scorer's judge arguments, not metadata, to scope a judge model or prompt to one evaluator.
+- A scorer's error result always names the scorer's own evaluator. A wrapper around another library's metric should declare that metric's evaluator (`@scorer(evaluator="deepeval.faithfulness", ...)`), so its error and success results name the same evaluator.
+- When a scorer declares fields but none of its results in the run are its own, the SDK logs one warning at the end of the run.
+
+### Result keys
+
+The local results (`TestCaseResult.scores` and `.verdicts`, and `summary.scores`) are keyed by evaluation name. When results of different evaluators share a name in one run, none overwrites another:
+
+- One evaluator keeps the plain key, for example `answer_relevance`. In Python it is the first evaluator that reports the name. In TypeScript each scorer claims its own name first.
+- The others are keyed `"<name> (<evaluator>)"`, for example `"answer_relevance (lib.keyword_overlap)"`, or `"<name> (no evaluator)"` when the result names none.
+- Results of one evaluator with the same name share a key. A `fail` verdict is kept over a `pass`, so a failing result always fails the case.
+
+The keys are local only. The stored events always carry `gen_ai.evaluation.name` and the evaluator name as separate attributes.
 
 ## Offline evaluation: `Benchmark`
 
-Use `Benchmark` when you run the cases yourself: async agents (all TypeScript agents, Python `asyncio`), another test harness, or results you import. Pass the agent run's `trace_id` and `span_id` so each result links to its trace.
+Use `Benchmark` when you run the cases yourself: another test harness, results you import, or agents you run in your own loop. Pass the agent run's `trace_id` and `span_id` so each result links to its trace.
 
 <Tabs syncKey="sdk-lang">
 <TabItem label="Python">
@@ -344,8 +364,8 @@ await provider.forceFlush();
 ## Cases, expected output and runs
 
 - **Case ids.** Pass a stable `case_id` (`caseId`). Without one the SDK uses the first 16 hex characters of the SHA-256 of the input, so editing the input makes a new case. See [Case identity](/docs/agent-evals/data-model/#case-identity).
-- **Expected output.** A case's `expected` is sent on each of its results as `opensearch.test.case.expected`: strings as is, other values JSON-encoded, cut at 32768 characters with `opensearch.test.case.expected_truncated` = `true`. Pass `record_expected=False` (`recordExpected: false`) if your test data is sensitive; scorers still get it. Inputs and outputs are never sent on results: they are in the agent's trace.
-- **Run name and description.** `run_name` and `run_description` (`runName`, `runDescription`) are shown in place of the generated run id (`run_<timestamp>_<random>`) and explain what changed.
+- **Expected output.** A case's `expected` is sent on each of its results as `opensearch.test.case.expected`: strings as is, other values JSON-encoded, cut at 8192 characters with `opensearch.test.case.expected_truncated` = `true`. Pass `record_expected=False` (`recordExpected: false`) if your test data is sensitive; scorers still get it. Inputs and outputs are never sent on results: they are in the agent's trace.
+- **Run name and description.** `run_name` and `run_description` (`runName`, `runDescription`) give a run a readable name (`opensearch.test.suite.run.name`) next to the generated run id (`run_<timestamp>_<random>`), and say what changed (`opensearch.test.suite.run.description`, cut to 1024 characters).
 - **Run id.** `run_id` (`runId`) sets `test.suite.run.id` exactly. Use it to [shard a suite](/docs/agent-evals/ci/#shard-a-suite-under-one-run-id) under one run, or to add re-scored results to an existing run.
 - **Metadata.** `metadata=` is copied to every result of the run. Reserved keys (`test.*`, `cicd.pipeline.*`, the evaluation fields) are dropped with a warning.
 - **CI.** Inside GitHub Actions, GitLab CI and Jenkins the SDK adds `cicd.pipeline.*`. See [Run evaluations in CI](/docs/agent-evals/ci/#cicd-attributes).
@@ -354,11 +374,11 @@ await provider.forceFlush();
 
 ## `OpenSearchTraceRetriever`
 
-Reads stored agent traces back from OpenSearch, for evaluator jobs and trace-based scorers. Python needs the `[opensearch]` extra (`pip install "opensearch-genai-observability-sdk-py[opensearch]>=0.3.0"`).
+Reads stored agent traces back from OpenSearch, for evaluator jobs and trace-based scorers. Python needs the `[opensearch]` extra: `pip install "opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"` until 0.3.0 is on PyPI, then `"opensearch-genai-observability-sdk-py[opensearch]>=0.3.0"`.
 
 | Method (Python / TypeScript) | Returns |
 |---|---|
-| `list_root_spans(services=, since=, max_results=)` / `listRootSpans({...})` | One `SpanRecord` per recent trace: its agent root (the marked agent span, else the span without a parent, as in Agent Traces) with its agent name and version, messages and token counts |
+| `list_root_spans(services=, since=, max_results=)` / `listRootSpans({...})` | One `SpanRecord` per recent agent root: the marked agent span, else a parentless `invoke_agent` or `create_agent` span, as in Agent Traces, with its agent name and version, messages and token counts |
 | `get_traces(identifier)` / `getTraces(id)` | A `SessionRecord`: all traces of a conversation id (`gen_ai.conversation.id`) or of one trace id, with their spans |
 | `find_evaluated_trace_ids(trace_ids, evaluator=None, evaluation_name=None)` / `findEvaluatedTraceIds(ids, { evaluator, evaluationName })` | The ids that already have a `gen_ai.evaluation.result`, from any evaluator or only from the given evaluator or evaluation |
 

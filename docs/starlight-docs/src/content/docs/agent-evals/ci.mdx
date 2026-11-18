@@ -7,7 +7,7 @@ sidebar:
 
 import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
-An offline test suite is most useful when it runs on every change. In CI, each run of the suite becomes one **eval run** in OpenSearch Dashboards, linked back to the CI job that produced it, and the job fails when a score drops below its bar.
+An offline test suite is most useful when it runs on every change. In CI, each run of the suite becomes one run (`test.suite.run.id`) in the evaluation index, linked back to the CI job that produced it, and the job fails when a score drops below its bar.
 
 This page assumes you have a suite that runs locally. If not, start with the [Quickstart](/docs/agent-evals/quickstart/).
 
@@ -22,12 +22,12 @@ flowchart LR
     S -->|"means vs gates"| G{"Gate"}
     G -->|"pass"| OK["Job passes<br/>summary + run link"]
     G -->|"fail"| KO["Job fails"]
-    O --> D["Dashboards: Eval runs,<br/>run page, Compare"]
+    O --> Q["Query runs by<br/>test.suite.run.id"]
 ```
 
 ## The GitHub Action example
 
-The Python SDK ships a reusable composite action in [`examples/github-action`](https://github.com/opensearch-project/genai-observability-sdk-py/tree/main/examples/github-action). It installs the SDK, calls `register()` with your endpoints, runs your suite, writes a job summary (a link to the run in Dashboards and a table of per-evaluation means, pass and fail counts, and errored cases) and applies your gates.
+The Python SDK ships a reusable composite action in [`examples/github-action`](https://github.com/opensearch-project/genai-observability-sdk-py/tree/main/examples/github-action). It installs the SDK, calls `register()` with your endpoints, runs your suite, writes a job summary (a table of per-evaluation means, pass and fail counts, and errored cases) and applies your gates.
 
 ### 1. Expose the suite as a function
 
@@ -132,8 +132,14 @@ jobs:
 
 For an OTel Collector, a Data Prepper `otlp` source or one OpenSearch Ingestion pipeline with both paths, pass a single OTLP base URL as `endpoint` instead and leave `aws-region` empty (unless the endpoint needs SigV4). Store the URLs as secrets or variables. Give the job's role `osis:Ingest` on the pipelines.
 
-<Aside type="note">
-The action needs the Python SDK 0.3.0 or later; its `install` input defaults to `opensearch-genai-observability-sdk-py>=0.3.0`. If you set `install` (for example to add your suite's own packages), keep that requirement in it.
+<Aside type="caution" title="SDK version">
+The action needs the Python SDK 0.3.0 or later. Its `install` input defaults to `opensearch-genai-observability-sdk-py>=0.3.0`, which `pip` cannot resolve until 0.3.0 is on PyPI. Until then, set `install` to a git requirement pinned to a commit of `main`:
+
+```yaml
+          install: "git+https://github.com/opensearch-project/genai-observability-sdk-py@<commit-sha>"
+```
+
+If you set `install` (for example to add your suite's own packages), keep the SDK requirement in it.
 </Aside>
 
 ### Inputs
@@ -146,22 +152,22 @@ The action needs the Python SDK 0.3.0 or later; its `install` input defaults to 
 | `aws-region` | | Signs both exporters with SigV4 when set |
 | `aws-service` | `osis` | SigV4 service: `osis` or `es` |
 | `service-name` | `agent-evals-ci` | `service.name` of the CI process |
-| `dashboards-url` | | OpenSearch Dashboards base URL, for the run link. With workspaces, include `/w/<workspaceId>` |
+| `dashboards-url` | | Optional. A Dashboards base URL, used only for the `run-url` output and the run link in the job summary |
 | `fail-on-regression` | | Gates, see below |
 | `pass-threshold` | `0.5` | Fallback for scores without a verdict, for the summary table only |
 | `working-directory` | `.` | Directory to run the suite from |
 | `install` | `opensearch-genai-observability-sdk-py>=0.3.0` | pip requirement(s) installed first, space separated |
 
-Outputs: `run-id` (the `test.suite.run.id`) and `run-url` (the run page in Dashboards). The run shows up in Dashboards once Data Prepper has written it, usually 60 to 90 seconds after the job sent it, so the link can open an empty run page for the first minute.
+Outputs: `run-id` (the `test.suite.run.id`) and `run-url` (set only with `dashboards-url`). Results are searchable once Data Prepper has written them, usually 60 to 90 seconds after the job sent them.
 
 ## Threshold gates
 
 There are two kinds of thresholds, and they do different jobs:
 
-- **Per result**, in the scorer: `@scorer(threshold=4, direction="maximize")` (or a `bool` / `pass` / `fail` label) decides each result's verdict. The verdict is stored on the result (`gen_ai.evaluation.score.label`) and drives the pass rates in Dashboards.
+- **Per result**, in the scorer: `@scorer(threshold=4, direction="maximize")` (or a `bool` / `pass` / `fail` label) decides each result's verdict. The verdict is stored on the result (`gen_ai.evaluation.score.label`) and is what pass rates count.
 - **Per run**, in CI: `fail-on-regression` fails the job when an evaluation's **mean** over the run misses its bar.
 
-The job's gate result is not stored on the run. A run whose job failed on a mean looks all green in Dashboards when every per-result verdict passed. If Dashboards should show the failure, give the scorer a per-result threshold at the same bar.
+The job's gate result is not stored on the run. A run whose job failed on a mean still has only passing results when every per-result verdict passed. If the stored results should show the failure, give the scorer a per-result threshold at the same bar.
 
 `fail-on-regression` takes one gate per line or comma, keyed by evaluation name (`gen_ai.evaluation.name`):
 
@@ -222,19 +228,24 @@ Inside CI, the SDK stamps the OTel `cicd.pipeline.*` attributes on every evaluat
 
 For another CI system, pass them yourself: `ci_pipeline={"cicd.pipeline.name": ..., "cicd.pipeline.run.id": ..., "cicd.pipeline.run.url.full": ...}` to `evaluate()` or `Benchmark()` (`ciPipeline` in TypeScript).
 
-In Dashboards, the run page header links to the CI run, and the result flyout shows the CI run of that result. Give each CI run a readable name too, for example `run_name=f"PR {pr_number} @ {sha[:7]}"`, so the Eval runs list reads like your CI history.
+Every result of the run then names the CI run that produced it. Give each CI run a readable name too, for example `run_name=f"PR {pr_number} @ {sha[:7]}"` (stored as `opensearch.test.suite.run.name`), so a list of runs reads like your CI history.
 
 ## Compare runs
 
 Every run of a suite can be compared case by case with any other run of the same suite. Cases are matched by `test.case.id`, so keep case ids stable (see [Case identity](/docs/agent-evals/data-model/#case-identity)).
 
-- From **Eval runs**, open a run and choose **Compare with run before**, or **Compare with…** to pick another run of the suite.
-- Or link straight to the comparison, for example from the job summary: `<dashboards>/app/agentTraces/evaluations#/compare/<runA>/<runB>`. Run A is the baseline. URL-encode both ids; with workspaces, prefix `/w/<workspaceId>`.
-- The run page itself: `<dashboards>/app/agentTraces/evaluations#/runs/<runId>`. `evaluate()` returns the id as `result.summary.run_id`.
+The verdicts of two runs, per case and evaluation:
 
-Compare shows, per case, the status in each run (**Fixed**, **Regressed**, **Same**, or **Only in A** / **Only in B**), the per-evaluation change, and **Compare traces**, which puts both agent traces of a case on one timeline. Run A is the baseline; **Swap A and B** reverses it.
+```
+source = otel-v1-genai-evaluation*
+| where `attributes.test.suite.name` = 'my-agent-suite'
+  and `attributes.test.suite.run.id` in ('<baseline run id>', '<PR run id>')
+| stats count() by `attributes.test.case.id`, `attributes.gen_ai.evaluation.name`, `attributes.test.suite.run.id`, `attributes.gen_ai.evaluation.score.label`
+```
 
-A good baseline for pull requests is the latest run on your main branch. Run the suite on `main` after each merge, save its `run-id` output (for example as a build artifact), and link `#/compare/<main run>/<PR run>` in the PR's job summary.
+A case that passes in the baseline and fails in the PR run is a regression. `evaluate()` returns the run id as `result.summary.run_id`, and the action returns it as the `run-id` output.
+
+A good baseline for pull requests is the latest run on your main branch. Run the suite on `main` after each merge, and save its `run-id` output (for example as a build artifact) so the PR job can compare against it.
 
 ## Shard a suite under one run id
 

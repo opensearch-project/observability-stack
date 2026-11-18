@@ -1,6 +1,6 @@
 ---
 title: "Quickstart"
-description: "Install the SDK, send your first offline and online evaluation results, set up Agent Evaluations in OpenSearch Dashboards, and see what each page shows"
+description: "Start the stack, install the SDK, send your first offline and online evaluation results, and query them in OpenSearch"
 sidebar:
   order: 1
 ---
@@ -8,13 +8,10 @@ sidebar:
 import { Aside, Steps, Tabs, TabItem, Code } from '@astrojs/starlight/components';
 import codingAgentPrompt from '../../../snippets/coding-agent-prompt.md?raw';
 
-This quickstart takes you from an empty stack to evaluation results in OpenSearch Dashboards. You run a small offline test suite against a real agent (a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock), score one live trace online, set up **Agent Evaluations** in Dashboards, open the run, then change the agent and compare the two runs.
+This quickstart takes you from an empty stack to evaluation results in OpenSearch. You run a small offline test suite against a real agent (a [Strands](/docs/send-data/ai-agents/integrations/#strands-agents) agent on Amazon Bedrock), score one live trace online, query the results, then change the agent and compare the two runs.
 
-<Aside type="caution" title="Preview">
-Agent Evaluations needs:
-
-- the Python SDK 0.3.0 or later, or the TypeScript SDK 0.2.0 or later (step 2). If an import such as `mark_agent_root` or `markAgentRoot` fails, upgrade.
-- an OpenSearch Dashboards build with **Agent monitoring > Evaluations**, with `explore.agentTraces.enabled: true` and `explore.agentTraces.evaluations.enabled: true` in `opensearch_dashboards.yml`.
+<Aside type="caution" title="SDK versions">
+Agent evaluations need the Python SDK 0.3.0 or the TypeScript SDK 0.2.0. They are not on PyPI and npm yet, so step 2 installs them from the `main` branch. If an import such as `mark_agent_root` or `markAgentRoot` fails, you have an older release.
 </Aside>
 
 ## What you build
@@ -27,11 +24,10 @@ flowchart LR
     D -->|"spans"| S[("otel-v1-apm-span-*")]
     D -->|"eventName == gen_ai.evaluation.result"| R[("otel-v1-genai-evaluation")]
     D -->|"other logs"| L[("logs-otel-v1-*")]
-    S --> UI["Dashboards<br/>Agent Traces + Evaluations"]
-    R --> UI
+    S --- R
 ```
 
-Each score is one `gen_ai.evaluation.result` log event, linked to the agent trace it judged. The [Data Model & Ingestion](/docs/agent-evals/data-model/) page describes the event and the index in full.
+Each score is one `gen_ai.evaluation.result` log event, linked to the agent trace it judged: the result and the agent span share `traceId` and `spanId`. The [Data Model & Ingestion](/docs/agent-evals/data-model/) page describes the event and the index in full.
 
 ## Prerequisites
 
@@ -51,8 +47,8 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     For evaluations, the stack:
 
-    - routes `gen_ai.evaluation.result` events, and only those, from Data Prepper to the `otel-v1-genai-evaluation` write alias. All other logs still go to `logs-otel-v1-*`.
-    - creates the evaluation index template, its ISM policy and the first index `otel-v1-genai-evaluation-000001`. See [The evaluation index](/docs/agent-evals/data-model/#the-evaluation-index).
+    - runs the one-shot `genai-evaluation-index-init` job before Data Prepper starts. It creates the ISM rollover policy, the index template and the first index `otel-v1-genai-evaluation-000001` behind the `otel-v1-genai-evaluation` write alias. See [The evaluation index](/docs/agent-evals/data-model/#the-evaluation-index).
+    - runs Data Prepper 2.17.0, which routes `gen_ai.evaluation.result` events, and only those, to the write alias. All other logs still go to `logs-otel-v1-*`.
 
     The OTel Collector listens on `4318` (OTLP/HTTP) and `4317` (gRPC), OpenSearch on `9200`, Dashboards on `5601`. The admin password is `OPENSEARCH_PASSWORD` in `.env`.
 
@@ -65,25 +61,32 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     ```bash
     python -m venv .venv && source .venv/bin/activate
-    pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
+    pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents
     export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
     ```
+
+    After the 0.3.0 release, use `pip install "opensearch-genai-observability-sdk-py>=0.3.0"` instead.
 
     </TabItem>
     <TabItem label="TypeScript">
 
+    Build a package from `main`, then install it with the OpenTelemetry context manager:
+
     ```bash
-    npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0" @opentelemetry/api @opentelemetry/context-async-hooks
+    git clone --depth 1 https://github.com/opensearch-project/genai-observability-sdk-ts.git
+    (cd genai-observability-sdk-ts && npm install && npm run build && npm pack)
+    npm install ./genai-observability-sdk-ts/opensearch-project-genai-observability-sdk-ts-0.2.0.tgz \
+      @opentelemetry/api @opentelemetry/context-async-hooks
     ```
 
-    Use ES modules (`"type": "module"` in `package.json`) and run the examples with `npx tsx`.
+    After the 0.2.0 release, use `npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"` instead. Use ES modules (`"type": "module"` in `package.json`) and run the examples with `npx tsx`.
 
     </TabItem>
     </Tabs>
 
 3. **Register once at startup**
 
-    `register()` sets up two OTLP exporters: traces for the agent spans and logs for the evaluation events. With no endpoint it sends to `http://localhost:4318`, the stack's collector. `agent_name` and `agent_version` are stamped on every result, so the Evaluations pages can group by agent version.
+    `register()` sets up two OTLP exporters: traces for the agent spans and logs for the evaluation events. With no endpoint it sends to `http://localhost:4318`, the stack's collector. `agent_name` and `agent_version` are stamped on every result, so you can group results by agent version.
 
     <Tabs syncKey="sdk-lang">
     <TabItem label="Python">
@@ -131,7 +134,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     ```python
     """Agent evaluations quickstart: a Strands agent on Amazon Bedrock, two scorers, one offline run.
 
-    pip install "opensearch-genai-observability-sdk-py>=0.3.0" strands-agents
+    pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main" strands-agents
     export OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental,gen_ai_span_attributes_only,gen_ai_use_latest_invocation_tokens
     """
     import os
@@ -208,7 +211,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
       "Who wrote Hamlet?": "I am not sure.",
     };
 
-    // evaluate() needs a synchronous task; for async agents use Benchmark (see Evaluation & Scoring).
+    // A plain function here; evaluate() also awaits async tasks and scorers.
     const agent = observe({ name: "quickstart_agent", op: Op.INVOKE_AGENT }, (question: string) => {
       markAgentRoot();
       return ANSWERS[question] ?? "I don't know.";
@@ -223,7 +226,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
       (_input, output) => Math.min(String(output).length / 40, 1),
     );
 
-    const result = evaluate({
+    const result = await evaluate({
       name: "quickstart-suite",
       task: (input) => agent(String(input)),
       data: [
@@ -247,7 +250,7 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     - 4 agent traces (`invoke_agent quickstart_agent`). Each root span carries `test.suite.name`, `test.suite.run.id` and `test.case.id`.
     - 8 `gen_ai.evaluation.result` events, one per case per scorer, each parented to its case's agent root span, with the expected output in `opensearch.test.case.expected`. With the Python agent, `france` usually answers "Paris." and fails `answer_length`; with the TypeScript mock, `hamlet` fails both scorers.
 
-    Keep `case_id` stable: Compare matches cases by it. Without one, the SDK derives the id from a hash of the input, so editing a question makes a new case.
+    Keep `case_id` stable: runs are compared case by case on it. Without one, the SDK derives the id from a hash of the input, so editing a question makes a new case.
 
 5. **Score live traffic online**
 
@@ -336,28 +339,27 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
 
     You see one bucket per run with 8 results each (one run per language you ran) and an `(online)` bucket with 1 per online run. If the results are in `logs-otel-v1-*` instead, the route is missing: see [Route results with Data Prepper](/docs/agent-evals/data-model/#route-results-with-data-prepper).
 
-7. **Set up Agent Evaluations in Dashboards**
+7. **Query the results**
 
-    Open [http://localhost:5601](http://localhost:5601), sign in as `admin`, and go to **Agent monitoring > Evaluations**. The first time, the page offers **Set up evaluations**. The setup has four steps:
+    The results are documents in `otel-v1-genai-evaluation*`. Query them with PPL, in **Discover** or **Query Workbench** in OpenSearch Dashboards, or with the PPL API. Pass rate per evaluation and run:
 
-    1. **Overview**: what Agent Evaluations shows.
-    2. **Evaluation results**: it detects the results, for example "Found 9 evaluation results in otel-v1-genai-evaluation*". If nothing is found yet, you can still finish: the pages fill in as results arrive.
-    3. **Agent traces**: pick the traces dataset the results judge (the stack's `otel-v1-apm-span*`).
-    4. **Create**: it creates the evaluations dataset (a logs dataset over `otel-v1-genai-evaluation*` with time field `@timestamp`) and saves the Agent Evaluations config of the workspace. Select **Create and open**.
+    ```bash
+    curl -sk -u "admin:$OPENSEARCH_PASSWORD" https://localhost:9200/_plugins/_ppl \
+      -H 'Content-Type: application/json' \
+      -d '{"query": "source = otel-v1-genai-evaluation* | where `attributes.test.suite.name` = '"'"'quickstart-suite'"'"' | stats count() by `attributes.test.suite.run.id`, `attributes.gen_ai.evaluation.name`, `attributes.gen_ai.evaluation.score.label`"}'
+    ```
 
-    You can change both datasets later with **Settings** in the page header.
+    The cases of one run, with their expected output and the trace each result judged:
 
-8. **See your results**
+    ```
+    source = otel-v1-genai-evaluation*
+    | where `attributes.test.suite.run.id` = '<run id>'
+    | fields `attributes.test.case.id`, `attributes.gen_ai.evaluation.name`, `attributes.gen_ai.evaluation.score.value`, `attributes.gen_ai.evaluation.score.label`, `attributes.opensearch.test.case.expected`, traceId, spanId
+    ```
 
-    The time range defaults to a recent window; widen it if your run is older.
+    The agent's input and output are not on the results. Open a result's `traceId` in [Agent Traces](/docs/ai-observability/agent-tracing/) to see the case's agent run.
 
-    - **Agents** (home): one row per agent, with the pass rate per agent version. `quickstart_agent` `v1` shows the suite's results; the Python online example records version `v2`, so its result shows under `v2`.
-    - **Eval runs**: one row per run. The Python run `v1 answer in as few words as possible` of `quickstart-suite` typically has 3 of 4 cases passing (the TypeScript run is `v1 baseline`).
-    - **Run page**: select the run to see its cases. Expand a case (for example `france`) to see the agent's input and output, the expected output, each evaluator's result, and **View trace**, which opens the agent trace in Agent Traces. Inside CI, the run header also links to the CI run.
-    - **Eval results**: every result in the range. Select one to open the result flyout: score, verdict, explanation, evaluator, what the judge saw (the judged span's input and output), and the judge's own trace when recorded.
-    - **Agent Traces**: traces with results show them in the **Evaluations** column and in the **Evaluations** tab of the trace flyout.
-
-9. **Run again and compare**
+8. **Run again and compare**
 
     Python: run the suite again with the `v2` prompt ("Answer in one complete sentence."):
 
@@ -365,9 +367,17 @@ Each score is one `gen_ai.evaluation.result` log event, linked to the agent trac
     AGENT_VERSION=v2 python quickstart_evals.py
     ```
 
-    Open the new run (`v2 answer in one complete sentence`) from **Eval runs** and choose **Compare with run before**: in the tested run `france` showed as **Fixed** (it now answers in a sentence) and no case as **Regressed**. A real model's answers vary, so your cases can differ. Compare matches cases by `test.case.id`; run A is the baseline.
+    TypeScript: change the mock answer to `"Who wrote Hamlet?"` to `"William Shakespeare wrote Hamlet."`, set `agentVersion: "v2"` and `runName: "v2 fixed hamlet"`, and run the suite again.
 
-    TypeScript: change the mock answer to `"Who wrote Hamlet?"` to `"William Shakespeare wrote Hamlet."`, set `agentVersion: "v2"` and `runName: "v2 fixed hamlet"`, and run the suite again: `hamlet` shows as **Fixed**.
+    Then put the two runs side by side, case by case. Cases match by `test.case.id`:
+
+    ```
+    source = otel-v1-genai-evaluation*
+    | where `attributes.test.suite.name` = 'quickstart-suite' and `attributes.gen_ai.evaluation.name` = 'answer_length'
+    | stats count() by `attributes.test.case.id`, `attributes.gen_ai.agent.version`, `attributes.gen_ai.evaluation.score.label`
+    ```
+
+    In the tested Python run, `france` failed `answer_length` with `v1` ("Paris.") and passed with `v2`. A real model's answers vary, so your cases can differ.
 
 </Steps>
 
