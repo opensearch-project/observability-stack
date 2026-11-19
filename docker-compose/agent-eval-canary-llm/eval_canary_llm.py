@@ -11,7 +11,8 @@ Complements the deterministic agent-eval-canary. Every cycle (EVAL_CANARY_LLM_IN
      judge model, judge prompt name and version) and links the judge's trace (judge_trace_id).
    - helpfulness, by the Strands Evals HelpfulnessEvaluator: a library result that names the
      library's evaluator (strands_evals.helpfulness), not this canary.
-2. Offline, every EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES: runs the travel_planner_judged suite
+2. Offline, EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES after start and then every
+   EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES: runs the travel_planner_judged suite
    with evaluate() against the running travel planner, as a named run. The judge is a @scorer that
    declares its judge context, so only its own results get it. One case injects a fault and is
    expected to fail.
@@ -60,6 +61,8 @@ LOOKBACK_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_LOOKBACK_MINUTES", "10"))
 MAX_PER_CYCLE = int(os.environ.get("EVAL_CANARY_LLM_MAX_PER_CYCLE", "20"))
 CONCURRENCY = int(os.environ.get("EVAL_CANARY_LLM_CONCURRENCY", "8"))
 SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES", "60"))
+# The first suite run waits for the stack and the agents to warm up
+SUITE_FIRST_RUN_MINUTES = float(os.environ.get("EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES", "5"))
 JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 TRAVEL_PLANNER_URL = os.environ.get("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
@@ -345,7 +348,7 @@ def run() -> None:
             time.sleep(10)
 
     recently: dict[str, float] = {}
-    next_suite = time.time() + 90
+    next_suite = time.time() + SUITE_FIRST_RUN_MINUTES * 60
     tracer_provider = trace.get_tracer_provider()
 
     while True:

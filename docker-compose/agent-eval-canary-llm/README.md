@@ -25,7 +25,7 @@ per cycle.
 | `answer_quality` (1 to 5, pass at 4) | `answer_quality_judge` (this canary) | Judge context: `evaluator_description`, `judge_model`, `judge_prompt_name` `answer-quality`, `judge_prompt_version`. The judge call is its own traced `chat` span with the judge prompt as `gen_ai.system_instructions`; the result links it with `judge_trace_id`. A judge failure is an error result (`error.type`, no score) |
 | `helpfulness` (0 to 1, pass at 0.5) | `strands_evals.helpfulness` (library) | Strands Evals `HelpfulnessEvaluator` score; its category ("Very helpful", ...) is kept as the judge label; the result names the library's evaluator, not this canary. The library's judge agent runs below a `chat` span, linked with `judge_trace_id` |
 
-### Offline test suite (every `EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES`)
+### Offline test suite (first after `EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES`, then every `EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES`)
 
 `evaluate()` runs `travel_planner_judged` against the running travel planner as a named run
 (`run_name` "llm judge <time> UTC"). Cases `rome-ok` and `barcelona-ok` should pass;
@@ -44,6 +44,7 @@ per cycle.
 | `EVAL_CANARY_LLM_LOOKBACK_MINUTES` | `10` | How far back to look for traces |
 | `EVAL_CANARY_LLM_MAX_PER_CYCLE` | `20` | Max online evaluations per cycle |
 | `EVAL_CANARY_LLM_CONCURRENCY` | `8` | Parallel Bedrock calls |
+| `EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES` | `5` | Minutes after start before the first suite run |
 | `EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES` | `60` | Minutes between suite runs; `0` turns the suite off |
 | `EVAL_JUDGE_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Bedrock model or inference profile of the judge |
 
