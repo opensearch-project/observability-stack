@@ -212,9 +212,12 @@ aws/cdk/
 │   ├── fgac-mapping/index.ts           # FGAC Security API role mapping
 │   ├── dqs-datasource/index.ts         # DQS Prometheus data source
 │   ├── opensearch-app/index.ts         # OpenSearch Application lifecycle
-│   └── ui-init/                        # Workspace, index patterns, Agent Evaluations config, dashboards
+│   ├── ui-init/                        # Workspace, index patterns, Agent Evaluations config, dashboards
+│   │   ├── index.ts
+│   │   └── arch-image.mjs              # Architecture diagram (base64 PNG)
+│   └── field-resync/                   # Every 5 min, appends dynamic fields to index pattern field lists
 │       ├── index.ts
-│       └── arch-image.mjs              # Architecture diagram (base64 PNG)
+│       └── merge-fields.ts
 ├── package.json
 ├── tsconfig.json
 └── cdk.json

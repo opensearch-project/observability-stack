@@ -1,6 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cr from 'aws-cdk-lib/custom-resources';
+import * as events from 'aws-cdk-lib/aws-events';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
@@ -82,6 +84,33 @@ export class OpenSearchAppConstruct extends Construct {
     });
     uiInit.node.addDependency(app);
     for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
+
+    // Field re-sync. UI init stores each index pattern's fields once, from the pipeline's templates,
+    // before telemetry has created the dynamic ones (gen_ai.*, span and resource attributes). Without
+    // this the stored lists stay short and dashboards fail with "Could not locate that
+    // index-pattern-field" until someone refreshes them by hand. It appends missing fields, never
+    // removes or rewrites existing ones, and writes nothing when the lists are already complete.
+    // It reuses the UI init role, which is already an application admin.
+    const fieldResyncFn = new NodejsFunction(this, 'FieldResyncFn', {
+      runtime: Runtime.NODEJS_22_X,
+      handler: 'handler',
+      entry: path.join(__dirname, '..', 'custom-resources', 'field-resync', 'index.ts'),
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 256,
+      role: props.uiInitRole,
+      // One run at a time, so overlapping invocations cannot write the same pattern twice.
+      reservedConcurrentExecutions: 1,
+      environment: {
+        APP_ENDPOINT: this.appEndpoint,
+        REGION: stack.region,
+        WORKSPACE_ID: uiInit.getAttString('WorkspaceId'),
+      },
+      bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
+    });
+    new events.Rule(this, 'FieldResyncSchedule', {
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+      targets: [new targets.LambdaFunction(fieldResyncFn)],
+    });
 
     new cdk.CfnOutput(stack, 'OpenSearchAppEndpoint', { value: this.appEndpoint });
     new cdk.CfnOutput(stack, 'DashboardUrl', {
