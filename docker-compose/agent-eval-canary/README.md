@@ -2,7 +2,7 @@
 
 Evaluates the example agents with code checks: no LLM, no AWS credentials, no cost. It uses the
 [OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py) (installed
-from git `main` until 0.3.0 is on PyPI).
+0.3.0 or later from PyPI).
 
 Runs with the example services when the local OpenSearch backend is used (`local-backends`
 profile, see `COMPOSE_PROFILES` in `.env`).

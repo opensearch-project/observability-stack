@@ -54,13 +54,12 @@ Online results have no suite, run or case. See [Data Model & Ingestion](/docs/ag
 
 ## SDK versions
 
-Agent evaluations need the Python SDK 0.3.0 or the TypeScript SDK 0.2.0. These versions are not on PyPI and npm yet. Until they are, install from the `main` branch:
+Agent evaluations need the Python SDK 0.3.0 or the TypeScript SDK 0.2.0, or later:
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
+pip install "opensearch-genai-observability-sdk-py>=0.3.0"
+npm install @opensearch-project/genai-observability-sdk-ts@^0.2.0
 ```
-
-For TypeScript, build a package from `main`: see [Install the TypeScript SDK from main](/docs/send-data/ai-agents/typescript/#install-from-main). After the release, use `pip install "opensearch-genai-observability-sdk-py>=0.3.0"` and `npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"`.
 
 ## In this section
 

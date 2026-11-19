@@ -3,7 +3,7 @@
 Evaluates the example agents with an LLM judge on Amazon Bedrock. Opt-in: it needs AWS
 credentials with Bedrock access. It uses the
 [OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py) (installed
-from git `main` until 0.3.0 is on PyPI) and [Strands Evals](https://github.com/strands-agents/evals).
+0.3.0 or later from PyPI) and [Strands Evals](https://github.com/strands-agents/evals).
 
 Enable it by uncommenting `INCLUDE_COMPOSE_AGENT_EVAL_LLM` in `.env`.
 

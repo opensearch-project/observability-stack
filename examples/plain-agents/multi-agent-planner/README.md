@@ -283,8 +283,7 @@ events agents mark their own agent span only when they are called directly (no c
 ## SDK
 
 The agents use the [OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py)
-(`register()`, `observe()`, `enrich()`, `mark_agent_root()`), installed from git `main` until
-0.3.0 is on PyPI. The MCP server uses plain OpenTelemetry.
+(`register()`, `observe()`, `enrich()`, `mark_agent_root()`), 0.3.0 or later from PyPI. The MCP server uses plain OpenTelemetry.
 
 ## Sessions
 

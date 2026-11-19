@@ -4,8 +4,8 @@ version = "0.3.0"
 description = "Deterministic online and offline evaluations of the example agents"
 requires-python = ">=3.10"
 dependencies = [
-    # From git main until 0.3.0 is on PyPI (run names, judge context, scorer ownership)
-    "opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main",
+    # 0.3.0: run names, judge context, scorer ownership
+    "opensearch-genai-observability-sdk-py[opensearch]>=0.3.0",
     "opentelemetry-exporter-otlp-proto-grpc",
     "requests",
 ]

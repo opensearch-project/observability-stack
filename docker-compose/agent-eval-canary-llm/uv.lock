@@ -24,7 +24,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "boto3" },
-    { name = "opensearch-genai-observability-sdk-py", extras = ["opensearch"], git = "https://github.com/opensearch-project/genai-observability-sdk-py?rev=main" },
+    { name = "opensearch-genai-observability-sdk-py", extras = ["opensearch"], specifier = ">=0.3.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "requests" },
     { name = "strands-agents-evals", extras = ["opensearch"], specifier = ">=0.1.16" },
@@ -474,7 +474,7 @@ name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
@@ -798,7 +798,7 @@ wheels = [
 [[package]]
 name = "opensearch-genai-observability-sdk-py"
 version = "0.3.0"
-source = { git = "https://github.com/opensearch-project/genai-observability-sdk-py?rev=main#a33ffbe3725aee3dcb7711c9ca08060e2d8a8c51" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "botocore" },
     { name = "idna" },
@@ -807,6 +807,10 @@ dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-http" },
     { name = "opentelemetry-sdk" },
     { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/7e/10/a7870def062631e9a823351cf27a9b30328561b06bb247b0d579a42f2c37/opensearch_genai_observability_sdk_py-0.3.0.tar.gz", hash = "sha256:4811207c495aaf90005d6c9a5296f9720f47250544193b1b2b40f23fb077306d", size = 113427, upload-time = "2026-11-18T22:44:15.37Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1b/37/cebf3bfeaba5163b5b4702f4e10e252c527df7cb7f31a4b582da8678583c/opensearch_genai_observability_sdk_py-0.3.0-py3-none-any.whl", hash = "sha256:517a445e7f795a563edc3bd25827170a25e0222b2bb3712704701207cd742494", size = 66116, upload-time = "2026-11-18T22:44:13.984Z" },
 ]
 
 [package.optional-dependencies]
@@ -1876,8 +1880,8 @@ name = "uvicorn"
 version = "0.54.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "click" },
-    { name = "h11" },
+    { name = "click", marker = "python_full_version != '3.12.*' or sys_platform != 'emscripten'" },
+    { name = "h11", marker = "python_full_version != '3.12.*' or sys_platform != 'emscripten'" },
     { name = "typing-extensions", marker = "python_full_version < '3.11'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/da/34/30e9280707135d2cfc589dfff3cb796bd07a3aeb1a3e415ba09dd89d7bb4/uvicorn-0.54.0.tar.gz", hash = "sha256:a2e33cbfaa0306f8e6b0c13e0cb89d7d7a2da3e62b90c66e18c33d9807b28620", size = 112283, upload-time = "2026-09-25T06:52:37.601Z" }
