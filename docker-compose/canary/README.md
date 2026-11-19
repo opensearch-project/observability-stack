@@ -1,6 +1,17 @@
 # Canary Service
 
-The canary service is a periodic test client that invokes the weather-agent API to generate continuous telemetry data, including fault injection scenarios for testing observability and debugging workflows.
+The canary service is a periodic test client that invokes the travel planner (and, for shallow traces, the weather and events agents directly) to generate continuous telemetry data, including fault injection scenarios for testing observability and debugging workflows.
+
+## Sessions
+
+Travel-planner requests belong to multi-turn conversations that share a `gen_ai.conversation.id`, so the Agent Traces **Sessions** tab has sessions to show:
+
+- Short (2 to 3 turns), medium (4 to 6) and long (10 to 14) conversations, with 20 to 60 s between turns, and long-running ones (8 to 12 turns, 5 to 10 min apart) that span one to two hours. One long-running conversation is open from startup, at most two at once.
+- About a third of the conversations with 3 or more turns fail on a middle turn (a tool error, a rate limit or a partial failure).
+- 70% of the conversations carry a `user.id` (`user-ava`, `user-ben`, ...).
+- Conversations run interleaved: each invocation sends the next due turn of an open conversation, or starts something new.
+
+The kinds, rates and users are constants at the top of `canary.py` (`SESSION_KINDS`, `MID_TURN_FAILURE_RATE`, `USER_ID_RATE`, `USERS`).
 
 ## Purpose
 

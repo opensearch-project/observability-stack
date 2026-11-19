@@ -8,27 +8,19 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `@opensearch-project/genai-observability-sdk-ts` instruments JavaScript and TypeScript AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides an `observe()` wrapper for tracing agents and tools, and enriches spans with GenAI semantic convention attributes. It is the TypeScript counterpart of the [Python SDK](/docs/send-data/ai-agents/python/).
 
-- **npm:** [`@opensearch-project/genai-observability-sdk-ts`](https://www.npmjs.com/package/@opensearch-project/genai-observability-sdk-ts) (0.2.0 is not released yet; install from `main`)
+- **npm:** [`@opensearch-project/genai-observability-sdk-ts`](https://www.npmjs.com/package/@opensearch-project/genai-observability-sdk-ts)
 - **Node.js:** ^18.19.0 or 20.6.0 and later
 - **Source:** [github.com/opensearch-project/genai-observability-sdk-ts](https://github.com/opensearch-project/genai-observability-sdk-ts)
 
 ## Installation
 
-These docs use the SDK 0.2.0 APIs: `endpoint` as the OTLP base URL, the logs pipeline for evaluation events, `markAgentRoot()`, async `evaluate()`, judge context and run names. 0.2.0 is not on npm yet.
-
-### Install from main
-
-Until 0.2.0 is on npm, build a package from the `main` branch and install it:
+These docs use the SDK 0.2.0 APIs: `endpoint` as the OTLP base URL, the logs pipeline for evaluation events, `markAgentRoot()`, async `evaluate()`, judge context and run names.
 
 ```bash
-git clone --depth 1 https://github.com/opensearch-project/genai-observability-sdk-ts.git
-(cd genai-observability-sdk-ts && npm install && npm run build && npm pack)
-npm install ./genai-observability-sdk-ts/opensearch-project-genai-observability-sdk-ts-0.2.0.tgz
+npm install @opensearch-project/genai-observability-sdk-ts@^0.2.0
 ```
 
-The repository has no install-time build step, so `npm install github:...` does not work: it installs the package without its `dist/` folder.
-
-After the release, use `npm install "@opensearch-project/genai-observability-sdk-ts@>=0.2.0"` (or `pnpm add` / `yarn add`).
+`pnpm add` and `yarn add` work the same way.
 
 ### Optional packages
 

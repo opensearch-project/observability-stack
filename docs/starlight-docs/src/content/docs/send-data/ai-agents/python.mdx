@@ -8,25 +8,25 @@ import codingAgentPrompt from '../../../../snippets/coding-agent-prompt.md?raw';
 
 `opensearch-genai-observability-sdk-py` instruments Python AI agent applications using standard OpenTelemetry. It configures the OTEL pipeline in one call, provides a unified `observe()` primitive for tracing agents and tools, and enriches spans with GenAI semantic convention attributes automatically.
 
-- **PyPI:** [`opensearch-genai-observability-sdk-py`](https://pypi.org/project/opensearch-genai-observability-sdk-py/) (0.3.0 is not released yet; install from `main`)
+- **PyPI:** [`opensearch-genai-observability-sdk-py`](https://pypi.org/project/opensearch-genai-observability-sdk-py/)
 - **Python:** 3.10+
 - **Source:** [github.com/opensearch-project/genai-observability-sdk-py](https://github.com/opensearch-project/genai-observability-sdk-py)
 
 ## Installation
 
-These docs use the SDK 0.3.0 APIs: `endpoint=` as the OTLP base URL, the logs pipeline for evaluation events, `mark_agent_root()`, judge context and run names. 0.3.0 is not on PyPI yet. Until it is, install from the `main` branch:
+These docs use the SDK 0.3.0 APIs: `endpoint=` as the OTLP base URL, the logs pipeline for evaluation events, `mark_agent_root()`, judge context and run names.
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
+pip install "opensearch-genai-observability-sdk-py>=0.3.0"
 ```
 
-After the release, use `pip install "opensearch-genai-observability-sdk-py>=0.3.0"`. Upgrading from 0.2.x changes `endpoint=`: see [Upgrading to 0.3.0](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md#upgrading-to-030).
+Upgrading from 0.2.x changes `endpoint=`: see [Upgrading to 0.3.0](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md#upgrading-to-030).
 
 Auto-instrumentation for LLM providers is opt-in. Add the extra for your provider, for example:
 
 ```bash
-pip install "opensearch-genai-observability-sdk-py[bedrock] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"
-pip install "opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main"   # OpenSearchTraceRetriever
+pip install "opensearch-genai-observability-sdk-py[bedrock]>=0.3.0"
+pip install "opensearch-genai-observability-sdk-py[opensearch]>=0.3.0"   # OpenSearchTraceRetriever
 ```
 
 The extras are `openai`, `anthropic`, `bedrock`, `google`, `langchain`, `llamaindex`, `otel-instrumentors` (all providers and frameworks) and `opensearch`. Quote the requirement: zsh treats unquoted brackets as a glob. An extra installs only the OpenTelemetry instrumentor, not the library it instruments: install that yourself (for example `boto3`, `langgraph langchain-aws`). The full list is in [Auto-instrumentation](https://github.com/opensearch-project/genai-observability-sdk-py/blob/main/docs/configuration.md#auto-instrumentation).

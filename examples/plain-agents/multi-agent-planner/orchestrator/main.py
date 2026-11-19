@@ -169,6 +169,11 @@ class PlanRequest(BaseModel):
     # Conversation the request belongs to (gen_ai.conversation.id). Turns that share it form one
     # session in Agent Traces and can be evaluated together (session-level evaluations).
     session_id: Optional[str] = None
+    # The signed-in user (user.id on the agent span); Agent Traces shows it per session.
+    user_id: Optional[str] = None
+    # What the user typed this turn, for follow-ups in a conversation; defaults to
+    # "Plan a trip to <destination>".
+    message: Optional[str] = None
     fault: Optional[FaultConfig] = None
 
 
@@ -281,7 +286,10 @@ async def plan_trip(request: PlanRequest):
     model = random.choice(MODELS)
     provider = SYSTEMS[model]
     session_id = request.session_id or f"trip_{uuid4().hex[:12]}"
-    user_message = f"Plan a trip to {request.destination}" + (f" from {request.origin}" if request.origin else "")
+    user_message = request.message or (
+        f"Plan a trip to {request.destination}" + (f" from {request.origin}" if request.origin else "")
+    )
+    user_attrs = {"user.id": request.user_id} if request.user_id else {}
     called_remotely = _has_remote_parent()
 
     # The HTTP server span stays a plain HTTP span: only the invoke_agent span below names the agent.
@@ -300,11 +308,11 @@ async def plan_trip(request: PlanRequest):
             tool_definitions=TOOL_DEFINITIONS,
             input_messages=[{"role": "user", "parts": [{"type": "text", "content": user_message}]}],
             destination=request.destination,
-            **{"gen_ai.agent.version": AGENT_VERSION},
+            **{"gen_ai.agent.version": AGENT_VERSION, **user_attrs},
         )
         logger.info(
             "Planning trip to %s", request.destination,
-            extra={"gen_ai.conversation.id": session_id, "destination": request.destination, "origin": request.origin or ""},
+            extra={"gen_ai.conversation.id": session_id, "destination": request.destination, "origin": request.origin or "", **user_attrs},
         )
 
         fault = request.fault
