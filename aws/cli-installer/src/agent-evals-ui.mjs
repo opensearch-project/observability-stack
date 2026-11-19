@@ -103,7 +103,7 @@ export async function ensureAgentEvalsSetup(api, { wsId, dsId, tracesId }) {
 
   // b. The config: one per workspace. An existing one (made in Settings or by an earlier run) is
   // left as is, so a user's choice of datasets is kept.
-  const corrs = await api.get(`${w}/api/saved_objects/_find?type=correlations&per_page=100`);
+  const corrs = await api.get(`${w}/api/saved_objects/_find?type=correlations&per_page=10000`);
   const configs = (corrs.data?.saved_objects || [])
     .filter((c) => (c.attributes?.correlationType || '').startsWith(EVALS_CONFIG_PREFIX));
   const config = configs.find((c) => c.attributes.correlationType === `${EVALS_CONFIG_PREFIX}${wsId}`) || configs[0];
