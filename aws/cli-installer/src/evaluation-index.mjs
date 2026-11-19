@@ -24,6 +24,25 @@ export const EVALUATION_POLICY = JSON.parse(readFileSync(
 
 const TRANSIENT = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|network|fetch failed|terminated|timeout| returned (401|403|429|5\d\d)/i;
 
+export const DEFAULT_EVALUATION_RETENTION_DAYS = 7;
+
+/**
+ * The evaluation ISM policy with retention: the rollover policy from
+ * otel-v1-genai-evaluation-policy.json plus a delete state once an index is `retentionDays` old.
+ * 0 (or less) returns the rollover-only policy. Same shape as the local stack's retention policies.
+ */
+export function evaluationPolicy(retentionDays = DEFAULT_EVALUATION_RETENTION_DAYS) {
+  const policy = structuredClone(EVALUATION_POLICY);
+  const days = Number(retentionDays) || 0;
+  if (days <= 0) return policy;
+  const p = policy.policy;
+  p.description = `Rollover and ${days}-day retention for GenAI evaluation results`;
+  const first = p.states.find((s) => s.name === p.default_state);
+  first.transitions = [{ state_name: 'delete', conditions: { min_index_age: `${days}d` } }];
+  p.states.push({ name: 'delete', actions: [{ delete: {} }], transitions: [] });
+  return policy;
+}
+
 async function withRetry(fn, { attempts, delayMs, onRetry }) {
   for (let i = 0; ; i++) {
     try {
@@ -56,7 +75,10 @@ function fail(what, r) {
  * @param {string} endpoint domain endpoint with scheme, no trailing slash
  * @returns {Promise<{ policy: string, template: string, alias: string }>} what happened to each
  */
-export async function ensureEvaluationIndex(fetchFn, endpoint, { log = () => {}, attempts = 6, delayMs = 5000 } = {}) {
+export async function ensureEvaluationIndex(fetchFn, endpoint, {
+  log = () => {}, attempts = 6, delayMs = 5000, retentionDays = DEFAULT_EVALUATION_RETENTION_DAYS,
+} = {}) {
+  const policy = evaluationPolicy(retentionDays);
   const base = endpoint.replace(/\/+$/, '');
   const retry = (fn) => withRetry(fn, {
     attempts, delayMs,
@@ -70,7 +92,7 @@ export async function ensureEvaluationIndex(fetchFn, endpoint, { log = () => {},
     const cur = await request(fetchFn, url, 'GET');
     if (cur.ok) return 'exists';
     if (cur.status !== 404) throw fail(`GET ISM policy ${EVALUATION_POLICY_ID}`, cur);
-    const put = await request(fetchFn, url, 'PUT', EVALUATION_POLICY);
+    const put = await request(fetchFn, url, 'PUT', policy);
     if (put.ok) return 'created';
     if (/version_conflict_engine_exception|resource_already_exists_exception/.test(put.text)) return 'exists';
     throw fail(`PUT ISM policy ${EVALUATION_POLICY_ID}`, put);

@@ -143,7 +143,7 @@ Both methods set up storage for [agent evaluation results](/docs/agent-evals/) (
 |---|---|---|
 | **Written to** | Write alias `otel-v1-genai-evaluation` over `otel-v1-genai-evaluation-000001`, `-000002`, ... | One index, `otel-v1-genai-evaluation` |
 | **Created by** | Before the pipeline exists: the CLI installer, or a CDK custom resource. Both create the ISM policy `otel-v1-genai-evaluation-policy`, the index template `otel-v1-genai-evaluation-index-template`, and the first index with the write alias | The pipeline sink, on first write, from the template in the pipeline configuration (`template_content`, with `index.timestamp_field: time`) |
-| **Lifecycle** | ISM rollover at 50 GB or 24 hours, no delete | No ISM and no rollover. Retention comes from the collection's data lifecycle policy |
+| **Lifecycle** | ISM rollover at 50 GB or 24 hours, deleted after 7 days (CLI `--evaluation-retention-days`, CDK `-c evaluationRetentionDays=<days>`; `0` keeps them) | No ISM and no rollover. Retention comes from the collection's data lifecycle policy |
 
 - OpenSearch Ingestion cannot create ISM policies or aliases, which is why the installer and the CDK create them first.
 - The evaluation sink in both pipelines carries the whole evaluation template inline (`index_type: custom`, `template_type: index-template`, `template_content`). It is the same JSON as the local stack's template. On a managed domain it is a fallback: if the alias does not exist when the pipeline first writes, the sink creates a concrete `otel-v1-genai-evaluation` index with the evaluation mappings and no rollover.

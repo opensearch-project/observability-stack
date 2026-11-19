@@ -5,7 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
-import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_POLICY_JSON, EVALUATION_TEMPLATE_JSON } from './ingestion-pipeline';
+import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_TEMPLATE_JSON, evaluationPolicyJson } from './ingestion-pipeline';
 import { OpenSearchAppConstruct } from './opensearch-app';
 import { DemoWorkload } from './demo-workload';
 import { InfraStack } from './infra-stack';
@@ -17,6 +17,8 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   enableDemo?: boolean;
   /** IAM role ARNs mapped to all_access and security_manager and made OpenSearch UI admins, e.g. the roles people use to open Dashboards. */
   adminRoleArns?: string[];
+  /** Days before evaluation result indices are deleted on a managed domain (default 7; 0 keeps them). */
+  evaluationRetentionDays?: number;
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -82,7 +84,7 @@ export class ObservabilityStack extends cdk.Stack {
           TemplateName: `${EVALUATION_INDEX}-index-template`,
           PolicyId: `${EVALUATION_INDEX}-policy`,
           Template: EVALUATION_TEMPLATE_JSON,
-          Policy: EVALUATION_POLICY_JSON,
+          Policy: evaluationPolicyJson(props.evaluationRetentionDays),
         },
       });
     }

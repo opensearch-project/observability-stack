@@ -1169,6 +1169,7 @@ import {
   evaluationTemplateContent,
   EVALUATION_TEMPLATE,
   EVALUATION_POLICY,
+  evaluationPolicy,
 } from '../src/evaluation-index.mjs';
 
 const EVAL_FILES = ['otel-v1-genai-evaluation-index-template.json', 'otel-v1-genai-evaluation-policy.json'];
@@ -1185,6 +1186,26 @@ describe('evaluation index files', () => {
       }
     });
   }
+
+  // The local Data Prepper pipeline inlines the template by hand (the CLI and CDK build theirs from
+  // the JSON), so compare that copy too: a mapping change must reach the local stack as well.
+  it('the local Data Prepper pipeline inlines the same template, without index_patterns', () => {
+    const url = new URL('../../../docker-compose/data-prepper/pipelines.template.yaml', import.meta.url);
+    if (!existsSync(url)) return; // published package
+    const lines = readFileSync(url, 'utf8').split('\n');
+    const start = lines.findIndex((l) => /^otel-evaluations-pipeline:/.test(l));
+    assert.ok(start >= 0, 'otel-evaluations-pipeline not found');
+    const tc = lines.findIndex((l, i) => i > start && /^\s*template_content:\s*\|\s*$/.test(l));
+    assert.ok(tc > start, 'template_content not found in otel-evaluations-pipeline');
+    const indent = lines[tc + 1].match(/^\s*/)[0].length;
+    const block = [];
+    for (const l of lines.slice(tc + 1)) {
+      if (l.trim() && l.match(/^\s*/)[0].length < indent) break;
+      block.push(l.slice(indent));
+    }
+    const { index_patterns: _patterns, ...expected } = EVALUATION_TEMPLATE;
+    assert.deepEqual(JSON.parse(block.join('\n')), expected);
+  });
 
   it('template is version 1, matches the rollover indices and has no delete in the policy', () => {
     assert.equal(EVALUATION_TEMPLATE.version, 1);
@@ -1283,6 +1304,33 @@ function fakeDomain(routes) {
   return { fetchFn, calls };
 }
 
+describe('evaluationPolicy', () => {
+  it('adds a delete state after the retention days, like the local retention policies', () => {
+    const p = evaluationPolicy(7).policy;
+    const write = p.states.find((st) => st.name === p.default_state);
+    assert.deepEqual(write.actions, EVALUATION_POLICY.policy.states[0].actions);
+    assert.deepEqual(write.transitions, [{ state_name: 'delete', conditions: { min_index_age: '7d' } }]);
+    assert.deepEqual(p.states.at(-1), { name: 'delete', actions: [{ delete: {} }], transitions: [] });
+    assert.deepEqual(p.ism_template, EVALUATION_POLICY.policy.ism_template);
+  });
+
+  it('keeps the rollover-only policy for 0 and does not change the shared copy', () => {
+    assert.deepEqual(evaluationPolicy(0), EVALUATION_POLICY);
+    evaluationPolicy(30);
+    assert.ok(!JSON.stringify(EVALUATION_POLICY).includes('"delete"'));
+  });
+
+  it('passes the configured retention through ensureEvaluationIndex', async () => {
+    const { fetchFn, calls } = fakeDomain({
+      'PUT /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [201, {}],
+      'PUT /_index_template/otel-v1-genai-evaluation-index-template': [200, { acknowledged: true }],
+      'PUT /otel-v1-genai-evaluation-000001': [200, { acknowledged: true }],
+    });
+    await ensureEvaluationIndex(fetchFn, 'https://domain.test', { delayMs: 0, retentionDays: 0 });
+    assert.deepEqual(calls.find((c) => c.method === 'PUT').body, EVALUATION_POLICY);
+  });
+});
+
 describe('ensureEvaluationIndex', () => {
   const ep = 'https://domain.test';
 
@@ -1300,7 +1348,7 @@ describe('ensureEvaluationIndex', () => {
       '/_index_template/otel-v1-genai-evaluation-index-template',
       '/otel-v1-genai-evaluation-000001',
     ]);
-    assert.deepEqual(puts[0].body, EVALUATION_POLICY);
+    assert.deepEqual(puts[0].body, evaluationPolicy(7)); // default retention
     assert.deepEqual(puts[1].body, EVALUATION_TEMPLATE);
     assert.deepEqual(puts[2].body, { aliases: { 'otel-v1-genai-evaluation': { is_write_index: true } } });
   });

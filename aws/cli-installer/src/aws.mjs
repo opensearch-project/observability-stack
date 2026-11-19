@@ -830,7 +830,9 @@ export async function setupEvaluationIndex(cfg) {
   try {
     const { ensureEvaluationIndex } = await import('./evaluation-index.mjs');
     const { domainFetch } = await domainFetchFor(cfg);
-    const r = await ensureEvaluationIndex(domainFetch, cfg.opensearchEndpoint, { log: printInfo });
+    const r = await ensureEvaluationIndex(domainFetch, cfg.opensearchEndpoint, {
+      log: printInfo, retentionDays: cfg.evaluationRetentionDays,
+    });
     if (r.alias === 'concrete-index') {
       printWarning('An index named otel-v1-genai-evaluation already exists, so the rollover alias was not created. Evaluation results keep going to that index.');
     } else {

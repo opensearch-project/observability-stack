@@ -52,4 +52,6 @@ new ObservabilityStack(app, 'ObservabilityStack', {
   maxOcu: 4,
   enableDemo,
   adminRoleArns,
+  // -c evaluationRetentionDays=<days>: evaluation indices are deleted after this many days (default 7, 0 keeps them)
+  evaluationRetentionDays: optionalNumber('evaluationRetentionDays'),
 });

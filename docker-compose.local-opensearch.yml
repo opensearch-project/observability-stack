@@ -73,6 +73,8 @@ services:
       - OPENSEARCH_HOST=${OPENSEARCH_HOST}
       - OPENSEARCH_PORT=${OPENSEARCH_PORT}
       - OPENSEARCH_PROTOCOL=${OPENSEARCH_PROTOCOL}
+      # Evaluation indices are deleted after this many days, like the other indices (0 keeps them)
+      - ISM_RETENTION_DAYS=${ISM_RETENTION_DAYS:-7}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py:ro
       - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/config/genai-evaluation/otel-v1-genai-evaluation-index-template.json:ro

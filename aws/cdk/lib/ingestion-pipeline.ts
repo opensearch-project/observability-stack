@@ -12,6 +12,27 @@ const EVALUATION_DIR = path.join(__dirname, 'genai-evaluation');
 export const EVALUATION_TEMPLATE_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-index-template.json'), 'utf8');
 export const EVALUATION_POLICY_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-policy.json'), 'utf8');
 
+/** Days before evaluation indices are deleted on a managed domain; the local stack also defaults to 7. */
+export const DEFAULT_EVALUATION_RETENTION_DAYS = 7;
+
+/**
+ * The evaluation ISM policy as JSON: the rollover policy plus a delete state once an index is
+ * `retentionDays` old (0 keeps the rollover-only policy). Same shape as the CLI installer's.
+ */
+export function evaluationPolicyJson(retentionDays: number = DEFAULT_EVALUATION_RETENTION_DAYS): string {
+  if (!Number.isInteger(retentionDays) || retentionDays < 0) {
+    throw new Error(`evaluationRetentionDays must be a whole number of days, 0 or more: ${retentionDays}`);
+  }
+  if (retentionDays === 0) return EVALUATION_POLICY_JSON;
+  const policy = JSON.parse(EVALUATION_POLICY_JSON);
+  const p = policy.policy;
+  p.description = `Rollover and ${retentionDays}-day retention for GenAI evaluation results`;
+  const first = p.states.find((s: { name: string }) => s.name === p.default_state);
+  first.transitions = [{ state_name: 'delete', conditions: { min_index_age: `${retentionDays}d` } }];
+  p.states.push({ name: 'delete', actions: [{ delete: {} }], transitions: [] });
+  return JSON.stringify(policy);
+}
+
 /**
  * Template for a sink's template_content, one line. Managed: the frozen template without
  * index_patterns (the sink sets them). Serverless (no ISM or aliases): the same mappings for the

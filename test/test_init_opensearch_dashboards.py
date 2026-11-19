@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 import types
 import unittest
@@ -190,12 +192,34 @@ class EnsureEvaluationIndexTests(unittest.TestCase):
             "/_index_template/otel-v1-genai-evaluation-index-template",
             "/otel-v1-genai-evaluation-000001",
         ])
-        policy = self.initializer.requests.put.call_args_list[0].kwargs["json"]
-        self.assertNotIn('"delete"', str(policy).replace("'", '"'))
+        policy = self.initializer.requests.put.call_args_list[0].kwargs["json"]["policy"]
+        # ISM_RETENTION_DAYS (default 7) applies to evaluations like the other indices
+        self.assertEqual(policy["states"][-1], {"name": "delete", "actions": [{"delete": {}}], "transitions": []})
+        self.assertEqual(policy["states"][0]["transitions"],
+                         [{"state_name": "delete", "conditions": {"min_index_age": f"{self.initializer.ISM_RETENTION_DAYS}d"}}])
         self.assertEqual(
             {"aliases": {"otel-v1-genai-evaluation": {"is_write_index": True}}},
             self.initializer.requests.put.call_args_list[2].kwargs["json"],
         )
+
+    def test_retention_zero_keeps_the_rollover_only_policy(self):
+        base = json.loads((REPOSITORY_ROOT / "docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json").read_text())
+        self.assertEqual(self.initializer.evaluation_policy(base, 0), base)
+        self.assertNotIn("delete", json.dumps(base))  # the shared file is not changed
+
+    def test_matches_the_aws_installer_policy(self):
+        node = shutil.which("node")
+        cli = REPOSITORY_ROOT / "aws/cli-installer/src/evaluation-index.mjs"
+        if not node or not cli.exists():
+            self.skipTest("node or the CLI installer is not available")
+        base = json.loads((REPOSITORY_ROOT / "docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json").read_text())
+        for days in (0, 7, 30):
+            out = subprocess.run(
+                [node, "--input-type=module", "-e",
+                 f"import {{ evaluationPolicy }} from {json.dumps(cli.as_uri())}; console.log(JSON.stringify(evaluationPolicy({days})))"],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertEqual(self.initializer.evaluation_policy(base, days), json.loads(out), f"{days} days")
 
     def test_skips_existing_objects(self):
         self._routes({

@@ -56,7 +56,8 @@ export function parseCli(argv) {
     .option('--os-instance-count <n>', 'Number of data nodes', DEFAULTS.osInstanceCount)
     .option('--os-volume-size <gb>', 'EBS volume size in GB', DEFAULTS.osVolumeSize)
     .option('--os-engine-version <ver>', 'Engine version', DEFAULTS.osEngineVersion)
-    .option('--managed', 'Target is OpenSearch managed domain');
+    .option('--managed', 'Target is OpenSearch managed domain')
+    .option('--evaluation-retention-days <n>', 'Days before evaluation result indices are deleted on a managed domain (0 keeps them)', DEFAULTS.evaluationRetentionDays);
 
   // Network topology — deploy into a VPC instead of public endpoints
   program
@@ -169,6 +170,7 @@ function optsToConfig(opts) {
     osInstanceCount: Number(opts.osInstanceCount),
     osVolumeSize: Number(opts.osVolumeSize),
     osEngineVersion: opts.osEngineVersion,
+    evaluationRetentionDays: Number(opts.evaluationRetentionDays),
     vpcId: opts.vpcId || '',
     subnetIds: parseIdList(opts.subnetIds),
     securityGroupIds: parseIdList(opts.securityGroupIds),
@@ -302,6 +304,11 @@ export function validateConfig(cfg) {
   }
   if (cfg.apsAction === 'reuse' && cfg.prometheusUrl && !/^https?:\/\//.test(cfg.prometheusUrl)) {
     errors.push('Prometheus URL must start with http:// or https://');
+  }
+
+  const retention = Number(cfg.evaluationRetentionDays ?? DEFAULTS.evaluationRetentionDays);
+  if (!Number.isInteger(retention) || retention < 0) {
+    errors.push(`--evaluation-retention-days must be a whole number of days, 0 or more (got ${cfg.evaluationRetentionDays})`);
   }
 
   if (cfg.opensearchType === 'serverless') {

@@ -523,7 +523,7 @@ PUT _index_template/otel-v1-genai-evaluation-index-template
 
 ### The ISM policy
 
-Roll over at 50 GB or after 24 hours. The policy never deletes: evaluation results are small and are your quality history. Add a `delete` state if you want retention. Its `ism_template` attaches it to every new `otel-v1-genai-evaluation-*` index.
+Roll over at 50 GB or after 24 hours. Its `ism_template` attaches it to every new `otel-v1-genai-evaluation-*` index. The policy below only rolls over. The installers add a `delete` state after a retention period: 7 days by default, set with `ISM_RETENTION_DAYS` in the local stack, `--evaluation-retention-days` in the CLI installer and `-c evaluationRetentionDays=<days>` in the CDK app (`0` keeps every index). To keep a longer quality history, raise the retention or set it to `0`.
 
 ```json
 PUT _plugins/_ism/policies/otel-v1-genai-evaluation-policy

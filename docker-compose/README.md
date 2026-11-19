@@ -213,12 +213,12 @@ The docker-compose.yml file mounts these configurations into the containers.
 
 ## Data Retention
 
-- **Logs and Traces**: Managed by ISM (Index State Management) policies. Indices roll over every 24 hours (or at 50GB) and are automatically deleted after `ISM_RETENTION_DAYS` (default: 7 days). Configure in `.env`.
+- **Logs, Traces and Evaluations**: Managed by ISM (Index State Management) policies. Indices roll over every 24 hours (or at 50GB) and are automatically deleted after `ISM_RETENTION_DAYS` (default: 7 days). Configure in `.env`.
 - **Metrics**: 15 days (configured via `PROMETHEUS_RETENTION` in `.env`)
 
 To change OpenSearch index retention:
 ```env
-# .env — number of days to keep log/trace/service-map indices (0 = never delete)
+# .env — number of days to keep log/trace/service-map/evaluation indices (0 = never delete)
 ISM_RETENTION_DAYS=7
 ```
 

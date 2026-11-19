@@ -57,6 +57,8 @@ cdk deploy --all -c adminRoleArns=arn:aws:iam::123456789012:role/Admin
 
 `cdk synth` warns when `adminRoleArns` is empty.
 
+On a managed domain, evaluation result indices (`otel-v1-genai-evaluation-*`) are deleted after 7 days. Change it with `-c evaluationRetentionDays=<days>`; `0` keeps them.
+
 Each role in `adminRoleArns` also needs data-plane permissions in its own IAM policy: `es:ESHttp*` on the domain (managed) or `aoss:APIAccessAll` on the collection (serverless). The domain access policy and the serverless data access policy admit the role, but don't grant those IAM actions.
 
 On serverless, the collection's data access policy lists the OSIS pipeline role, the UI init role and `adminRoleArns`. Removing a role from `adminRoleArns` and redeploying removes its FGAC mappings, application admin entry and data access.

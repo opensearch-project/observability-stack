@@ -70,6 +70,12 @@ Serverless options:
 
 Time series collections require every document to carry the index timestamp field. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), so no extra copy step is needed.
 
+Managed domain option:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--evaluation-retention-days` | `7` | Days before evaluation result indices (`otel-v1-genai-evaluation-*`) are deleted. `0` keeps them |
+
 **Reuse existing OpenSearch domain / AMP workspace:**
 ```bash
 node bin/cli-installer.mjs --managed \

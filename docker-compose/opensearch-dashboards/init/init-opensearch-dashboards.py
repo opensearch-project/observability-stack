@@ -122,17 +122,34 @@ EVALUATION_POLICY_ID = f"{EVALUATION_ALIAS}-policy"
 EVALUATION_FILES_DIR = os.getenv("EVALUATION_FILES_DIR", "/config/genai-evaluation")
 
 
+def evaluation_policy(policy, retention_days):
+    """The evaluation rollover policy plus a delete state after `retention_days` (0 keeps it).
+
+    Same shape as the other retention policies here and as the AWS installer's evaluation policy.
+    """
+    policy = json.loads(json.dumps(policy))
+    if retention_days <= 0:
+        return policy
+    p = policy["policy"]
+    p["description"] = f"Rollover and {retention_days}-day retention for GenAI evaluation results"
+    first = next(s for s in p["states"] if s["name"] == p["default_state"])
+    first["transitions"] = [{"state_name": "delete", "conditions": {"min_index_age": f"{retention_days}d"}}]
+    p["states"].append({"name": "delete", "actions": [{"delete": {}}], "transitions": []})
+    return policy
+
+
 def ensure_evaluation_index():
     """Create the evaluation ISM policy, index template and write alias when missing.
 
-    The policy only rolls over (no delete state, ISM_RETENTION_DAYS does not apply). An existing
-    policy is left as is, and the template is replaced only by a higher `version`.
+    The policy rolls over and deletes indices after ISM_RETENTION_DAYS, like the other indices
+    (0 keeps them). An existing policy is left as is, and the template is replaced only by a
+    higher `version`.
     """
     try:
         with open(os.path.join(EVALUATION_FILES_DIR, f"{EVALUATION_TEMPLATE_NAME}.json")) as f:
             template = json.load(f)
         with open(os.path.join(EVALUATION_FILES_DIR, f"{EVALUATION_POLICY_ID}.json")) as f:
-            policy = json.load(f)
+            policy = evaluation_policy(json.load(f), ISM_RETENTION_DAYS)
     except (OSError, ValueError) as e:
         print(f"⚠️  Skipping evaluation index setup, template files not readable: {e}")
         return False
