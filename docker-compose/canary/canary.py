@@ -10,9 +10,16 @@ Generates traces with varying depths and shapes:
 - "shallow": direct sub-agent call bypassing orchestrator (5-8 spans, 1-2 services)
 - "deep": multi-destination comparison via sequential orchestrator calls (100+ spans)
 
-Every travel-planner call carries a session id (gen_ai.conversation.id). A "deep" comparison
-sends all of its destinations in one session, so it shows up as a multi-turn session in Agent
-Traces and the eval canaries can grade the whole session.
+Every travel-planner call carries a session id (gen_ai.conversation.id), so Agent Traces groups
+the turns of a conversation into one session:
+- "normal" turns belong to multi-turn conversations: short (2-3 turns), medium (4-6) and long
+  (10-14), plus long-running ones whose turns are minutes apart, so a session can start before
+  the dashboard's time range. Conversations run interleaved, one turn per invocation.
+- Some conversations fail on a middle turn (a tool error, a rate limit or a partial failure), so
+  sessions with errors include longer conversations, not only single failed requests.
+- Most conversations carry a user id (user.id), so Agent Traces shows the User ID column.
+- A "deep" comparison sends all of its destinations to the planner in quick succession in one
+  session, and every planner turn hands off to the weather and events sub-agents.
 """
 
 import json
@@ -20,8 +27,10 @@ import os
 import random
 import time
 import uuid
-import requests
+from dataclasses import dataclass, field
 from datetime import datetime
+
+import requests
 
 
 TRAVEL_PLANNER_URL = os.getenv("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
@@ -43,6 +52,30 @@ DEFAULT_FAULT_WEIGHTS = {
     "events_rate_limited": 0.07,
     "partial_failure": 0.10,
 }
+
+# Conversations: (turns, seconds between turns) per kind, and how often each kind starts.
+SESSION_KINDS = {
+    "short": {"weight": 0.55, "turns": (2, 3), "gap_s": (20, 60)},
+    "medium": {"weight": 0.25, "turns": (4, 6), "gap_s": (20, 60)},
+    "long": {"weight": 0.15, "turns": (10, 14), "gap_s": (20, 60)},
+    # Turns minutes apart, so the session spans one to two hours
+    "long_running": {"weight": 0.05, "turns": (8, 12), "gap_s": (300, 600)},
+}
+MAX_LONG_RUNNING = 2  # long-running conversations open at once; one is started at boot
+MID_TURN_FAILURE_RATE = 0.35  # conversations of 3+ turns where a middle turn fails
+MID_TURN_FAULTS = ["weather_error", "events_error", "weather_rate_limited", "partial_failure"]
+USER_ID_RATE = 0.7  # conversations with a signed-in user
+USERS = [f"user-{name}" for name in ("ava", "ben", "chen", "dara", "eli", "fatima", "gus", "hana")]
+
+FOLLOW_UPS = [
+    "What will the weather be like in {dest} while I'm there?",
+    "Any events in {dest} this weekend?",
+    "Can you find cheaper flights to {dest} from {origin}?",
+    "What currency do I need in {dest}, and what's the rate?",
+    "Actually, how about {dest} instead?",
+    "Compare that with a trip to {dest}.",
+    "Keep {dest}, but plan it for a family with kids.",
+]
 
 DEFAULT_TRACE_SHAPE_WEIGHTS = {
     "normal": 0.60,
@@ -116,17 +149,84 @@ def new_session_id():
     return f"canary_{uuid.uuid4().hex[:12]}"
 
 
-def invoke_normal(destination, fault_weights):
-    """Standard orchestrator call — produces normal-depth traces with flights + currency."""
-    fault_name, fault_config = select_fault(fault_weights)
-    origin = random.choice(ORIGINS)
-    payload = {"destination": destination, "origin": origin, "session_id": new_session_id()}
+@dataclass
+class Conversation:
+    """A multi-turn session: one session id across consecutive travel-planner requests."""
+
+    kind: str
+    session_id: str
+    origin: str
+    destination: str
+    turns: int
+    gap_s: tuple
+    user_id: str | None = None
+    fail_turn: int | None = None  # 0-based index of the middle turn that fails
+    done: int = 0
+    next_at: float = field(default_factory=time.time)
+
+    def next_turn(self):
+        """(message, destination) of the next turn."""
+        if self.done == 0:
+            return f"Plan a trip to {self.destination} from {self.origin}", self.destination
+        template = random.choice(FOLLOW_UPS)
+        if "instead" in template or "Compare" in template:
+            self.destination = random.choice([d for d in DESTINATIONS if d != self.destination])
+        return template.format(dest=self.destination, origin=self.origin), self.destination
+
+
+def new_conversation(kind=None):
+    kind = kind or weighted_choice({k: v["weight"] for k, v in SESSION_KINDS.items()})
+    spec = SESSION_KINDS[kind]
+    turns = random.randint(*spec["turns"])
+    fail_turn = None
+    if turns >= 3 and random.random() < MID_TURN_FAILURE_RATE:
+        fail_turn = random.randint(1, turns - 2)
+    return Conversation(
+        kind=kind,
+        session_id=new_session_id(),
+        origin=random.choice(ORIGINS),
+        destination=random.choice(DESTINATIONS),
+        turns=turns,
+        gap_s=spec["gap_s"],
+        user_id=random.choice(USERS) if random.random() < USER_ID_RATE else None,
+        fail_turn=fail_turn,
+    )
+
+
+def invoke_turn(conv, fault_weights):
+    """One turn of a conversation: a travel-planner call in the conversation's session."""
+    message, destination = conv.next_turn()
+    if conv.fail_turn == conv.done:
+        fault_name = random.choice(MID_TURN_FAULTS)
+        fault_config = FAULT_CONFIGS[fault_name]
+    else:
+        fault_name, fault_config = select_fault(fault_weights)
+    payload = {
+        "destination": destination,
+        "origin": conv.origin,
+        "session_id": conv.session_id,
+        "message": message,
+    }
+    if conv.user_id:
+        payload["user_id"] = conv.user_id
     if fault_config:
         payload["fault"] = fault_config
+    conv.done += 1
+    conv.next_at = time.time() + random.uniform(*conv.gap_s)
+    print(
+        f"  [{conv.kind} {conv.done}/{conv.turns}] {conv.session_id}"
+        f"{' ' + conv.user_id if conv.user_id else ''}: {message!r} (fault: {fault_name})"
+    )
+    return post_plan(payload)
 
-    print(f"  [normal] {origin} → {destination} (fault: {fault_name})")
-    response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
-    data = response.json()
+
+def post_plan(payload):
+    try:
+        response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
+    except requests.RequestException as e:
+        print(f"           → request failed: {e}")
+        return False
+    data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
     if response.status_code == 200:
         status = "partial" if data.get("partial") else "ok"
@@ -202,6 +302,7 @@ def main():
 
     print("\nStarting invocations...\n")
     count, success = 0, 0
+    conversations = [new_conversation("long_running")]  # open conversations, interleaved
 
     while True:
         try:
@@ -219,13 +320,25 @@ def main():
 
             print(f"[{timestamp}] invocation #{count}")
 
-            if shape == "shallow":
+            # A conversation whose next turn is due goes first; otherwise start something new.
+            due = [c for c in conversations if c.next_at <= time.time()]
+            if due:
+                conv = min(due, key=lambda c: c.next_at)
+                ok = invoke_turn(conv, config["fault_weights"])
+                if conv.done >= conv.turns:
+                    conversations.remove(conv)
+            elif shape == "shallow":
                 ok = invoke_shallow(destination)
             elif shape == "deep":
                 dests = random.sample(DESTINATIONS, k=random.randint(2, 4))
                 ok = invoke_deep(dests)
             else:
-                ok = invoke_normal(destination, config["fault_weights"])
+                conv = new_conversation()
+                running = sum(1 for c in conversations if c.kind == "long_running")
+                if conv.kind == "long_running" and running >= MAX_LONG_RUNNING:
+                    conv = new_conversation("long")
+                conversations.append(conv)
+                ok = invoke_turn(conv, config["fault_weights"])
 
             if ok:
                 success += 1

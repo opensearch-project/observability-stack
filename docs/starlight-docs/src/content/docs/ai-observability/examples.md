@@ -5,7 +5,7 @@ description: The travel planner, its sub-agents and the two eval canaries that r
 
 The local stack ships a multi-agent travel planner and two eval canaries. Together they produce agent traces, multi-turn sessions, application logs on the same spans, and evaluation results that point at those traces. Use them to try [Agent Traces](/docs/ai-observability/agent-tracing/) and [Agent Evals](/docs/agent-evals/) without writing an agent.
 
-The agents and canaries use the [Python GenAI SDK](/docs/send-data/ai-agents/python/), installed from git `main` until 0.3.0 is on PyPI.
+The agents and canaries use the [Python GenAI SDK](/docs/send-data/ai-agents/python/) 0.3.0 from PyPI.
 
 ## Run them
 
@@ -49,7 +49,21 @@ The planner's `invoke_agent Travel Planner` span sits below the HTTP span `POST 
 
 ### Sessions
 
-`POST /plan` takes an optional `session_id`. The planner generates one when it is missing, sets it as `gen_ai.conversation.id` on its agent span, passes it to the sub-agents, and returns it. The canary sends each "deep" multi-destination comparison as one session, so the **Sessions** tab in Agent Traces shows multi-turn sessions.
+`POST /plan` takes an optional `session_id`. The planner generates one when it is missing, sets it as `gen_ai.conversation.id` on its agent span, passes it to the sub-agents, and returns it. It also takes an optional `user_id`, set as `user.id` on the agent span, and an optional `message`, the user's text for the turn (by default "Plan a trip to ...").
+
+The canary holds conversations open and sends their turns interleaved, one turn per invocation, so the **Sessions** tab in Agent Traces has realistic sessions:
+
+| Session | Turns | Time between turns |
+|---|---|---|
+| Short | 2 to 3 | 20 to 60 s |
+| Medium | 4 to 6 | 20 to 60 s |
+| Long | 10 to 14 | 20 to 60 s |
+| Long-running | 8 to 12 | 5 to 10 min, so a session spans one to two hours and starts before a short time range (one is open from startup, at most two at once) |
+
+- About a third of the conversations with 3 or more turns fail on a middle turn (a weather or events tool error, a rate limit, or a partial failure), so **Only sessions with errors** finds longer conversations, not only single failed requests. Other turns take faults from the control panel's weights as before.
+- Most conversations (70%) carry a user id such as `user-ava`, so the **User ID** column appears.
+- Follow-up turns ask about the weather, events, flights or currency, or switch to another destination. Every turn hands off to the weather and events agents, so each session is multi-agent.
+- A "deep" comparison sends 2 to 4 destinations in quick succession in one session.
 
 ### Application logs
 
