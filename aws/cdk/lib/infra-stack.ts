@@ -5,7 +5,7 @@ import { OpenSearchConstruct } from './opensearch';
 import { OpenSearchServerlessConstruct } from './opensearch-serverless';
 import { PrometheusConstruct } from './prometheus';
 
-export interface InfraStackProps extends cdk.StackProps {
+export interface InfraStackProps {
   opensearchType?: 'managed' | 'serverless';
   osInstanceType?: string;
   osInstanceCount?: number;
@@ -18,7 +18,7 @@ export interface InfraStackProps extends cdk.StackProps {
   aossMaxOcu?: number;
 }
 
-export class InfraStack extends cdk.Stack {
+export class InfraStack extends Construct {
   public readonly opensearchType: string;
   public readonly domainEndpoint: string;
   public readonly domainArn: string;
@@ -28,14 +28,15 @@ export class InfraStack extends cdk.Stack {
   public readonly pipelineRoleArn: string;
   public readonly ampWorkspaceArn: string;
   public readonly ampWorkspaceId: string;
+  public readonly ampEndpoint: string;
   public readonly dqsDataSourceArn: string;
   public readonly dqsRoleArn: string;
   public readonly uiInitRoleArn: string;
 
   constructor(scope: Construct, id: string, props: InfraStackProps) {
-    super(scope, id, props);
+    super(scope, id);
 
-    cdk.Tags.of(this).add('observability-stack', this.stackName);
+    const stack = cdk.Stack.of(this);
 
     this.opensearchType = props.opensearchType ?? 'managed';
 
@@ -52,7 +53,7 @@ export class InfraStack extends cdk.Stack {
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {
-      const collectionName = `obs-${this.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+      const collectionName = `obs-${stack.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
         dataAccessRoleArns: [uiInitRole.roleArn, ...(props.adminRoleArns ?? [])],
@@ -76,8 +77,6 @@ export class InfraStack extends cdk.Stack {
       this.domainArn = opensearch.domain.domainArn;
       this.collectionName = '';
       this.fgacAdminRoleArn = opensearch.fgacAdminRole.roleArn;
-      // Stacks deployed with basic-auth FGAC import this ARN; keep the export so they can update.
-      this.exportValue(opensearch.masterPasswordSecret.secretArn);
       this.pipelineRoleArn = opensearch.pipelineRole.roleArn;
     }
 
@@ -87,20 +86,8 @@ export class InfraStack extends cdk.Stack {
 
     this.ampWorkspaceArn = prometheus.workspace.attrArn;
     this.ampWorkspaceId = prometheus.workspace.attrWorkspaceId;
+    this.ampEndpoint = prometheus.workspace.attrPrometheusEndpoint;
     this.dqsDataSourceArn = prometheus.dataSourceArn;
     this.dqsRoleArn = prometheus.dqsRole.roleArn;
-
-    // Exports
-    const exp = (name: string, value: string) =>
-      new cdk.CfnOutput(this, name, { value, exportName: `${this.stackName}-${name}` });
-
-    exp('OpenSearchType', this.opensearchType);
-    exp('DomainEndpoint', this.domainEndpoint);
-    exp('DomainArn', this.domainArn);
-    exp('PipelineRoleArn', this.pipelineRoleArn);
-    exp('AmpWorkspaceArn', this.ampWorkspaceArn);
-    exp('AmpWorkspaceId', this.ampWorkspaceId);
-    exp('DqsDataSourceArn', this.dqsDataSourceArn);
-    exp('DqsRoleArn', this.dqsRoleArn);
   }
 }

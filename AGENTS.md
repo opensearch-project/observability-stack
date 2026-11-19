@@ -151,7 +151,7 @@ Contains Kubernetes Helm chart for production-like deployments.
 Contains the AWS CDK app (TypeScript) for a managed AWS deployment: OpenSearch, Amazon Managed Prometheus, an OSIS ingestion pipeline, the OpenSearch Application and dashboards, and an optional demo EC2 instance (`enableDemo`).
 
 **Key Files**:
-- `bin/app.ts`: App entry; instantiates `ObsInfra` and `ObservabilityStack`
+- `bin/app.ts`: App entry; instantiates one `ObsStack-<stackName>` stack (`-c stackName` is required)
 - `lib/demo-workload.ts`: Optional EC2 demo; its user-data is a Docker Compose bring-up injected via CloudFormation `Fn::Sub`
 - `custom-resources/`: UI-init and FGAC role-mapping resources
 

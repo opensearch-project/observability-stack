@@ -1,12 +1,15 @@
 import * as cdk from 'aws-cdk-lib';
 import * as cr from 'aws-cdk-lib/custom-resources';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
 export interface OpenSearchAppConstructProps {
+  /** Stack display name; the application is named obs-<displayName>-app. */
+  displayName: string;
   domainArn: string;
   domainEndpoint: string;
   dqsDataSourceArn: string;
@@ -21,45 +24,35 @@ export interface OpenSearchAppConstructProps {
 }
 
 export class OpenSearchAppConstruct extends Construct {
+  public readonly application: opensearch.CfnApplication;
   public readonly appId: string;
   public readonly appEndpoint: string;
+  public readonly workspaceId: string;
+  public readonly workspaceUrl: string;
 
   constructor(scope: Construct, id: string, props: OpenSearchAppConstructProps) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
-    const appName = `obs-${stack.stackName}-${cdk.Names.uniqueId(this).slice(-8)}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 30);
+    // A failed create leaves the application behind outside the stack; the stack ID suffix keeps a retry from colliding with it.
+    const createId = cdk.Fn.select(0, cdk.Fn.split('-', cdk.Fn.select(2, cdk.Fn.split('/', stack.stackId))));
+    const appName = cdk.Fn.join('-', ['obs', props.displayName, 'app', createId]);
 
-    const appFn = new NodejsFunction(this, 'AppFn', {
-      runtime: Runtime.NODEJS_22_X,
-      handler: 'handler',
-      entry: path.join(__dirname, '..', 'custom-resources', 'opensearch-app', 'index.ts'),
-      timeout: cdk.Duration.minutes(10),
-      bundling: { externalModules: ['@aws-sdk/*'] },
-    });
-    appFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['es:*', 'aoss:BatchGetCollection'],
-      resources: ['*'],
-    }));
-    appFn.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['iam:CreateServiceLinkedRole'],
-      resources: ['*'],
-    }));
-
-    const appProvider = new cr.Provider(this, 'AppProvider', { onEventHandler: appFn });
-
-    const app = new cdk.CustomResource(this, 'Application', {
-      serviceToken: appProvider.serviceToken,
-      properties: {
-        AppName: appName,
-        DomainDataSource: props.domainArn,
-        DqsDataSource: props.dqsDataSourceArn,
-        AdminRoleArns: JSON.stringify([props.uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
-      },
+    this.application = new opensearch.CfnApplication(this, 'Application', {
+      name: appName,
+      appConfigs: [{
+        key: 'opensearchDashboards.dashboardAdmin.groups',
+        value: stack.toJsonString([props.uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
+      }],
+      dataSources: [
+        { dataSourceArn: props.domainArn },
+        { dataSourceArn: props.dqsDataSourceArn },
+      ],
     });
 
-    this.appId = app.getAttString('AppId');
-    this.appEndpoint = app.getAttString('AppEndpoint');
+    this.appId = this.application.attrId;
+    // The service does not return the endpoint as an attribute; this is its fixed format.
+    this.appEndpoint = `https://application-${appName}-${this.appId}.${stack.region}.opensearch.amazonaws.com`;
 
     // UI init Lambda
     const uiInitFn = new NodejsFunction(this, 'UiInitFn', {
@@ -75,18 +68,22 @@ export class OpenSearchAppConstruct extends Construct {
 
     const uiInit = new cdk.CustomResource(this, 'UiInit', {
       serviceToken: uiInitProvider.serviceToken,
+      resourceType: 'Custom::WorkspaceSeeder',
       properties: {
         AppEndpoint: this.appEndpoint,
         Region: stack.region,
       },
     });
-    uiInit.node.addDependency(app);
+    uiInit.node.addDependency(this.application);
     for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
+
+    this.workspaceId = uiInit.getAttString('WorkspaceId');
+    this.workspaceUrl = `${this.appEndpoint}/w/${this.workspaceId}/app/home`;
 
     new cdk.CfnOutput(stack, 'OpenSearchAppEndpoint', { value: this.appEndpoint });
     new cdk.CfnOutput(stack, 'DashboardUrl', {
       // app/home is not a workspace app and redirects to the workspace picker.
-      value: `${this.appEndpoint}/w/${uiInit.getAttString('WorkspaceId')}/app/dashboards#/view/observability-overview-dashboard`,
+      value: `${this.appEndpoint}/w/${this.workspaceId}/app/dashboards#/view/observability-overview-dashboard`,
     });
   }
 }

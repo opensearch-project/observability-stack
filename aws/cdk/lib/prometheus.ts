@@ -100,6 +100,7 @@ export class PrometheusConstruct extends Construct {
 
     const dataSource = new cdk.CustomResource(this, 'DqsDataSource', {
       serviceToken: dqsProvider.serviceToken,
+      resourceType: 'Custom::PrometheusDataSource',
       properties: {
         DataSourceName: dqsDataSourceName,
         DataSourceType: {
