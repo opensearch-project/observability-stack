@@ -5,7 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
-import { IngestionPipeline } from './ingestion-pipeline';
+import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_TEMPLATE_JSON, evaluationPolicyJson } from './ingestion-pipeline';
 import { OpenSearchAppConstruct } from './opensearch-app';
 import { DemoWorkload } from './demo-workload';
 import { InfraStack } from './infra-stack';
@@ -17,6 +17,8 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   enableDemo?: boolean;
   /** IAM role ARNs mapped to all_access and security_manager and made OpenSearch UI admins, e.g. the roles people use to open Dashboards. */
   adminRoleArns?: string[];
+  /** Days before evaluation result indices are deleted on a managed domain (default 7; 0 keeps them). */
+  evaluationRetentionDays?: number;
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -60,6 +62,33 @@ export class ObservabilityStack extends cdk.Stack {
       });
     }
 
+    // GenAI evaluation index (managed only): rollover policy, template and write alias. Serverless
+    // collections have no ISM or aliases; the pipeline creates the index there.
+    let evalIndex: cdk.CustomResource | undefined;
+    if (!isServerless) {
+      const evalIndexFn = new NodejsFunction(this, 'EvalIndexFn', {
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'handler',
+        entry: path.join(__dirname, '..', 'custom-resources', 'eval-index', 'index.ts'),
+        timeout: cdk.Duration.minutes(10),
+        role: iam.Role.fromRoleArn(this, 'EvalIndexAdminRole', infra.fgacAdminRoleArn, { mutable: false }),
+        bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
+      });
+      const evalIndexProvider = new cr.Provider(this, 'EvalIndexProvider', { onEventHandler: evalIndexFn });
+      evalIndex = new cdk.CustomResource(this, 'EvalIndex', {
+        serviceToken: evalIndexProvider.serviceToken,
+        properties: {
+          OpenSearchEndpoint: infra.domainEndpoint,
+          Region: this.region,
+          Alias: EVALUATION_INDEX,
+          TemplateName: `${EVALUATION_INDEX}-index-template`,
+          PolicyId: `${EVALUATION_INDEX}-policy`,
+          Template: EVALUATION_TEMPLATE_JSON,
+          Policy: evaluationPolicyJson(props.evaluationRetentionDays),
+        },
+      });
+    }
+
     // OSIS pipeline
     const pipeline = new IngestionPipeline(this, 'IngestionPipeline', {
       domainEndpoint: infra.domainEndpoint,
@@ -71,6 +100,11 @@ export class ObservabilityStack extends cdk.Stack {
       maxOcu: props.maxOcu ?? 4,
       serverless: isServerless,
     });
+
+    // The pipeline's sink would otherwise create a plain index with the alias name first.
+    if (evalIndex) {
+      pipeline.node.addDependency(evalIndex);
+    }
 
     // OpenSearch Application + UI init
     const app = new OpenSearchAppConstruct(this, 'OpenSearchApp', {

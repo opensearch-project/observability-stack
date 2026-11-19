@@ -1,5 +1,6 @@
 # LLM Eval Canary
-# Periodically runs LLM-as-judge (Bedrock Claude) on agent traces.
+# Periodically runs LLM-as-judge (Bedrock Claude) on agent traces, and a judged offline test
+# suite against the travel planner (example services).
 # Requires AWS credentials via AWS_* env vars.
 #
 # Enable by uncommenting INCLUDE_COMPOSE_AGENT_EVAL_LLM in .env
@@ -26,7 +27,10 @@ services:
       - EVAL_CANARY_LLM_LOOKBACK_MINUTES=${EVAL_CANARY_LLM_LOOKBACK_MINUTES:-10}
       - EVAL_CANARY_LLM_MAX_PER_CYCLE=${EVAL_CANARY_LLM_MAX_PER_CYCLE:-20}
       - EVAL_CANARY_LLM_CONCURRENCY=${EVAL_CANARY_LLM_CONCURRENCY:-8}
-      - EVAL_JUDGE_MODEL=${EVAL_JUDGE_MODEL:-us.anthropic.claude-sonnet-4-20250514-v1:0}
+      - EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES=${EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES:-5}
+      - EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES=${EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES:-360}
+      - EVAL_JUDGE_MODEL=${EVAL_JUDGE_MODEL:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
+      - TRAVEL_PLANNER_URL=http://travel-planner:8000
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
       - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}

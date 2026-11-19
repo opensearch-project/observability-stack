@@ -18,6 +18,9 @@ export const DEFAULTS = {
   aossMinOcu: 0,
   aossMaxOcu: 16,
   serviceMapWindow: '30s',
+  // Days before evaluation indices (otel-v1-genai-evaluation-*) are deleted on a managed domain;
+  // 0 keeps them (rollover only). The local stack uses ISM_RETENTION_DAYS, also 7 by default.
+  evaluationRetentionDays: 7,
 };
 
 /**
@@ -43,6 +46,7 @@ export function createDefaultConfig() {
     osInstanceCount: DEFAULTS.osInstanceCount,
     osVolumeSize: DEFAULTS.osVolumeSize,
     osEngineVersion: DEFAULTS.osEngineVersion,
+    evaluationRetentionDays: DEFAULTS.evaluationRetentionDays,
     // Network topology (empty = public endpoints, current default behavior)
     vpcId: '',
     subnetIds: [],

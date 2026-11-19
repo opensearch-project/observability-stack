@@ -9,6 +9,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
@@ -202,10 +203,12 @@ export async function handler(event: Event) {
   ];
 
   const patternIds: Record<string, string> = {};
+  // Existing patterns are listed and matched by title here: the saved objects `search` does not
+  // match titles with `*`, so searching for them finds nothing and reruns made duplicates.
+  const findResp = await osuiGet(base, `/w/${wsId}/api/saved_objects/_find?type=index-pattern&fields=title&per_page=10000`, Region);
+  const existingPatterns: any[] = (findResp.data as any)?.saved_objects || [];
   for (const p of patterns) {
-    const findResp = await osuiGet(base,
-      `/w/${wsId}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=${encodeURIComponent(p.title)}`, Region);
-    const existingPat = ((findResp.data as any)?.saved_objects || []).find((o: any) => o.attributes?.title === p.title);
+    const existingPat = existingPatterns.find((o: any) => o.attributes?.title === p.title);
     if (existingPat) {
       patternIds[p.title] = existingPat.id;
       continue;
@@ -217,7 +220,22 @@ export async function handler(event: Event) {
     patternIds[p.title] = (resp.data as any)?.id;
   }
 
-  await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, Region);
+  // Agent Evaluations: the evaluations dataset and the workspace's config, as the UI's
+  // "Create evaluations dataset" and Settings save them (harmless with the feature flag off).
+  try {
+    const evals = await ensureAgentEvalsSetup({
+      get: (path) => osuiGet(base, path, Region),
+      post: (path, body) => osuiPost(base, path, body, Region),
+      put: (path, body) => osuiPut(base, path, body, Region),
+    }, { wsId: wsId!, dsId, tracesId: patternIds['otel-v1-apm-span*'] });
+    console.log('Agent Evaluations setup:', JSON.stringify(evals));
+    if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
+  } catch (e: any) {
+    console.warn(`Agent Evaluations setup failed: ${e.message}`);
+  }
+
+  await storeIndexPatternFields(base, wsId!, dsId,
+    [...patterns, { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD }], patternIds, Region);
 
   const logsId = patternIds['logs-otel-v1*'];
   const tracesId = patternIds['otel-v1-apm-span*'];

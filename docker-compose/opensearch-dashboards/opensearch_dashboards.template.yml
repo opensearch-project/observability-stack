@@ -104,7 +104,7 @@ observability.alertManager.enabled: true
 # surfaces the "Create alert rule" action on the Discover / Explore logs page
 # so users can define PPL alerting monitors directly from their log queries.
 opensearch_alerting.pplAlertingEnabled: true
-# Enables Service Level Objectives (SLOs) in APM, matching the Helm chart.
+# Enables Service Level Objectives (SLOs) in APM.
 observability.slo.enabled: true
 workspace.enabled: true
 data_source.enabled: true

@@ -57,6 +57,8 @@ cdk deploy --all -c adminRoleArns=arn:aws:iam::123456789012:role/Admin
 
 `cdk synth` warns when `adminRoleArns` is empty.
 
+On a managed domain, evaluation result indices (`otel-v1-genai-evaluation-*`) are deleted after 7 days. Change it with `-c evaluationRetentionDays=<days>`; `0` keeps them.
+
 Each role in `adminRoleArns` also needs data-plane permissions in its own IAM policy: `es:ESHttp*` on the domain (managed) or `aoss:APIAccessAll` on the collection (serverless). The domain access policy and the serverless data access policy admit the role, but don't grant those IAM actions.
 
 On serverless, the collection's data access policy lists the OSIS pipeline role, the UI init role and `adminRoleArns`. Removing a role from `adminRoleArns` and redeploying removes its FGAC mappings, application admin entry and data access.
@@ -83,6 +85,16 @@ The group's indexing and search capacity defaults to 0 to 16 OCU. The demo workl
 ```bash
 cdk deploy --all -c opensearchType=serverless -c aossMinOcu=1 -c aossMaxOcu=8
 ```
+
+### Stack names
+
+The stacks are named `ObsInfra` and `ObservabilityStack`. To deploy a second copy next to an existing one in the same account and region, prefix both names:
+
+```bash
+cdk deploy --all -c stackNamePrefix=test-
+```
+
+This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names derived from the stack name (pipeline, collection, application, Prometheus workspace alias) change with it. The OSIS pipeline is `obs-stack-<stack name>` lowercased when that fits in 28 characters; a longer name is cut and ends in a short hash of the full stack name, so different prefixes get different pipelines.
 
 ## Architecture
 
@@ -178,6 +190,9 @@ cdk destroy --all
 
 # Destroy only the app stack (keeps domain intact)
 cdk destroy ObservabilityStack
+
+# Unit tests (pipeline names, application admins, Agent Evaluations UI setup)
+npm test
 ```
 
 ## Project Structure
@@ -197,7 +212,7 @@ aws/cdk/
 │   ├── fgac-mapping/index.ts           # FGAC Security API role mapping
 │   ├── dqs-datasource/index.ts         # DQS Prometheus data source
 │   ├── opensearch-app/index.ts         # OpenSearch Application lifecycle
-│   └── ui-init/                        # Workspace, index patterns, dashboards
+│   └── ui-init/                        # Workspace, index patterns, Agent Evaluations config, dashboards
 │       ├── index.ts
 │       └── arch-image.mjs              # Architecture diagram (base64 PNG)
 ├── package.json

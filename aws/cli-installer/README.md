@@ -24,7 +24,7 @@ Takes ~15 minutes for managed, ~5 minutes for serverless. When complete, the CLI
 | OSIS pipeline | Ingests OTLP data (logs, traces, metrics) via SigV4 |
 | Amazon Managed Prometheus | Stores time-series metrics |
 | Connected Data Source (Prometheus) | Connects AMP to OpenSearch for metric queries |
-| OpenSearch Application | UI with workspace, index patterns, correlations, dashboards |
+| OpenSearch Application | UI with workspace, index patterns (including the Agent Evaluations dataset), correlations, the Agent Evaluations config, dashboards |
 | IAM roles | Pipeline role (OSIS → OpenSearch + AMP) and Connected Data Source role |
 | EC2 instance (t3.xlarge) | Runs OTel Demo + example agents (29 containers generating telemetry) |
 
@@ -69,6 +69,12 @@ Serverless options:
 | `--aoss-max-ocu` | `16` | Maximum indexing and search OCU for the group |
 
 Time series collections require every document to carry the index timestamp field. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), so no extra copy step is needed.
+
+Managed domain option:
+
+| Flag | Default | Description |
+|---|---|---|
+| `--evaluation-retention-days` | `7` | Days before evaluation result indices (`otel-v1-genai-evaluation-*`) are deleted. `0` keeps them |
 
 **Reuse existing OpenSearch domain / AMP workspace:**
 ```bash

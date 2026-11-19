@@ -1,13 +1,13 @@
 [project]
 name = "agent-eval-canary-llm"
-version = "0.1.0"
-description = "Periodically runs LLM-as-judge evaluations on agent traces"
+version = "0.3.0"
+description = "LLM-as-judge online and offline evaluations of the example agents (Bedrock)"
 requires-python = ">=3.10"
 dependencies = [
-    "opensearch-genai-observability-sdk-py[opensearch]>=0.2.7",
+    # From git main until 0.3.0 is on PyPI (run names, judge context, scorer ownership)
+    "opensearch-genai-observability-sdk-py[opensearch] @ git+https://github.com/opensearch-project/genai-observability-sdk-py@main",
     "strands-agents-evals[opensearch]>=0.1.16",
-    "opentelemetry-api",
-    "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-grpc",
     "boto3",
+    "requests",
 ]

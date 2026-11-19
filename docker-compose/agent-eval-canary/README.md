@@ -1,51 +1,88 @@
-# Agent Eval Canary (Deterministic)
+# Agent Eval Canary (deterministic)
 
-Periodically scores un-evaluated agent traces with deterministic signals. No LLM, no AWS credentials, zero cost.
+Evaluates the example agents with code checks: no LLM, no AWS credentials, no cost. It uses the
+[OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py) (installed
+from git `main` until 0.3.0 is on PyPI).
 
-Included by default with the example services (`docker-compose.examples.yml`).
+Runs with the example services when the local OpenSearch backend is used (`local-backends`
+profile, see `COMPOSE_PROFILES` in `.env`).
 
-## Evaluation Signals
+Every result is a `gen_ai.evaluation.result` OTel log event. Data Prepper routes it to the
+`otel-v1-genai-evaluation` write alias, where it joins the evaluated trace on `traceId` /
+`spanId`. The canary's own logs are OTel logs too: a failed result is logged at WARN with the
+evaluated span's trace and span ids, so Agent Traces shows it on that trace, next to the agents'
+own WARN / ERROR logs.
 
-Emits **4 evaluation spans** per trace:
+## What it evaluates
 
-| Eval Name | What it measures | Value |
+### Online, span level (every `EVAL_CANARY_INTERVAL` seconds)
+
+`OpenSearchTraceRetriever.list_root_spans()` lists recent agent roots of `travel-planner`,
+`weather-agent` and `events-agent`; `find_evaluated_trace_ids(evaluator="trace_health_check")`
+skips traces this canary already graded (other evaluators do not block it). Each agent root span
+gets four results from evaluator `trace_health_check` (type `code`), with its agent name and
+version:
+
+| Evaluation | Measures | Pass rule |
 |---|---|---|
-| `span_coverage` | Instrumentation health — input, output, and tool spans present | 0.0 / 0.33 / 0.67 / 1.0 |
-| `error_free` | No span in the trace has `status.code=ERROR` | 0 or 1 |
-| `tool_call_success_rate` | Fraction of tool calls that returned non-empty results | 0.0–1.0 |
-| `tool_diversity` | Unique tools / total tool calls (catches looping) | 0.0–1.0 |
+| `span_coverage` | input, output and tool spans present | `>= 0.67` |
+| `error_free` | no span of the trace has ERROR status | label `pass` / `fail` |
+| `tool_call_success_rate` | tool calls that returned data | `>= 0.75` |
+| `tool_diversity` | unique tools / tool calls (catches loops) | `>= 0.34` |
+
+### Online, session level
+
+Travel planner turns that share a `gen_ai.conversation.id` (the canary service sends a "deep"
+comparison as one session) are graded once the session is idle for
+`EVAL_CANARY_SESSION_IDLE_SECONDS`: `session_success_rate` (evaluator `session_health_check`,
+`score(conversation_id=...)`, level `session`), the share of turns answered without a sub-agent
+failure.
+
+### Offline test suite (every `EVAL_CANARY_SUITE_INTERVAL_MINUTES`)
+
+`evaluate()` runs the `travel_planner_smoke` suite against the running travel planner as a named
+eval run (`run_name` "canary <time> UTC", `run_description`). The task is an `invoke_agent`
+CLIENT span that calls the planner over HTTP; the planner continues the trace, so each case is one
+trace with the planner's spans and logs below the case's root span.
+
+| Case | Fault | Expected |
+|---|---|---|
+| `paris-ok`, `tokyo-ok` | none | pass |
+| `london-weather-tool-error` | weather tool error | fail: `plan_complete`, `no_sub_agent_errors` |
+| `berlin-wrong-city-events` | events agent answers for Tokyo | fail: `no_foreign_attractions` |
+| `sydney-events-rate-limited` | events agent rate limited | fail: `plan_complete`, `no_sub_agent_errors` |
+
+Scorers (each named scorer is its own evaluator):
+
+- `plan_complete` (threshold 1.0), `no_sub_agent_errors` (bool), `latency_budget`
+  (`direction="minimize"`, threshold 15 s), `answer_relevance` (threshold 1.0),
+  `no_foreign_attractions` (bool): `@scorer` declarations with `evaluator_type` and a description.
+- `keyword_overlap`: a library-style metric. Its `EvalScore` names its own evaluator
+  (`lib.keyword_overlap`) and rule, so the scorer's declarations do not apply to it. It shares the
+  evaluation name `answer_relevance` with the scorer above, so its local result key is
+  `answer_relevance (lib.keyword_overlap)`.
+
+The canary logs each case's result keys and, for a failed case, a WARN log on the case's root
+span.
 
 ## Configuration
 
-| Env Var | Default | Description |
+| Env var | Default | Description |
 |---|---|---|
-| `EVAL_CANARY_INTERVAL` | `120` | Seconds between poll cycles |
-| `EVAL_CANARY_LOOKBACK_MINUTES` | `15` | How far back to search for traces |
+| `EVAL_CANARY_INTERVAL` | `120` | Seconds between cycles |
+| `EVAL_CANARY_LOOKBACK_MINUTES` | `15` | How far back to look for traces |
+| `EVAL_CANARY_SUITE_INTERVAL_MINUTES` | `30` | Minutes between suite runs; `0` turns the suite off |
+| `EVAL_CANARY_SESSION_IDLE_SECONDS` | `90` | Grade a session once its newest turn is this old |
+| `TRAVEL_PLANNER_URL` | `http://travel-planner:8000` | Planner the suite calls |
 
-## Running with the LLM Canary
+## Running with the LLM canary
 
-Both canaries can run simultaneously without duplicating scores. Each deduplicates by its own evaluation name — this canary checks for existing `span_coverage` scores, the LLM canary checks for `helpfulness`. Neither blocks the other.
+The [LLM canary](../agent-eval-canary-llm/README.md) grades the same traces with an LLM judge.
+Each canary skips only the traces its own evaluators graded, so both can run together.
 
-A trace scored by both gets **5 evaluation spans**:
+## Check the results
 
+```bash
+curl -sk -u 'admin:My_password_123!@#' 'https://localhost:9200/otel-v1-genai-evaluation/_search?size=0' \
+  -H 'content-type: application/json' -d '{"aggs":{"evaluators":{"terms":{"field":"attributes.opensearch.gen_ai.evaluation.evaluator.name"}}}}'
 ```
-invoke_agent Events Agent
-├── evaluation span_coverage            (deterministic)
-├── evaluation error_free               (deterministic)
-├── evaluation tool_call_success_rate   (deterministic)
-├── evaluation tool_diversity           (deterministic)
-└── evaluation helpfulness              (LLM-as-judge)
-```
-
-## OTel Compliance
-
-All evaluation spans follow [OTel GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-events/):
-
-- `gen_ai.operation.name = "evaluation"`
-- `gen_ai.evaluation.name` — the eval name
-- `gen_ai.evaluation.score.value` — numeric score
-- `gen_ai.evaluation.score.label` — human-readable label
-- `gen_ai.evaluation.explanation` — reasoning or details
-- `gen_ai.evaluation.result` event emitted per span
-
-Score spans attach as children of the evaluated agent's `invoke_agent` span, so they appear in the same trace waterfall in OpenSearch Dashboards.

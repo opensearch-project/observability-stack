@@ -11,6 +11,7 @@ import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals-ui.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -116,6 +117,30 @@ export async function storeIndexPatternFields(base, wsId, dsId, patterns, patter
   }
 }
 
+/**
+ * The application's data source for this stack: the one whose endpoint is the stack's domain or
+ * collection endpoint, else the first. An application reused across stacks has several, and the
+ * first is not necessarily this stack's.
+ */
+// OpenSearch Dashboards references a data source with type `data-source`, for managed domains
+// and serverless collections alike (the engine type is an attribute of the data source). Code
+// that resolves a dataset's data source, such as Agent Evaluations, only reads that type.
+export const DS_REF_TYPE = 'data-source';
+
+/** Returns references with every `dataSource` reference set to DS_REF_TYPE, or null when none needs repair. */
+export function repairDataSourceRefs(references) {
+  const refs = references || [];
+  if (!refs.some((r) => r.name === 'dataSource' && r.type !== DS_REF_TYPE)) return null;
+  return refs.map((r) => (r.name === 'dataSource' ? { ...r, type: DS_REF_TYPE } : r));
+}
+
+export function pickDataSource(dataSources, endpoint) {
+  const list = dataSources || [];
+  const norm = (u) => String(u || '').trim().toLowerCase().replace(/\/+$/, '');
+  const want = norm(endpoint);
+  return (want && list.find((d) => norm(d.attributes?.endpoint) === want)) || list[0];
+}
+
 // ── Init sequence ─────────────────────────────────────────────────────────────
 
 export async function initOpenSearchUI(cfg) {
@@ -145,10 +170,11 @@ export async function initOpenSearchUI(cfg) {
   // b. Find auto-created data-source (may take a few seconds to appear)
   let dsId;
   for (let attempt = 0; attempt < 6; attempt++) {
-    const dsResp = await osuiGet(base, '/api/saved_objects/_find?type=data-source&per_page=10', region);
-    dsId = dsResp.data?.saved_objects?.[0]?.id;
+    const dsResp = await osuiGet(base, '/api/saved_objects/_find?type=data-source&per_page=100', region);
+    const ds = pickDataSource(dsResp.data?.saved_objects, cfg.opensearchEndpoint);
+    dsId = ds?.id;
     if (dsId) {
-      printSuccess(`Data source: ${dsResp.data.saved_objects[0].attributes?.title} (${dsId})`);
+      printSuccess(`Data source: ${ds.attributes?.title} (${dsId})`);
       break;
     }
     if (attempt < 5) await new Promise((res) => setTimeout(res, 10000));
@@ -206,8 +232,6 @@ export async function initOpenSearchUI(cfg) {
   // f. Create index patterns with dataSource reference
   const svcMapPattern = 'otel-v2-apm-service-map*';
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
-  const isServerless = cfg.opensearchType === 'serverless';
-  const dsRefType = isServerless ? 'OpenSearch Serverless' : 'data-source';
 
   const patterns = [
     { title: 'logs-otel-v1*', timeFieldName: 'time', signalType: 'logs', schemaMappings: logsSchema },
@@ -216,28 +240,46 @@ export async function initOpenSearchUI(cfg) {
   ];
 
   const patternIds = {};
+  // Existing patterns are listed and matched by title here: the saved objects `search` does not
+  // match titles with `*`, so searching for them finds nothing and reruns made duplicates.
+  const findResp = await osuiGet(base, `/w/${wsId}/api/saved_objects/_find?type=index-pattern&fields=title&per_page=10000`, region);
+  const existingPatterns = findResp.data?.saved_objects || [];
   for (const p of patterns) {
-    // Check if exists
-    const findResp = await osuiGet(base,
-      `/w/${wsId}/api/saved_objects/_find?type=index-pattern&search_fields=title&search=${encodeURIComponent(p.title)}`, region);
-    const existingPat = (findResp.data?.saved_objects || []).find((o) => o.attributes?.title === p.title);
+    const existingPat = existingPatterns.find((o) => o.attributes?.title === p.title);
     if (existingPat) {
       patternIds[p.title] = existingPat.id;
-      printSuccess(`Index pattern exists: ${p.title}`);
+      // Earlier installer versions referenced serverless data sources with type
+      // `OpenSearch Serverless`; repair those references to `data-source`.
+      const repaired = repairDataSourceRefs(existingPat.references);
+      if (repaired) {
+        await osuiPut(base, `/w/${wsId}/api/saved_objects/index-pattern/${existingPat.id}`, {
+          attributes: { title: p.title },
+          references: repaired,
+        }, region);
+        printSuccess(`Index pattern data source reference repaired: ${p.title}`);
+      } else {
+        printSuccess(`Index pattern exists: ${p.title}`);
+      }
       continue;
     }
     const resp = await osuiPost(base, `/w/${wsId}/api/saved_objects/index-pattern`, {
       attributes: p,
-      references: dsId ? [{ id: dsId, name: 'dataSource', type: dsRefType }] : [],
+      references: dsId ? [{ id: dsId, name: 'dataSource', type: DS_REF_TYPE }] : [],
     }, region);
     patternIds[p.title] = resp.data?.id;
     printSuccess(`Index pattern created: ${p.title}`);
   }
 
+  // Agent Evaluations: the evaluations dataset and the workspace's config, as the UI's
+  // "Create evaluations dataset" and Settings save them (harmless with the feature flag off).
+  const evals = await setupAgentEvaluations(base, wsId, dsId, patternIds['otel-v1-apm-span*'], region);
+  const evalsPattern = { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD };
+  if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
+
   // Store each pattern's field list now. Explore builds its data view from the saved object
   // without fetching fields, so a pattern saved without them has no time field and the logs and
   // traces histograms fail with "Could not locate that index-pattern-field".
-  await storeIndexPatternFields(base, wsId, dsId, patterns, patternIds, region);
+  await storeIndexPatternFields(base, wsId, dsId, [...patterns, evalsPattern], patternIds, region);
 
   const logsId = patternIds['logs-otel-v1*'];
   const tracesId = patternIds['otel-v1-apm-span*'];
@@ -341,6 +383,28 @@ export async function initOpenSearchUI(cfg) {
   printInfo(`URL: ${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`);
   // app/home is not a workspace app and redirects to the workspace picker; open the overview dashboard instead.
   cfg.dashboardsUrl = `${base}/w/${wsId}/app/dashboards#/view/observability-overview-dashboard`;
+}
+
+// ── Agent Evaluations ─────────────────────────────────────────────────────────
+
+/** The evaluations dataset and config; a failure warns and leaves the rest of the setup alone. */
+export async function setupAgentEvaluations(base, wsId, dsId, tracesId, region) {
+  const api = {
+    get: (path) => osuiGet(base, path, region),
+    post: (path, body) => osuiPost(base, path, body, region),
+    put: (path, body) => osuiPut(base, path, body, region),
+  };
+  try {
+    const r = await ensureAgentEvalsSetup(api, { wsId, dsId, tracesId });
+    if (r.evalsId) printSuccess(`Evaluations dataset ${r.datasetCreated ? 'created' : 'exists'}: ${EVALS_DATASET_TITLE}`);
+    else printWarning('Could not create the evaluations dataset');
+    if (r.configId) printSuccess(`Agent Evaluations config ${r.configCreated ? 'created' : 'exists'}`);
+    else printWarning('Agent Evaluations config not created (no traces or evaluations dataset)');
+    return r;
+  } catch (err) {
+    printWarning(`Agent Evaluations setup failed: ${err.message}`);
+    return {};
+  }
 }
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────

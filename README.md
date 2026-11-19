@@ -328,10 +328,13 @@ INCLUDE_COMPOSE_EXAMPLES=docker-compose.examples.yml
 ```
 
 **Example services:**
-- **travel-planner** (port 8003): Multi-agent orchestrator demonstrating distributed tracing
+- **travel-planner** (port 8003): Multi-agent orchestrator demonstrating distributed tracing, sessions and application logs
 - **weather-agent** (port 8000): Weather lookup with fault injection
 - **events-agent** (port 8002): Local events lookup
 - **canary**: Generates test traffic with fault injection
+- **agent-eval-canary**: Online (trace and session) and offline evaluations of the agents with code checks, stored in `otel-v1-genai-evaluation` (local OpenSearch only)
+
+The agents send trace-correlated application logs and sessions. An opt-in LLM eval canary (`INCLUDE_COMPOSE_AGENT_EVAL_LLM` in `.env`, needs AWS credentials for Amazon Bedrock) adds an LLM judge. See [Example Agents](https://observability.opensearch.org/docs/ai-observability/examples/).
 
 **To run without examples:**
 - Comment out the `INCLUDE_COMPOSE_EXAMPLES` line in `.env`

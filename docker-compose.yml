@@ -106,6 +106,10 @@ services:
       opensearch:
         condition: service_healthy
         required: false
+      # Local OpenSearch only: the evaluation write alias must exist before the first write
+      genai-evaluation-index-init:
+        condition: service_completed_successfully
+        required: false
     networks:
       - observability-stack-network
     restart: unless-stopped
@@ -308,6 +312,8 @@ services:
       - ISM_RETENTION_DAYS=${ISM_RETENTION_DAYS:-7}
     volumes:
       - ./docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py:/init.py
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-index-template.json:/config/genai-evaluation/otel-v1-genai-evaluation-index-template.json:ro
+      - ./docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json:/config/genai-evaluation/otel-v1-genai-evaluation-policy.json:ro
       - ./docker-compose/opensearch-dashboards/saved-queries-traces.yaml:/config/saved-queries-traces.yaml
       - ./docker-compose/opensearch-dashboards/saved-queries-metrics.yaml:/config/saved-queries-metrics.yaml
       - ./docker-compose/opensearch-dashboards/dashboard-opensearch-health.yaml:/config/dashboard-opensearch-health.yaml

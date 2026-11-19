@@ -129,6 +129,41 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 For a VPC deployment the ingest endpoint is VPC-private, so your collector must run inside the VPC (or reach it over peering/Transit Gateway). A VPC OSIS endpoint also takes ~10-15 minutes after the pipeline reports `ACTIVE` before it serves requests; until then connections close with no HTTP response. This is AWS-side ingestion warmup, not a configuration problem.
 
+## Agent evaluation results
+
+Both methods set up storage for [agent evaluation results](/docs/agent-evals/) (`gen_ai.evaluation.result` log events). The pipeline routes those events, and only those, to the evaluation index. Every other log still goes to `logs-otel-v1`:
+
+```yaml
+  route:
+    - logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'
+    - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'
+```
+
+| | Managed (AOS) | Serverless (AOSS NextGen time series collection) |
+|---|---|---|
+| **Written to** | Write alias `otel-v1-genai-evaluation` over `otel-v1-genai-evaluation-000001`, `-000002`, ... | One index, `otel-v1-genai-evaluation` |
+| **Created by** | Before the pipeline exists: the CLI installer, or a CDK custom resource. Both create the ISM policy `otel-v1-genai-evaluation-policy`, the index template `otel-v1-genai-evaluation-index-template`, and the first index with the write alias | The pipeline sink, on first write, from the template in the pipeline configuration (`template_content`, with `index.timestamp_field: time`) |
+| **Lifecycle** | ISM rollover at 50 GB or 24 hours, deleted after 7 days (CLI `--evaluation-retention-days`, CDK `-c evaluationRetentionDays=<days>`; `0` keeps them) | No ISM and no rollover. Retention comes from the collection's data lifecycle policy |
+
+- OpenSearch Ingestion cannot create ISM policies or aliases, which is why the installer and the CDK create them first.
+- The evaluation sink in both pipelines carries the whole evaluation template inline (`index_type: custom`, `template_type: index-template`, `template_content`). It is the same JSON as the local stack's template. On a managed domain it is a fallback: if the alias does not exist when the pipeline first writes, the sink creates a concrete `otel-v1-genai-evaluation` index with the evaluation mappings and no rollover.
+- The CLI installer does not create the alias for a VPC domain, because it cannot reach the domain from outside the VPC. The pipeline then creates the concrete index. To use rollover there, create the [policy, template and first index](/docs/agent-evals/data-model/#the-evaluation-index) from OpenSearch UI Dev Tools before the pipeline first writes.
+- If the index step fails, the installer prints a warning and continues. To move a concrete index to the alias later, see [Migrate from the logs index](/docs/agent-evals/data-model/#migrate-from-the-logs-index).
+
+The `eventName` route needs a Data Prepper version that stores the OTLP event name ([data-prepper#7148](https://github.com/opensearch-project/data-prepper/pull/7148), Data Prepper 2.17.0). With an older version, results stay in `logs-otel-v1`.
+
+Send results from the SDK to the pipeline's ingest endpoint and path, signed with SigV4:
+
+```python
+register(
+    endpoint="https://<ingest-endpoint>/<pipeline-name>",  # the SDK appends /v1/traces and /v1/logs
+    sigv4={"service": "osis", "region": "us-west-2"},
+    service_name="my-agent",
+)
+```
+
+Query the results through the index pattern `otel-v1-genai-evaluation*`. See [Data Model & Ingestion](/docs/agent-evals/data-model/) for the template and the attributes.
+
 ## Cleanup
 
 **CLI installer:**

@@ -1,4 +1,7 @@
 import importlib.util
+import json
+import shutil
+import subprocess
 import sys
 import types
 import unittest
@@ -157,6 +160,132 @@ class CreateIndexPatternTests(unittest.TestCase):
                     timeout=10,
                 )
                 initializer.requests.put.assert_not_called()
+
+
+class EnsureEvaluationIndexTests(unittest.TestCase):
+    COMPOSE_INITIALIZER = INITIALIZER_PATHS[0]
+
+    def setUp(self):
+        self.initializer = load_initializer(self.COMPOSE_INITIALIZER)
+        self.initializer.EVALUATION_FILES_DIR = str(REPOSITORY_ROOT / "docker-compose/data-prepper")
+        self.endpoint = self.initializer.OPENSEARCH_ENDPOINT
+
+    def _routes(self, routes):
+        def respond(method):
+            def call(url, **kwargs):
+                status, body = routes.get((method, url.replace(self.endpoint, "")), (404, {}))
+                return Mock(status_code=status, text=str(body), json=Mock(return_value=body))
+            return call
+        self.initializer.requests.get.side_effect = respond("GET")
+        self.initializer.requests.put.side_effect = respond("PUT")
+
+    def test_creates_policy_template_and_write_index_in_order(self):
+        self._routes({
+            ("PUT", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (201, {}),
+            ("PUT", "/_index_template/otel-v1-genai-evaluation-index-template"): (200, {}),
+            ("PUT", "/otel-v1-genai-evaluation-000001"): (200, {}),
+        })
+        self.assertTrue(self.initializer.ensure_evaluation_index())
+        puts = [c.args[0].replace(self.endpoint, "") for c in self.initializer.requests.put.call_args_list]
+        self.assertEqual(puts, [
+            "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy",
+            "/_index_template/otel-v1-genai-evaluation-index-template",
+            "/otel-v1-genai-evaluation-000001",
+        ])
+        policy = self.initializer.requests.put.call_args_list[0].kwargs["json"]["policy"]
+        # ISM_RETENTION_DAYS (default 7) applies to evaluations like the other indices
+        self.assertEqual(policy["states"][-1], {"name": "delete", "actions": [{"delete": {}}], "transitions": []})
+        self.assertEqual(policy["states"][0]["transitions"],
+                         [{"state_name": "delete", "conditions": {"min_index_age": f"{self.initializer.ISM_RETENTION_DAYS}d"}}])
+        self.assertEqual(
+            {"aliases": {"otel-v1-genai-evaluation": {"is_write_index": True}}},
+            self.initializer.requests.put.call_args_list[2].kwargs["json"],
+        )
+
+    def test_retention_zero_keeps_the_rollover_only_policy(self):
+        base = json.loads((REPOSITORY_ROOT / "docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json").read_text())
+        self.assertEqual(self.initializer.evaluation_policy(base, 0), base)
+        self.assertNotIn("delete", json.dumps(base))  # the shared file is not changed
+
+    def test_matches_the_aws_installer_policy(self):
+        node = shutil.which("node")
+        cli = REPOSITORY_ROOT / "aws/cli-installer/src/evaluation-index.mjs"
+        if not node or not cli.exists():
+            self.skipTest("node or the CLI installer is not available")
+        base = json.loads((REPOSITORY_ROOT / "docker-compose/data-prepper/otel-v1-genai-evaluation-policy.json").read_text())
+        for days in (0, 7, 30):
+            out = subprocess.run(
+                [node, "--input-type=module", "-e",
+                 f"import {{ evaluationPolicy }} from {json.dumps(cli.as_uri())}; console.log(JSON.stringify(evaluationPolicy({days})))"],
+                capture_output=True, text=True, check=True,
+            ).stdout
+            self.assertEqual(self.initializer.evaluation_policy(base, days), json.loads(out), f"{days} days")
+
+    def test_skips_existing_objects(self):
+        self._routes({
+            ("GET", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (200, {}),
+            ("GET", "/_index_template/otel-v1-genai-evaluation-index-template"): (
+                200, {"index_templates": [{"index_template": {"version": 1}}]}),
+            ("GET", "/_alias/otel-v1-genai-evaluation"): (200, {}),
+        })
+        self.assertTrue(self.initializer.ensure_evaluation_index())
+        self.initializer.requests.put.assert_not_called()
+
+    def test_leaves_a_concrete_index_with_the_alias_name(self):
+        self._routes({
+            ("GET", "/_plugins/_ism/policies/otel-v1-genai-evaluation-policy"): (200, {}),
+            ("GET", "/_index_template/otel-v1-genai-evaluation-index-template"): (
+                200, {"index_templates": [{"index_template": {"version": 1}}]}),
+            ("GET", "/otel-v1-genai-evaluation"): (200, {}),
+        })
+        self.assertFalse(self.initializer.ensure_evaluation_index())
+        self.initializer.requests.put.assert_not_called()
+
+    def test_evaluation_index_mode_retries_until_ready(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(side_effect=[False, False, True])
+        self._routes({})
+        self.assertTrue(self.initializer.run_evaluation_index_init(attempts=5, delay_seconds=0))
+        self.assertEqual(3, self.initializer.ensure_evaluation_index.call_count)
+
+    def test_evaluation_index_mode_accepts_a_concrete_index(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(return_value=False)
+        self._routes({("GET", "/otel-v1-genai-evaluation"): (200, {})})
+        self.assertTrue(self.initializer.run_evaluation_index_init(attempts=5, delay_seconds=0))
+        self.assertEqual(1, self.initializer.ensure_evaluation_index.call_count)
+
+    def test_evaluation_index_mode_gives_up(self):
+        self.initializer.time.sleep = Mock()
+        self.initializer.ensure_evaluation_index = Mock(return_value=False)
+        self._routes({})
+        self.assertFalse(self.initializer.run_evaluation_index_init(attempts=3, delay_seconds=0))
+
+
+class DataPrepperEvaluationTemplateTests(unittest.TestCase):
+    """The local pipeline inlines the same template the init job and the AWS installer install."""
+
+    def test_inlined_template_matches_the_template_file(self):
+        directory = REPOSITORY_ROOT / "docker-compose/data-prepper"
+        lines = (directory / "pipelines.template.yaml").read_text().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.strip() == "template_content: |")
+        indent = len(lines[start]) - len(lines[start].lstrip()) + 2
+        block = []
+        for line in lines[start + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) < indent:
+                break
+            block.append(line[indent:])
+        inlined = json.loads("\n".join(block))
+        expected = json.loads((directory / "otel-v1-genai-evaluation-index-template.json").read_text())
+        expected.pop("index_patterns")
+        self.assertEqual(expected, inlined)
+        for target in ("aws/cli-installer/src", "aws/cdk/lib"):
+            path = REPOSITORY_ROOT / target / "genai-evaluation/otel-v1-genai-evaluation-index-template.json"
+            if path.exists():
+                with self.subTest(target=target):
+                    aws = json.loads(path.read_text())
+                    aws.pop("index_patterns", None)
+                    self.assertEqual(expected, aws)
 
 
 if __name__ == "__main__":

@@ -4,11 +4,14 @@ Events Agent - Fetches attractions and points of interest for a destination.
 Uses Wikipedia via MCP server for real data. Supports fault injection for testing observability.
 
 Instrumented with opensearch-genai-observability-sdk-py:
-- register() replaces ~20 lines of manual TracerProvider/exporter setup
+- register() sets up the OTLP traces and logs pipelines in one call
 - observe() + enrich() replace manual span creation + set_attribute() calls
+- mark_agent_root() marks the agent span when the agent is called directly (no caller trace)
+- Python logging goes through the SDK's logger provider, with trace and span ids on every record
 """
 
 import json
+import logging
 import os
 import random
 import threading
@@ -21,16 +24,18 @@ import httpx
 import requests as req_lib
 from fastapi import FastAPI
 from opentelemetry import trace, metrics
+from opentelemetry._logs import get_logger_provider
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk._logs import LoggingHandler
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
-from opensearch_genai_observability_sdk_py import Op, enrich, observe, register
+from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
 from bedrock_client import (
     get_bedrock_client, converse, extract_text, get_usage,
     BedrockUnavailableError, BEDROCK_MODEL_ID,
@@ -147,6 +152,7 @@ class FaultConfig(BaseModel):
 class EventsRequest(BaseModel):
     destination: str
     date: Optional[str] = None
+    session_id: Optional[str] = None
     fault: Optional[FaultConfig] = None
 
 
@@ -178,6 +184,13 @@ register(
     service_name="events-agent",
     service_version="1.0.0",
 )
+
+# Application logs through the LoggerProvider register() installed: each record carries the
+# trace and span ids of the active span.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logging.getLogger().addHandler(LoggingHandler(level=logging.INFO, logger_provider=get_logger_provider()))
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logger = logging.getLogger("events_agent")
 
 # Metrics (SDK handles tracing only)
 # TODO: unify Resource with register() when SDK supports metrics
@@ -211,24 +224,24 @@ async def get_events(request: EventsRequest):
     model = random.choice(MODELS)
     provider = SYSTEMS[model]
 
-    # Promote gen_ai attributes to the root HTTP span so the UI can read them
-    enrich(
-        model=model,
-        provider=provider,
-        agent_id=AGENT_ID,
-        input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Find events in {request.destination}"}]}],
-    )
-    root_span = trace.get_current_span()
-    root_span.set_attribute("gen_ai.agent.name", AGENT_NAME)
-    root_span.set_attribute("gen_ai.operation.name", "invoke_agent")
+    parent = getattr(trace.get_current_span(), "parent", None)
+    called_by_agent = bool(parent is not None and parent.is_remote)
 
+    # The HTTP server span stays a plain HTTP span: only the invoke_agent span names the agent.
     with observe(AGENT_NAME, op=Op.INVOKE_AGENT) as span:
+        # Called directly (no caller trace), this agent span below the HTTP handler is the
+        # trace's agent root. Called by the travel planner, the planner's span is.
+        if not called_by_agent:
+            mark_agent_root()
         enrich(
             model=model,
             provider=provider,
             agent_id=AGENT_ID,
+            session_id=request.session_id,
             tool_definitions=TOOL_DEFINITIONS,
+            input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Find events in {request.destination}"}]}],
         )
+        logger.info("Looking up events in %s", request.destination, extra={"destination": request.destination})
 
         destination = request.destination.lower()
         date = request.date or datetime.now().strftime("%Y-%m-%d")
@@ -256,6 +269,7 @@ async def get_events(request: EventsRequest):
                 except BedrockUnavailableError as e:
                     reasoning_span.set_attribute("gen_ai.bedrock.fallback", True)
                     reasoning_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
+                    logger.warning("Bedrock unavailable, using the simulated model: %s", str(e)[:200])
                     enrich(model=model, provider=provider, input_tokens=random.randint(100, 500), output_tokens=random.randint(50, 200), finish_reason="tool_calls")
                     time.sleep(random.uniform(0.05, 0.15))
             else:
@@ -269,10 +283,12 @@ async def get_events(request: EventsRequest):
             if fault.type == "high_latency":
                 delay = fault.delay_ms / 1000.0
                 span.set_attribute("fault.delay_ms", fault.delay_ms)
+                logger.warning("Fault injection: delaying the events lookup by %d ms", fault.delay_ms)
                 time.sleep(delay)
 
             elif fault.type == "timeout":
                 span.set_status(Status(StatusCode.ERROR, "Tool execution timed out"))
+                logger.error("Events lookup timed out", extra={"error.type": "timeout"})
                 time.sleep(30)
                 return ErrorResponse(
                     error={"type": "timeout", "message": "Events lookup timed out"},
@@ -282,6 +298,7 @@ async def get_events(request: EventsRequest):
 
             elif fault.type == "error":
                 span.set_status(Status(StatusCode.ERROR, "Events API error"))
+                logger.error("Events API returned an error", extra={"error.type": "tool_error"})
                 return ErrorResponse(
                     error={"type": "tool_error", "message": "Events API returned an error"},
                     destination=request.destination,
@@ -290,6 +307,7 @@ async def get_events(request: EventsRequest):
 
             elif fault.type == "rate_limited":
                 span.set_status(Status(StatusCode.ERROR, "Rate limited"))
+                logger.warning("Events API rate limit exceeded", extra={"error.type": "rate_limited"})
                 return ErrorResponse(
                     error={"type": "rate_limited", "message": "Events API rate limit exceeded"},
                     destination=request.destination,
@@ -299,12 +317,17 @@ async def get_events(request: EventsRequest):
             elif fault.type == "wrong_city":
                 wrong = fault.wrong_city or random.choice([c for c in SAMPLE_EVENTS.keys() if c != destination])
                 span.set_attribute("fault.wrong_city", wrong)
+                # A bad answer: the events are for another city
+                logger.warning("Returning events for %s instead of %s", wrong, request.destination,
+                               extra={"fault.wrong_city": wrong, "destination": request.destination})
                 events_data = SAMPLE_EVENTS.get(wrong, SAMPLE_EVENTS["paris"])
                 selected = random.sample(events_data, min(len(events_data), 2))
                 events = [Event(name=e["name"], type=e["type"], venue=e["venue"], date=date) for e in selected]
+                enrich(output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": json.dumps([e.model_dump() for e in events])}]}])
                 return EventsResponse(destination=request.destination, events=events, agent_id=AGENT_ID)
 
             elif fault.type == "empty":
+                logger.warning("Returning no events for %s", request.destination)
                 return EventsResponse(destination=request.destination, events=[], agent_id=AGENT_ID)
 
         # Tool execution via MCP server
@@ -330,8 +353,19 @@ async def get_events(request: EventsRequest):
                 "jsonrpc": "2.0", "method": "tools/call", "id": request_id,
                 "params": {"name": "fetch_events_api", "arguments": {"destination": destination}}
             }
-            resp = httpx.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers, timeout=30)
-            mcp_result = resp.json().get("result", {})
+            try:
+                resp = httpx.post(f"{MCP_SERVER_URL}/mcp", json=payload, headers=headers, timeout=30)
+                body = resp.json()
+            except Exception as e:
+                logger.error("fetch_events_api failed: %s", e, extra={"error.type": type(e).__name__})
+                tool_span.set_status(Status(StatusCode.ERROR, str(e)))
+                raise
+            if "error" in body:
+                logger.error("fetch_events_api returned an error: %s", body["error"].get("message"), extra={"error.type": "tool_error"})
+                tool_span.set_status(Status(StatusCode.ERROR, str(body["error"].get("message"))))
+            mcp_result = body.get("result", {})
+            if mcp_result.get("source") == "fallback":
+                logger.warning("fetch_events_api answered from fallback data for %s", request.destination)
             events_list = mcp_result.get("events", [])
             events = [Event(name=e["name"], type=e.get("type", "attraction"), venue=e.get("venue", destination.title()), date=e.get("date", date)) for e in events_list]
 
@@ -340,13 +374,10 @@ async def get_events(request: EventsRequest):
             )
 
         span.set_attribute("events.count", len(events))
-
-    # Set output on the parent HTTP request span. This enrich() is intentionally
-    # outside the observe() block — exiting observe() restores the parent span
-    # context, so enrich() here targets the HTTP request span, not the agent span.
-    enrich(
-        output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": json.dumps([e.model_dump() for e in events])}]}],
-    )
+        enrich(
+            output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": json.dumps([e.model_dump() for e in events])}]}],
+        )
+        logger.info("Found %d events in %s", len(events), request.destination)
 
     return EventsResponse(destination=request.destination, events=events, agent_id=AGENT_ID)
 

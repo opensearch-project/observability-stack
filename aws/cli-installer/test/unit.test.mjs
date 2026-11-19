@@ -1,5 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import {
+  ensureAgentEvalsSetup, evalsConfigBody, evalsDatasetAttributes, missingDatasetAttributes,
+} from '../src/agent-evals-ui.mjs';
+import { pickDataSource, repairDataSourceRefs, DS_REF_TYPE } from '../src/opensearch-ui-init.mjs';
 
 // We need to extract the pure functions for testing.
 // Since buildAppDataSources is not exported, we replicate the logic here
@@ -350,8 +354,9 @@ describe('renderPipeline', () => {
     assert.ok(yaml.includes('window_duration: 30s'));
   });
 
-  it('routes logs, traces, and metrics from otlp-pipeline', () => {
-    assert.ok(yaml.includes("'getEventType() == \"LOG\"'"));
+  it('routes logs, evaluations, traces, and metrics from otlp-pipeline', () => {
+    assert.ok(yaml.includes("'getEventType() == \"LOG\" and /eventName != \"gen_ai.evaluation.result\"'"));
+    assert.ok(yaml.includes("'getEventType() == \"LOG\" and /eventName == \"gen_ai.evaluation.result\"'"));
     assert.ok(yaml.includes("'getEventType() == \"TRACE\"'"));
     assert.ok(yaml.includes("'getEventType() == \"METRIC\"'"));
   });
@@ -984,7 +989,7 @@ describe('renderPipeline — serverless', () => {
   });
 
   it('uses index_type custom for every serverless sink so template_content is applied', () => {
-    assert.equal(yaml.match(/index_type: custom/g)?.length, 3);
+    assert.equal(yaml.match(/index_type: custom/g)?.length, 4);
   });
 
   it('sets index.timestamp_field to each signal time field in the index templates', () => {
@@ -993,8 +998,9 @@ describe('renderPipeline — serverless', () => {
     }
   });
 
-  it('does not copy time into @timestamp', () => {
-    assert.ok(!yaml.includes('copy_values'));
+  it('copies time into @timestamp only for evaluation results', () => {
+    assert.equal(yaml.match(/copy_values/g)?.length, 1);
+    assert.ok(yaml.indexOf('copy_values') > yaml.indexOf('\notel-evaluations-pipeline:'));
   });
 });
 
@@ -1152,5 +1158,426 @@ describe('mergeAossPolicyPrincipals', () => {
       { Rules: [], Principal: ['arn:aws:iam::1:role/osi', 'arn:aws:iam::1:role/b'] },
       { Rules: [], Principal: ['arn:aws:iam::1:role/osi', 'arn:aws:iam::1:role/b'] },
     ]);
+  });
+});
+
+// ── GenAI evaluation index ──────────────────────────────────────────────────
+
+import { readFileSync, existsSync } from 'node:fs';
+import {
+  ensureEvaluationIndex,
+  evaluationTemplateContent,
+  EVALUATION_TEMPLATE,
+  EVALUATION_POLICY,
+  evaluationPolicy,
+} from '../src/evaluation-index.mjs';
+
+const EVAL_FILES = ['otel-v1-genai-evaluation-index-template.json', 'otel-v1-genai-evaluation-policy.json'];
+
+describe('evaluation index files', () => {
+  // The CLI, CDK and local compose stack ship their own copies; they must not drift.
+  for (const file of EVAL_FILES) {
+    it(`${file} is identical in every copy`, () => {
+      const cli = readFileSync(new URL(`../src/genai-evaluation/${file}`, import.meta.url), 'utf8');
+      for (const rel of [`../../cdk/lib/genai-evaluation/${file}`, `../../../docker-compose/data-prepper/${file}`]) {
+        const url = new URL(rel, import.meta.url);
+        if (!existsSync(url)) continue; // published package: only the CLI copy exists
+        assert.equal(readFileSync(url, 'utf8'), cli, `${rel} differs from the CLI copy`);
+      }
+    });
+  }
+
+  // The local Data Prepper pipeline inlines the template by hand (the CLI and CDK build theirs from
+  // the JSON), so compare that copy too: a mapping change must reach the local stack as well.
+  it('the local Data Prepper pipeline inlines the same template, without index_patterns', () => {
+    const url = new URL('../../../docker-compose/data-prepper/pipelines.template.yaml', import.meta.url);
+    if (!existsSync(url)) return; // published package
+    const lines = readFileSync(url, 'utf8').split('\n');
+    const start = lines.findIndex((l) => /^otel-evaluations-pipeline:/.test(l));
+    assert.ok(start >= 0, 'otel-evaluations-pipeline not found');
+    const tc = lines.findIndex((l, i) => i > start && /^\s*template_content:\s*\|\s*$/.test(l));
+    assert.ok(tc > start, 'template_content not found in otel-evaluations-pipeline');
+    const indent = lines[tc + 1].match(/^\s*/)[0].length;
+    const block = [];
+    for (const l of lines.slice(tc + 1)) {
+      if (l.trim() && l.match(/^\s*/)[0].length < indent) break;
+      block.push(l.slice(indent));
+    }
+    const { index_patterns: _patterns, ...expected } = EVALUATION_TEMPLATE;
+    assert.deepEqual(JSON.parse(block.join('\n')), expected);
+  });
+
+  it('template is version 1, matches the rollover indices and has no delete in the policy', () => {
+    assert.equal(EVALUATION_TEMPLATE.version, 1);
+    assert.deepEqual(EVALUATION_TEMPLATE.index_patterns, ['otel-v1-genai-evaluation-*']);
+    assert.ok(!JSON.stringify(EVALUATION_POLICY).includes('"delete"'));
+  });
+});
+
+for (const opensearchType of ['managed', 'serverless']) {
+  describe(`renderPipeline evaluations (${opensearchType})`, () => {
+    const yaml = renderPipeline({
+      pipelineName: 'test-stack',
+      opensearchType,
+      opensearchEndpoint: 'https://example.test',
+      region: 'us-east-1',
+      iamRoleArn: 'arn:aws:iam::123456789012:role/test-osi-role',
+      prometheusUrl: 'https://prometheus.test/api/v1/remote_write',
+      serviceMapWindow: '30s',
+    });
+
+    it('routes evaluation results only to the evaluations sub-pipeline', () => {
+      assert.ok(yaml.includes(`- evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'`));
+      assert.ok(yaml.includes(`- logs: 'getEventType() == "LOG" and /eventName != "gen_ai.evaluation.result"'`));
+      assert.ok(!yaml.includes(`- logs: 'getEventType() == "LOG"'\n`));
+      assert.match(yaml, /name: otel-evaluations-pipeline\n\s+routes:\n\s+- evaluations/);
+    });
+
+    it('writes otel-v1-genai-evaluation with the frozen template', () => {
+      const section = yaml.slice(yaml.indexOf('\notel-evaluations-pipeline:'));
+      assert.ok(section.includes("index: 'otel-v1-genai-evaluation'"));
+      assert.ok(section.includes('index_type: custom'));
+      const content = JSON.parse(section.match(/template_content: '([^']+)'/)[1]);
+      const { index_patterns: _p, ...expected } = EVALUATION_TEMPLATE;
+      if (opensearchType === 'serverless') {
+        assert.deepEqual(content.index_patterns, ['otel-v1-genai-evaluation']);
+        assert.deepEqual(content.template.settings, { 'index.timestamp_field': 'time' });
+        assert.ok(!JSON.stringify(content).includes('index_state_management'));
+        assert.equal(content.version, 1);
+        assert.deepEqual(content.template.mappings, expected.template.mappings);
+      } else {
+        assert.deepEqual(content, expected);
+      }
+      // The Agent Evaluations UI filters on @timestamp on every backend.
+      assert.match(section.split('\n\n')[0], /copy_values:\n\s+entries:\n\s+- from_key: "time"\n\s+to_key: "@timestamp"/);
+    });
+  });
+}
+
+describe('evaluationTemplateContent', () => {
+  it('drops index_patterns (the sink sets them) and keeps version and priority', () => {
+    const t = JSON.parse(evaluationTemplateContent());
+    assert.equal(t.index_patterns, undefined);
+    assert.equal(t.version, 1);
+    assert.equal(t.priority, 100);
+  });
+
+  it('maps every field the Agent Evaluations UI queries from index creation', () => {
+    const fields = {};
+    const flatten = (props, prefix) => {
+      for (const [k, v] of Object.entries(props)) {
+        if (v.properties) flatten(v.properties, `${prefix}${k}.`);
+        else fields[`${prefix}${k}`] = v;
+      }
+    };
+    flatten(JSON.parse(evaluationTemplateContent()).template.mappings.properties, '');
+    const keyword = { type: 'keyword', ignore_above: 256 };
+    assert.deepEqual(fields.eventName, { type: 'text', fields: { keyword } });
+    for (const f of [
+      'error.type', 'gen_ai.evaluation.name', 'gen_ai.evaluation.score.label', 'gen_ai.agent.name',
+      'gen_ai.agent.version', 'gen_ai.conversation.id', 'test.suite.name', 'test.suite.run.id', 'test.case.id',
+      'gen_ai.prompt.version', 'opensearch.gen_ai.evaluation.evaluator.version',
+      'opensearch.gen_ai.evaluation.level', 'opensearch.gen_ai.evaluation.score.direction',
+    ]) assert.deepEqual(fields[`attributes.${f}`], keyword, f);
+    assert.deepEqual(fields['attributes.gen_ai.evaluation.score.value'], { type: 'double' });
+    assert.deepEqual(fields['attributes.gen_ai.evaluation.explanation'], { type: 'text' });
+    for (const f of ['min', 'max', 'threshold']) {
+      assert.deepEqual(fields[`attributes.opensearch.gen_ai.evaluation.score.${f}`], { type: 'double' }, f);
+    }
+    assert.deepEqual(fields.traceId, { type: 'keyword', ignore_above: 32 });
+    assert.deepEqual(fields.spanId, { type: 'keyword', ignore_above: 16 });
+    assert.deepEqual(fields['@timestamp'], { type: 'date_nanos' });
+    assert.equal(JSON.parse(evaluationTemplateContent()).template.mappings.date_detection, false);
+  });
+});
+
+/** Fake domain: a map of "METHOD path" -> [status, body], recording every call. */
+function fakeDomain(routes) {
+  const calls = [];
+  const fetchFn = async (url, method, body) => {
+    const path = new URL(url).pathname;
+    calls.push({ method, path, body: body ? JSON.parse(body) : undefined });
+    const hit = routes[`${method} ${path}`];
+    const [status, data] = typeof hit === 'function' ? hit() : hit ?? [404, { error: 'not found' }];
+    return { status, ok: status >= 200 && status < 300, text: async () => JSON.stringify(data) };
+  };
+  return { fetchFn, calls };
+}
+
+describe('evaluationPolicy', () => {
+  it('adds a delete state after the retention days, like the local retention policies', () => {
+    const p = evaluationPolicy(7).policy;
+    const write = p.states.find((st) => st.name === p.default_state);
+    assert.deepEqual(write.actions, EVALUATION_POLICY.policy.states[0].actions);
+    assert.deepEqual(write.transitions, [{ state_name: 'delete', conditions: { min_index_age: '7d' } }]);
+    assert.deepEqual(p.states.at(-1), { name: 'delete', actions: [{ delete: {} }], transitions: [] });
+    assert.deepEqual(p.ism_template, EVALUATION_POLICY.policy.ism_template);
+  });
+
+  it('keeps the rollover-only policy for 0 and does not change the shared copy', () => {
+    assert.deepEqual(evaluationPolicy(0), EVALUATION_POLICY);
+    evaluationPolicy(30);
+    assert.ok(!JSON.stringify(EVALUATION_POLICY).includes('"delete"'));
+  });
+
+  it('passes the configured retention through ensureEvaluationIndex', async () => {
+    const { fetchFn, calls } = fakeDomain({
+      'PUT /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [201, {}],
+      'PUT /_index_template/otel-v1-genai-evaluation-index-template': [200, { acknowledged: true }],
+      'PUT /otel-v1-genai-evaluation-000001': [200, { acknowledged: true }],
+    });
+    await ensureEvaluationIndex(fetchFn, 'https://domain.test', { delayMs: 0, retentionDays: 0 });
+    assert.deepEqual(calls.find((c) => c.method === 'PUT').body, EVALUATION_POLICY);
+  });
+});
+
+describe('ensureEvaluationIndex', () => {
+  const ep = 'https://domain.test';
+
+  it('creates the policy, then the template, then the write index on an empty domain', async () => {
+    const { fetchFn, calls } = fakeDomain({
+      'PUT /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [201, {}],
+      'PUT /_index_template/otel-v1-genai-evaluation-index-template': [200, { acknowledged: true }],
+      'PUT /otel-v1-genai-evaluation-000001': [200, { acknowledged: true }],
+    });
+    const r = await ensureEvaluationIndex(fetchFn, ep, { delayMs: 0 });
+    assert.deepEqual(r, { policy: 'created', template: 'created', alias: 'created' });
+    const puts = calls.filter((c) => c.method === 'PUT');
+    assert.deepEqual(puts.map((c) => c.path), [
+      '/_plugins/_ism/policies/otel-v1-genai-evaluation-policy',
+      '/_index_template/otel-v1-genai-evaluation-index-template',
+      '/otel-v1-genai-evaluation-000001',
+    ]);
+    assert.deepEqual(puts[0].body, evaluationPolicy(7)); // default retention
+    assert.deepEqual(puts[1].body, EVALUATION_TEMPLATE);
+    assert.deepEqual(puts[2].body, { aliases: { 'otel-v1-genai-evaluation': { is_write_index: true } } });
+  });
+
+  it('leaves an existing policy, same-version template and alias alone', async () => {
+    const { fetchFn, calls } = fakeDomain({
+      'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [200, {}],
+      'GET /_index_template/otel-v1-genai-evaluation-index-template': [200, { index_templates: [{ index_template: { version: 1 } }] }],
+      'GET /_alias/otel-v1-genai-evaluation': [200, { 'otel-v1-genai-evaluation-000003': {} }],
+    });
+    const r = await ensureEvaluationIndex(fetchFn, ep, { delayMs: 0 });
+    assert.deepEqual(r, { policy: 'exists', template: 'exists', alias: 'exists' });
+    assert.equal(calls.filter((c) => c.method === 'PUT').length, 0);
+  });
+
+  it('replaces a template with a lower or missing version', async () => {
+    for (const installed of [{ version: 0 }, {}]) {
+      const { fetchFn, calls } = fakeDomain({
+        'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [200, {}],
+        'GET /_index_template/otel-v1-genai-evaluation-index-template': [200, { index_templates: [{ index_template: installed }] }],
+        'PUT /_index_template/otel-v1-genai-evaluation-index-template': [200, {}],
+        'GET /_alias/otel-v1-genai-evaluation': [200, {}],
+      });
+      const r = await ensureEvaluationIndex(fetchFn, ep, { delayMs: 0 });
+      assert.equal(r.template, 'updated');
+      assert.ok(calls.some((c) => c.method === 'PUT' && c.path.startsWith('/_index_template/')));
+    }
+  });
+
+  it('does not create the alias over a concrete index with the alias name', async () => {
+    const { fetchFn, calls } = fakeDomain({
+      'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [200, {}],
+      'GET /_index_template/otel-v1-genai-evaluation-index-template': [200, { index_templates: [{ index_template: { version: 1 } }] }],
+      'GET /otel-v1-genai-evaluation': [200, { 'otel-v1-genai-evaluation': {} }],
+    });
+    const r = await ensureEvaluationIndex(fetchFn, ep, { delayMs: 0 });
+    assert.equal(r.alias, 'concrete-index');
+    assert.ok(!calls.some((c) => c.path === '/otel-v1-genai-evaluation-000001'));
+  });
+
+  it('retries transient errors and fails on a stable 4xx', async () => {
+    let n = 0;
+    const flaky = fakeDomain({
+      'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': () => (++n < 3 ? [503, {}] : [200, {}]),
+      'GET /_index_template/otel-v1-genai-evaluation-index-template': [200, { index_templates: [{ index_template: { version: 1 } }] }],
+      'GET /_alias/otel-v1-genai-evaluation': [200, {}],
+    });
+    assert.equal((await ensureEvaluationIndex(flaky.fetchFn, ep, { delayMs: 0 })).policy, 'exists');
+    assert.equal(n, 3);
+
+    const bad = fakeDomain({ 'GET /_plugins/_ism/policies/otel-v1-genai-evaluation-policy': [400, { error: 'bad' }] });
+    await assert.rejects(ensureEvaluationIndex(bad.fetchFn, ep, { delayMs: 0 }), /returned 400/);
+  });
+});
+
+describe('Agent Evaluations UI setup', () => {
+  const WS = 'ws1';
+  const DS = 'ds-1';
+  const TRACES = 'traces-1';
+
+  // An in-memory saved objects API over one workspace: index patterns and correlations.
+  function fakeOsui(seed = {}) {
+    const objects = { 'index-pattern': [...(seed.patterns || [])], correlations: [...(seed.correlations || [])] };
+    const calls = [];
+    let n = 0;
+    const api = {
+      async get(path) {
+        calls.push(['GET', path]);
+        const type = /type=([a-z-]+)/.exec(path)[1];
+        return { status: 200, data: { saved_objects: objects[type] } };
+      },
+      async post(path, body) {
+        calls.push(['POST', path, body]);
+        const type = /saved_objects\/([a-z-]+)$/.exec(path)[1];
+        const o = { id: `${type}-new-${++n}`, ...body };
+        objects[type].push(o);
+        return { status: 200, data: o };
+      },
+      async put(path, body) {
+        calls.push(['PUT', path, body]);
+        const [, type, id] = /saved_objects\/([a-z-]+)\/(.+)$/.exec(path);
+        const o = objects[type].find((x) => x.id === id);
+        Object.assign(o.attributes, body.attributes);
+        return { status: 200, data: o };
+      },
+    };
+    return { api, objects, calls };
+  }
+
+  it('builds the dataset the UI\'s "Create evaluations dataset" makes', () => {
+    const a = evalsDatasetAttributes();
+    assert.equal(a.title, 'otel-v1-genai-evaluation*');
+    assert.equal(a.timeFieldName, '@timestamp');
+    assert.equal(a.signalType, 'logs');
+    assert.equal(a.displayName, 'Evaluation Dataset');
+    assert.deepEqual(JSON.parse(a.schemaMappings), {
+      otelLogs: { timestamp: '@timestamp', traceId: 'traceId', spanId: 'spanId', serviceName: 'resource.attributes.service.name' },
+    });
+  });
+
+  it('builds the AgentEvals-Config correlation with traces then evaluations references', () => {
+    assert.deepEqual(evalsConfigBody(WS, TRACES, 'ev-1'), {
+      attributes: {
+        correlationType: 'AgentEvals-Config-ws1',
+        title: 'AgentEvals-Config',
+        version: '1.0.0',
+        entities: [{ tracesDataset: { id: 'references[0].id' } }, { evaluationsDataset: { id: 'references[1].id' } }],
+      },
+      references: [
+        { name: 'entities[0].index', type: 'index-pattern', id: TRACES },
+        { name: 'entities[1].index', type: 'index-pattern', id: 'ev-1' },
+      ],
+    });
+  });
+
+  it('creates the dataset on the data source and the config in an empty workspace', async () => {
+    const { api, objects } = fakeOsui();
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(r.datasetCreated, true);
+    assert.equal(r.configCreated, true);
+    const [pattern] = objects['index-pattern'];
+    assert.deepEqual(pattern.attributes, evalsDatasetAttributes());
+    assert.deepEqual(pattern.references, [{ id: DS, name: 'dataSource', type: 'data-source' }]);
+    const [config] = objects.correlations;
+    assert.equal(config.attributes.correlationType, 'AgentEvals-Config-ws1');
+    assert.deepEqual(config.references.map((x) => x.id), [TRACES, r.evalsId]);
+  });
+
+  it('references the data source as data-source, as the UI does, also on serverless', async () => {
+    const { api, objects } = fakeOsui();
+    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(objects['index-pattern'][0].references[0].type, 'data-source');
+  });
+
+  it('is idempotent: a second run creates nothing', async () => {
+    const { api, objects, calls } = fakeOsui();
+    const first = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    const before = calls.length;
+    const second = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(second.datasetCreated, false);
+    assert.equal(second.configCreated, false);
+    assert.equal(second.evalsId, first.evalsId);
+    assert.equal(second.configId, first.configId);
+    assert.equal(objects['index-pattern'].length, 1);
+    assert.equal(objects.correlations.length, 1);
+    assert.ok(calls.slice(before).every(([m]) => m === 'GET'));
+  });
+
+  it('reuses a pattern with the title, filling only the attributes it lacks', async () => {
+    const existing = { id: 'old', attributes: { title: 'otel-v1-genai-evaluation*', timeFieldName: '@timestamp', displayName: 'Mine' }, references: [{ id: DS, name: 'dataSource', type: 'data-source' }] };
+    const { api, objects } = fakeOsui({ patterns: [existing] });
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(r.evalsId, 'old');
+    assert.equal(r.datasetCreated, false);
+    assert.equal(objects['index-pattern'].length, 1);
+    assert.equal(existing.attributes.signalType, 'logs');
+    assert.equal(existing.attributes.displayName, 'Mine');
+    assert.ok(existing.attributes.schemaMappings);
+  });
+
+  it('prefers the pattern on the same data source', async () => {
+    const other = { id: 'other', attributes: { ...evalsDatasetAttributes() }, references: [{ id: 'ds-other', name: 'dataSource', type: 'data-source' }] };
+    const mine = { id: 'mine', attributes: { ...evalsDatasetAttributes() }, references: [{ id: DS, name: 'dataSource', type: 'data-source' }] };
+    const { api } = fakeOsui({ patterns: [other, mine] });
+    assert.equal((await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES })).evalsId, 'mine');
+  });
+
+  it('keeps an existing config (a user\'s Settings choice) as is', async () => {
+    const config = { id: 'cfg', attributes: { correlationType: 'AgentEvals-Config-ws1', title: 'AgentEvals-Config' }, references: [] };
+    const { api, objects } = fakeOsui({ correlations: [{ id: 'apm', attributes: { correlationType: 'APM-Config-ws1' } }, config] });
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    assert.equal(r.configId, 'cfg');
+    assert.equal(r.configCreated, false);
+    assert.equal(objects.correlations.length, 2);
+  });
+
+  it('creates no config without a traces dataset', async () => {
+    const { api, objects } = fakeOsui();
+    const r = await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS });
+    assert.ok(r.evalsId);
+    assert.equal(r.configId, undefined);
+    assert.equal(objects.correlations.length, 0);
+  });
+
+  it('lists index patterns instead of searching (search does not match titles with *)', async () => {
+    const { api, calls } = fakeOsui();
+    await ensureAgentEvalsSetup(api, { wsId: WS, dsId: DS, tracesId: TRACES });
+    const lookups = calls.filter(([m, p]) => m === 'GET' && p.includes('type=index-pattern'));
+    assert.ok(lookups.length > 0);
+    assert.ok(lookups.every(([, p]) => !p.includes('search=')));
+  });
+
+  it('lists only absent attributes as missing', () => {
+    assert.deepEqual(missingDatasetAttributes(evalsDatasetAttributes()), {});
+    assert.deepEqual(Object.keys(missingDatasetAttributes({ title: 'x' })).sort(), ['displayName', 'schemaMappings', 'signalType']);
+  });
+});
+
+describe('pickDataSource', () => {
+  const a = { id: 'a', attributes: { endpoint: 'https://search-other-x.us-west-2.es.amazonaws.com' } };
+  const b = { id: 'b', attributes: { endpoint: 'https://search-mine-y.us-west-2.es.amazonaws.com/' } };
+
+  it('picks the data source on the stack endpoint', () => {
+    assert.equal(pickDataSource([a, b], 'https://search-mine-y.us-west-2.es.amazonaws.com').id, 'b');
+  });
+
+  it('falls back to the first data source', () => {
+    assert.equal(pickDataSource([a, b], 'https://nope.example.com').id, 'a');
+    assert.equal(pickDataSource([a, b], undefined).id, 'a');
+  });
+
+  it('returns undefined without data sources', () => {
+    assert.equal(pickDataSource(undefined, 'x'), undefined);
+  });
+});
+
+describe('index pattern data source references', () => {
+  it('uses data-source for every engine type', () => {
+    assert.equal(DS_REF_TYPE, 'data-source');
+  });
+
+  it('repairs a serverless reference written by older installers', () => {
+    const refs = [{ id: 'ds1', name: 'dataSource', type: 'OpenSearch Serverless' }, { id: 'x', name: 'other', type: 'foo' }];
+    assert.deepEqual(repairDataSourceRefs(refs), [{ id: 'ds1', name: 'dataSource', type: 'data-source' }, { id: 'x', name: 'other', type: 'foo' }]);
+  });
+
+  it('leaves correct or missing references alone', () => {
+    assert.equal(repairDataSourceRefs([{ id: 'ds1', name: 'dataSource', type: 'data-source' }]), null);
+    assert.equal(repairDataSourceRefs([]), null);
+    assert.equal(repairDataSourceRefs(undefined), null);
   });
 });

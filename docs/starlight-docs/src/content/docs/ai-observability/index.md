@@ -38,7 +38,7 @@ flowchart LR
 
 - **Agent tracing** - visualize LLM agent execution as trace trees, DAG graphs, and timelines
 - **GenAI semantic conventions** - standard `gen_ai.*` attributes for model, tokens, tools, and sessions
-- **Evaluation & scoring** - attach quality scores to traces, run experiments against datasets
+- **Agent evaluations** - online and offline evaluation results as OTel `gen_ai.evaluation.result` events, stored in their own index next to the traces
 - **Trace retrieval** - query stored traces from OpenSearch for evaluation pipelines
 - **Auto-instrumentation** - OpenAI, Anthropic, Bedrock, LangChain, and 20+ libraries traced automatically
 - **MCP server** - query OpenSearch from AI agents via the built-in Model Context Protocol server
@@ -54,7 +54,7 @@ Start here for a hands-on walkthrough from `pip install` to seeing traces and sc
 Send agent trace data to the observability stack:
 
 - [Python SDK](/docs/send-data/ai-agents/python/) - `@observe`, `enrich()`, auto-instrumentation, AWS SigV4
-- [TypeScript SDK](/docs/send-data/ai-agents/typescript/) - coming soon
+- [TypeScript SDK](/docs/send-data/ai-agents/typescript/) - `observe()`, `withObserve()`, `enrich()`, `markAgentRoot()`, AWS SigV4
 - [AI Agents overview](/docs/send-data/ai-agents/) - why use the SDK vs manual OTel
 
 ## Analyze
@@ -63,11 +63,13 @@ Explore traces in OpenSearch Dashboards:
 
 - [Agent Tracing](/docs/ai-observability/agent-tracing/) - the Agent Traces UI, span tables, sessions, detail flyouts, correlated logs
 - [Agent Graph & Path](/docs/ai-observability/agent-tracing/graph/) - DAG visualization, trace tree, and timeline views
+- [Example Agents](/docs/ai-observability/examples/) - the travel planner and eval canaries that run with the stack
 
 ## Evaluate
 
 Score agent quality and run experiments:
 
+- [Agent Evals](/docs/agent-evals/) - online and offline evaluations with the SDK, the evaluation index and pipeline routing
 - [Evaluation & Scoring](/docs/agent-evals/evaluation/) - `score()`, `evaluate()`, `Benchmark`, trace retrieval
 - **[Agent Health](/docs/agent-health/)** - Golden Path trajectory comparison, LLM judge scoring, batch experiments via UI and CLI
 

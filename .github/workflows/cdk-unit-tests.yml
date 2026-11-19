@@ -1,0 +1,29 @@
+name: CDK Unit Tests
+
+on:
+  push:
+    paths:
+      - 'aws/cdk/**'
+      - 'aws/cli-installer/src/agent-evals-ui.mjs'
+  pull_request:
+    paths:
+      - 'aws/cdk/**'
+      - 'aws/cli-installer/src/agent-evals-ui.mjs'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        working-directory: aws/cdk
+        run: npm ci
+      - name: Type check
+        working-directory: aws/cdk
+        run: npx tsc --noEmit
+      - name: Run unit tests
+        working-directory: aws/cdk
+        run: npm test

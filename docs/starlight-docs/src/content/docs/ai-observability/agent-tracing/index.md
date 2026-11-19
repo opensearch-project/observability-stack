@@ -216,6 +216,8 @@ The left panel provides the following tabs:
 
 - **Related logs**: Logs correlated with the trace, grouped by logs dataset, with a badge showing the log count. Select **View in Discover Logs** to open a dataset's logs in Discover. Select a log's span ID to select that span in the flyout. Agent Traces shows up to 100 of the most recent logs per logs dataset.
 
+Logs show up here when the agent sends them as OTel logs with the trace and span ids of the active span. With the GenAI SDK, attach a `LoggingHandler` to Python logging: see [Application logs](/docs/send-data/ai-agents/python/#application-logs). The [travel planner example](/docs/ai-observability/examples/#application-logs) logs every step this way, with WARN and ERROR records on failing spans.
+
 The **Related logs** tab requires a trace-to-logs correlation for the traces dataset. For setup steps, see [Creating a trace-to-logs correlation](/docs/investigate/correlations/#creating-a-trace-to-logs-correlation). Without a correlation, the tab shows **Correlation not configured** with a **Create from traces dataset** button.
 
 ### Right panel
