@@ -60,7 +60,7 @@ INTERVAL = int(os.environ.get("EVAL_CANARY_LLM_INTERVAL", "60"))
 LOOKBACK_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_LOOKBACK_MINUTES", "10"))
 MAX_PER_CYCLE = int(os.environ.get("EVAL_CANARY_LLM_MAX_PER_CYCLE", "20"))
 CONCURRENCY = int(os.environ.get("EVAL_CANARY_LLM_CONCURRENCY", "8"))
-SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES", "60"))
+SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES", "360"))
 # The first suite run waits for the stack and the agents to warm up
 SUITE_FIRST_RUN_MINUTES = float(os.environ.get("EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES", "5"))
 JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "global.anthropic.claude-haiku-4-5-20251001-v1:0")

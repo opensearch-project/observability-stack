@@ -45,7 +45,7 @@ per cycle.
 | `EVAL_CANARY_LLM_MAX_PER_CYCLE` | `20` | Max online evaluations per cycle |
 | `EVAL_CANARY_LLM_CONCURRENCY` | `8` | Parallel Bedrock calls |
 | `EVAL_CANARY_LLM_SUITE_FIRST_RUN_MINUTES` | `5` | Minutes after start before the first suite run |
-| `EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES` | `60` | Minutes between suite runs; `0` turns the suite off |
+| `EVAL_CANARY_LLM_SUITE_INTERVAL_MINUTES` | `360` | Minutes between suite runs (6 hours); `0` turns the suite off |
 | `EVAL_JUDGE_MODEL` | `global.anthropic.claude-haiku-4-5-20251001-v1:0` | Bedrock model or inference profile of the judge |
 
 AWS credentials must be in the environment (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
