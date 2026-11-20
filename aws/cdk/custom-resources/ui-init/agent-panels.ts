@@ -57,12 +57,36 @@ export function agentPanelQuery(p: AgentPanel, source: string = AGENT_TRACES_TIT
   };
 }
 
+export interface DatasetDataSource {
+  id: string;
+  title: string;
+  type: string;
+  version: string;
+}
+
+/**
+ * The dataset's `dataSource`, in the shape OSD builds for an index pattern on an external data
+ * source (see DataViewsService.resolveDataSourceForDataset). Without it the query goes to the
+ * application's default connection, which has none, and every panel fails with "No Living
+ * connections". Takes the data-source saved object; undefined when there is none.
+ */
+export function datasetDataSource(ds?: { id?: string; attributes?: Record<string, any> }): DatasetDataSource | undefined {
+  if (!ds?.id) return undefined;
+  return {
+    id: ds.id,
+    title: ds.attributes?.title || ds.id,
+    type: ds.attributes?.dataSourceEngineType || 'OpenSearch',
+    version: ds.attributes?.dataSourceVersion || '',
+  };
+}
+
 /** The explore saved object (attributes and references) for one panel over the traces pattern. */
-export function agentPanelObject(p: AgentPanel, tracesId: string) {
+export function agentPanelObject(p: AgentPanel, tracesId: string, dataSource?: DatasetDataSource) {
   const { query, chartType, axesMapping } = agentPanelQuery(p);
   const dataset = {
     id: tracesId, title: AGENT_TRACES_TITLE, type: 'INDEX_PATTERN',
     language: 'PPL', timeFieldName: AGENT_TRACES_TIME_FIELD, signalType: 'traces',
+    ...(dataSource && { dataSource }),
   };
   return {
     attributes: {

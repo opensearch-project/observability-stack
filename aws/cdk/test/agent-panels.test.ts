@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { AGENT_PANELS, agentPanelQuery, agentPanelObject } from '../custom-resources/ui-init/agent-panels';
+import { AGENT_PANELS, agentPanelQuery, agentPanelObject, datasetDataSource } from '../custom-resources/ui-init/agent-panels';
 
 const byId = (id: string) => AGENT_PANELS.find((p) => p.id === id)!;
 
@@ -40,5 +40,31 @@ describe('agentPanelObject', () => {
 
   it('has a unique id for every panel', () => {
     assert.equal(new Set(AGENT_PANELS.map((p) => p.id)).size, AGENT_PANELS.length);
+  });
+});
+
+describe('datasetDataSource', () => {
+  it('builds the dataset data source from the data-source saved object', () => {
+    assert.deepEqual(
+      datasetDataSource({ id: 'ds-1', attributes: { title: 'my-collection', dataSourceEngineType: 'OpenSearch Serverless', dataSourceVersion: '' } }),
+      { id: 'ds-1', title: 'my-collection', type: 'OpenSearch Serverless', version: '' },
+    );
+  });
+
+  it('falls back to the id and the OpenSearch engine when attributes are missing', () => {
+    assert.deepEqual(datasetDataSource({ id: 'ds-1' }), { id: 'ds-1', title: 'ds-1', type: 'OpenSearch', version: '' });
+  });
+
+  it('is undefined without a data source', () => {
+    assert.equal(datasetDataSource(undefined), undefined);
+    assert.equal(datasetDataSource({}), undefined);
+  });
+
+  it('puts the data source on the panel dataset, and omits it when there is none', () => {
+    const ds = { id: 'ds-1', title: 't', type: 'OpenSearch Serverless', version: '' };
+    const withDs = JSON.parse(agentPanelObject(AGENT_PANELS[0], 'traces-id', ds).attributes.kibanaSavedObjectMeta.searchSourceJSON);
+    assert.deepEqual(withDs.query.dataset.dataSource, ds);
+    const without = JSON.parse(agentPanelObject(AGENT_PANELS[0], 'traces-id').attributes.kibanaSavedObjectMeta.searchSourceJSON);
+    assert.equal('dataSource' in without.query.dataset, false);
   });
 });

@@ -12,7 +12,7 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals-ui.mjs';
-import { AGENT_PANELS, agentPanelObject } from './agent-panels.mjs';
+import { AGENT_PANELS, agentPanelObject, datasetDataSource } from './agent-panels.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -365,7 +365,7 @@ export async function initOpenSearchUI(cfg) {
 
   // k. Agent Observability dashboard
   if (tracesId) {
-    await createAgentDashboard(base, wsId, tracesId, region);
+    await createAgentDashboard(base, wsId, tracesId, region, dsId);
   }
 
   // l. Overview dashboard
@@ -410,13 +410,17 @@ export async function setupAgentEvaluations(base, wsId, dsId, tracesId, region) 
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
 
-async function createAgentDashboard(base, wsId, tracesId, region) {
+async function createAgentDashboard(base, wsId, tracesId, region, dsId) {
   // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
   // agent-panels.mjs. A failed request skips that panel instead of failing the whole install.
+  // The traces pattern lives on an external data source; the panels' queries must name it.
+  const dsResp = dsId ? await osuiGet(base, `/api/saved_objects/data-source/${dsId}`, region) : undefined;
+  const dataSource = datasetDataSource(dsResp?.status === 200 ? dsResp.data : dsId ? { id: dsId } : undefined);
+
   const vizIds = [];
   for (const p of AGENT_PANELS) {
     try {
-      const obj = agentPanelObject(p, tracesId);
+      const obj = agentPanelObject(p, tracesId, dataSource);
       const path = `/w/${wsId}/api/saved_objects/explore/${p.id}`;
       let resp = await osuiPost(base, path, obj, region);
       if (resp.status === 409) resp = await osuiPut(base, path, obj, region);

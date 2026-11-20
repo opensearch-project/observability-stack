@@ -9,7 +9,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
-import { AGENT_PANELS, agentPanelObject } from './agent-panels';
+import { AGENT_PANELS, agentPanelObject, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 
 interface Event {
@@ -313,7 +313,7 @@ export async function handler(event: Event) {
 
   // Agent Observability dashboard
   if (tracesId && wsId) {
-    await createAgentDashboard(base, wsId, tracesId, Region);
+    await createAgentDashboard(base, wsId, tracesId, Region, dsId);
   }
 
   // Overview dashboard
@@ -334,13 +334,17 @@ export async function handler(event: Event) {
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
 
-async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string) {
+async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string, dsId?: string) {
   // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
   // agent-panels.ts. A failed request skips that panel instead of failing the whole init run.
+  // The traces pattern lives on an external data source; the panels' queries must name it.
+  const dsResp = dsId ? await osuiGet(base, `/api/saved_objects/data-source/${dsId}`, region) : undefined;
+  const dataSource = datasetDataSource(dsResp?.status === 200 ? (dsResp.data as any) : dsId ? { id: dsId } : undefined);
+
   const vizIds: string[] = [];
   for (const p of AGENT_PANELS) {
     try {
-      const obj = agentPanelObject(p, tracesId);
+      const obj = agentPanelObject(p, tracesId, dataSource);
       const url = `/w/${wsId}/api/saved_objects/explore/${p.id}`;
       let resp = await osuiPost(base, url, obj, region);
       if (resp.status === 409) resp = await osuiPut(base, url, obj, region);

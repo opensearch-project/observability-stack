@@ -1628,7 +1628,7 @@ describe('EC2 demo eval canary', () => {
 });
 
 // ── Agent Observability explore panels ───────────────────────────────────────
-import { AGENT_PANELS, agentPanelQuery, agentPanelObject } from '../src/agent-panels.mjs';
+import { AGENT_PANELS, agentPanelQuery, agentPanelObject, datasetDataSource } from '../src/agent-panels.mjs';
 
 describe('agent panels', () => {
   const byId = (id) => AGENT_PANELS.find((p) => p.id === id);
@@ -1659,5 +1659,25 @@ describe('agent panels', () => {
     assert.equal(search.query.language, 'PPL');
     assert.equal(search.query.dataset.id, 'traces-id');
     assert.deepEqual(o.references, [{ name: 'kibanaSavedObjectMeta.searchSourceJSON.index', type: 'index-pattern', id: 'traces-id' }]);
+  });
+});
+
+describe('agent panels data source', () => {
+  it('builds the dataset data source from the data-source saved object', () => {
+    assert.deepEqual(
+      datasetDataSource({ id: 'ds-1', attributes: { title: 'my-collection', dataSourceEngineType: 'OpenSearch Serverless', dataSourceVersion: '' } }),
+      { id: 'ds-1', title: 'my-collection', type: 'OpenSearch Serverless', version: '' },
+    );
+    assert.deepEqual(datasetDataSource({ id: 'ds-1' }), { id: 'ds-1', title: 'ds-1', type: 'OpenSearch', version: '' });
+    assert.equal(datasetDataSource(undefined), undefined);
+  });
+
+  it('puts the data source on the panel dataset, and omits it when there is none', () => {
+    const ds = { id: 'ds-1', title: 't', type: 'OpenSearch Serverless', version: '' };
+    const panel = AGENT_PANELS[0];
+    const withDs = JSON.parse(agentPanelObject(panel, 'traces-id', ds).attributes.kibanaSavedObjectMeta.searchSourceJSON);
+    assert.deepEqual(withDs.query.dataset.dataSource, ds);
+    const without = JSON.parse(agentPanelObject(panel, 'traces-id').attributes.kibanaSavedObjectMeta.searchSourceJSON);
+    assert.equal('dataSource' in without.query.dataset, false);
   });
 });
