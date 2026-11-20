@@ -94,9 +94,9 @@ export class DemoWorkload extends Construct {
 
     // No subnet or VPC: EC2 places the instance and its security group in the default VPC, with the default
     // subnet's public IP. A Vpc.fromLookup would put one account's subnet IDs in the template.
+    // Egress rules need a VpcId; without one the group gets the default allow-all egress.
     const securityGroup = new ec2.CfnSecurityGroup(this, 'SecurityGroup', {
       groupDescription: 'Observability stack demo instance (no inbound rules)',
-      securityGroupEgress: [{ ipProtocol: '-1', cidrIp: '0.0.0.0/0' }],
     });
     const profile = new iam.CfnInstanceProfile(this, 'InstanceProfile', { roles: [role.roleName] });
     this.instance = new ec2.CfnInstance(this, 'Instance', {

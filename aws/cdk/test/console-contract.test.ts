@@ -73,6 +73,15 @@ for (const [opensearchType, backend, storageType, outputs] of [
       assert.equal(template.Parameters.StackDisplayName.Default, 'contract');
     });
 
+    it('puts the demo in the default VPC without naming a VPC or subnet', () => {
+      const of = (type: string) => Object.values<any>(template.Resources).filter((r) => r.Type === type);
+      assert.equal(of('AWS::EC2::VPC').length, 0);
+      const [sg] = of('AWS::EC2::SecurityGroup');
+      assert.equal(sg.Properties.VpcId, undefined);
+      assert.equal(sg.Properties.SecurityGroupEgress, undefined, 'egress rules need a VpcId');
+      assert.equal(of('AWS::EC2::Instance')[0].Properties.SubnetId, undefined);
+    });
+
     it('creates every demo resource only under the DeployDemo condition', () => {
       const demo = Object.entries<any>(template.Resources).filter(([id]) => id.startsWith('DemoWorkload'));
       assert.ok(demo.length > 0);
