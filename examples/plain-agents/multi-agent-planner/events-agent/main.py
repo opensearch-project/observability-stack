@@ -382,7 +382,9 @@ async def get_events(request: EventsRequest):
     return EventsResponse(destination=request.destination, events=events, agent_id=AGENT_ID)
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -149,24 +149,16 @@ async def handle_mcp(request: Request, body: ToolCallRequest):
             "network.protocol.name": "http",
         },
     ) as mcp_span:
-        with tracer.start_as_current_span(
-            f"tool_call {tool_name}",
-            kind=SpanKind.INTERNAL,
-            attributes={
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": tool_name,
-                "gen_ai.tool.call.id": f"call_{uuid4().hex[:8]}",
-            },
-        ) as tool_span:
-            try:
-                logger.info("tools/call %s", tool_name, extra={"gen_ai.tool.name": tool_name, "mcp.session.id": session_id})
-                result = await execute_tool(tool_name, arguments, tool_span)
-                return {"jsonrpc": "2.0", "id": request_id, "result": result}
-            except Exception as e:
-                logger.error("Tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
-                tool_span.set_status(Status(StatusCode.ERROR, str(e)))
-                mcp_span.set_status(Status(StatusCode.ERROR, str(e)))
-                return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(e)}}
+        # One span per tool call: the server span carries the tool attributes and result too
+        mcp_span.set_attribute("gen_ai.tool.call.id", f"call_{uuid4().hex[:8]}")
+        try:
+            logger.info("tools/call %s", tool_name, extra={"gen_ai.tool.name": tool_name, "mcp.session.id": session_id})
+            result = await execute_tool(tool_name, arguments, mcp_span)
+            return {"jsonrpc": "2.0", "id": request_id, "result": result}
+        except Exception as e:
+            logger.error("Tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
+            mcp_span.set_status(Status(StatusCode.ERROR, str(e)))
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(e)}}
 
 
 async def geocode_city(city: str) -> tuple[float, float, str]:
@@ -453,7 +445,9 @@ async def execute_tool(name: str, args: dict, span) -> dict:
         raise ValueError(f"Unknown tool: {name}")
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn

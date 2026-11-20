@@ -634,7 +634,9 @@ def build_recommendation(destination: str, weather: Optional[dict], events: list
     return " ".join(parts)
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn
