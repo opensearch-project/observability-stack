@@ -9,6 +9,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
+import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 
 interface Event {
@@ -312,7 +313,7 @@ export async function handler(event: Event) {
 
   // Agent Observability dashboard
   if (tracesId && wsId) {
-    await createAgentDashboard(base, wsId, tracesId, Region);
+    await createAgentDashboard(base, wsId, tracesId, Region, dsId);
   }
 
   // Overview dashboard
@@ -333,57 +334,20 @@ export async function handler(event: Event) {
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
 
-async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string) {
-  const vizs = [
-    { id: 'llm-requests-by-model', title: 'LLM Requests by Model', type: 'pie', field: 'attributes.gen_ai.request.model' },
-    { id: 'tool-usage-stats', title: 'Tool Usage Statistics', type: 'pie', field: 'attributes.gen_ai.tool.name' },
-    { id: 'token-usage-by-agent', title: 'Token Usage by Agent', type: 'horizontal_bar', field: 'attributes.gen_ai.agent.name', metric: 'attributes.gen_ai.usage.input_tokens' },
-    { id: 'token-usage-by-model', title: 'Token Usage by Model', type: 'horizontal_bar', field: 'attributes.gen_ai.request.model', metric: 'attributes.gen_ai.usage.input_tokens' },
-    { id: 'agent-ops-by-service', title: 'Agent Operations by Service', type: 'horizontal_bar', field: 'serviceName', split: 'attributes.gen_ai.operation.name' },
-  ];
+async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string, dsId?: string) {
+  // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
+  // agent-panels.ts. A failed request skips that step instead of failing the whole init run.
+  // The traces pattern lives on an external data source; the panels' queries must name it.
+  const dsResp = dsId ? await osuiGet(base, `/api/saved_objects/data-source/${dsId}`, region) : undefined;
+  const dataSource = datasetDataSource(dsResp?.status === 200 ? (dsResp.data as any) : dsId ? { id: dsId } : undefined);
 
-  const vizIds: string[] = [];
-  for (const v of vizs) {
-    const aggs: any[] = [
-      (v as any).metric
-        ? { id: '1', type: 'sum', schema: 'metric', params: { field: (v as any).metric } }
-        : { id: '1', type: 'count', schema: 'metric' },
-      { id: '2', type: 'terms', schema: 'segment', params: { field: v.field, size: 10 } },
-    ];
-    if ((v as any).split) aggs.push({ id: '3', type: 'terms', schema: 'group', params: { field: (v as any).split, size: 5 } });
-
-    await osuiPost(base, `/w/${wsId}/api/saved_objects/visualization/${v.id}`, {
-      attributes: {
-        title: v.title,
-        visState: JSON.stringify({ title: v.title, type: v.type, params: { type: v.type, addTooltip: true, addLegend: true }, aggs }),
-        uiStateJSON: '{}',
-        kibanaSavedObjectMeta: {
-          searchSourceJSON: JSON.stringify({ indexRefName: 'kibanaSavedObjectMeta.searchSourceJSON.index', query: { query: '', language: 'kuery' }, filter: [] }),
-        },
-      },
-      references: [{ name: 'kibanaSavedObjectMeta.searchSourceJSON.index', type: 'index-pattern', id: tracesId }],
-    }, region);
-    vizIds.push(v.id);
-  }
-
-  const panels = vizIds.map((id, i) => ({
-    version: '3.6.0',
-    gridData: { x: (i % 2) * 24, y: Math.floor(i / 2) * 15, w: 24, h: 15, i: String(i) },
-    panelIndex: String(i), embeddableConfig: {}, panelRefName: `panel_${i}`,
-  }));
-  const refs = vizIds.map((id, i) => ({ name: `panel_${i}`, type: 'visualization', id }));
-
-  await osuiPost(base, `/w/${wsId}/api/saved_objects/dashboard/agent-observability-dashboard`, {
-    attributes: {
-      title: 'Agent Observability',
-      description: 'Overview of AI agent performance, token usage, and tool execution',
-      panelsJSON: JSON.stringify(panels),
-      optionsJSON: JSON.stringify({ useMargins: true, hidePanelTitles: false }),
-      timeRestore: false,
-      kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { query: '', language: 'kuery' }, filter: [] }) },
-    },
-    references: refs,
-  }, region);
+  const result = await syncAgentDashboard({
+    post: (path, body) => osuiPost(base, path, body, region),
+    put: (path, body) => osuiPut(base, path, body, region),
+    del: (path) => osuiRequest('DELETE', `${base}${path}`, null, region),
+  }, wsId, tracesId, dataSource);
+  for (const w of result.warnings) console.warn(w);
+  console.log(`Agent Observability dashboard: ${result.dashboard} (${result.panelIds.length} panels)`);
 }
 
 // ── Overview Dashboard ────────────────────────────────────────────────────────
