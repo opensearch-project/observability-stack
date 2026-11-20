@@ -33,7 +33,15 @@ export class DemoWorkload extends Construct {
 
     const stack = cdk.Stack.of(this);
     const region = stack.region;
-    const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
+    // No public IP; egress through the NAT gateway, which also works with VPC Block Public Access.
+    const vpc = new ec2.Vpc(this, 'Vpc', {
+      maxAzs: 1,
+      natGateways: 1,
+      subnetConfiguration: [
+        { name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+        { name: 'private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
+      ],
+    });
 
     const role = this.role = new iam.Role(this, 'InstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -89,6 +97,7 @@ export class DemoWorkload extends Construct {
 
     this.instance = new ec2.Instance(this, 'Instance', {
       vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       instanceType: new ec2.InstanceType('t3.xlarge'),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       role,

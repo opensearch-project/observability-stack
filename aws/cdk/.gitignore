@@ -5,3 +5,4 @@ dist/
 *.d.ts
 !custom-resources/ui-init/arch-image.mjs
 !custom-resources/ui-init/arch-image.d.mts
+cdk.context.json

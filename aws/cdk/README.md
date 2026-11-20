@@ -174,6 +174,8 @@ Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running t
 
 The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
 
+The instance runs in a private subnet of its own VPC, with outbound access through a NAT gateway. It has no public IP; connect with Session Manager. The NAT gateway is billed hourly and per GB while the demo runs.
+
 ## Useful Commands
 
 ```bash
