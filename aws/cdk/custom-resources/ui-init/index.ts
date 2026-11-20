@@ -9,7 +9,7 @@ import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
-import { AGENT_PANELS, agentPanelObject, datasetDataSource } from './agent-panels';
+import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 
 interface Event {
@@ -336,49 +336,18 @@ export async function handler(event: Event) {
 
 async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string, dsId?: string) {
   // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
-  // agent-panels.ts. A failed request skips that panel instead of failing the whole init run.
+  // agent-panels.ts. A failed request skips that step instead of failing the whole init run.
   // The traces pattern lives on an external data source; the panels' queries must name it.
   const dsResp = dsId ? await osuiGet(base, `/api/saved_objects/data-source/${dsId}`, region) : undefined;
   const dataSource = datasetDataSource(dsResp?.status === 200 ? (dsResp.data as any) : dsId ? { id: dsId } : undefined);
 
-  const vizIds: string[] = [];
-  for (const p of AGENT_PANELS) {
-    try {
-      const obj = agentPanelObject(p, tracesId, dataSource);
-      const url = `/w/${wsId}/api/saved_objects/explore/${p.id}`;
-      let resp = await osuiPost(base, url, obj, region);
-      if (resp.status === 409) resp = await osuiPut(base, url, obj, region);
-      if (resp.status !== 200) {
-        console.warn(`Agent panel ${p.title} not saved: HTTP ${resp.status}`);
-        continue;
-      }
-      vizIds.push(p.id);
-      // Upgrades: drop the aggregation visualization an earlier version saved under this id.
-      await osuiRequest('DELETE', `${base}/w/${wsId}/api/saved_objects/visualization/${p.id}`, null, region);
-    } catch (e: any) {
-      console.warn(`Agent panel ${p.title} failed: ${e.message}`);
-    }
-  }
-  if (!vizIds.length) return;
-
-  const panels = vizIds.map((id, i) => ({
-    version: '3.6.0',
-    gridData: { x: (i % 2) * 24, y: Math.floor(i / 2) * 15, w: 24, h: 15, i: String(i) },
-    panelIndex: String(i), embeddableConfig: {}, panelRefName: `panel_${i}`,
-  }));
-  const refs = vizIds.map((id, i) => ({ name: `panel_${i}`, type: 'explore', id }));
-
-  await osuiPost(base, `/w/${wsId}/api/saved_objects/dashboard/agent-observability-dashboard`, {
-    attributes: {
-      title: 'Agent Observability',
-      description: 'Overview of AI agent performance, token usage, and tool execution',
-      panelsJSON: JSON.stringify(panels),
-      optionsJSON: JSON.stringify({ useMargins: true, hidePanelTitles: false }),
-      timeRestore: false,
-      kibanaSavedObjectMeta: { searchSourceJSON: JSON.stringify({ query: { query: '', language: 'kuery' }, filter: [] }) },
-    },
-    references: refs,
-  }, region);
+  const result = await syncAgentDashboard({
+    post: (path, body) => osuiPost(base, path, body, region),
+    put: (path, body) => osuiPut(base, path, body, region),
+    del: (path) => osuiRequest('DELETE', `${base}${path}`, null, region),
+  }, wsId, tracesId, dataSource);
+  for (const w of result.warnings) console.warn(w);
+  console.log(`Agent Observability dashboard: ${result.dashboard} (${result.panelIds.length} panels)`);
 }
 
 // ── Overview Dashboard ────────────────────────────────────────────────────────

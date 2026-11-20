@@ -1282,7 +1282,9 @@ def set_default_dashboard(workspace_id, dashboard_id):
 
 
 def upsert_explore_panel(workspace_id, panel_id, attributes, references):
-    """Create or update an explore saved object. Returns "created", "updated" or an error string.
+    """Create or update an explore saved object.
+
+    Returns "created", "updated", "exists (...)" (already there, update failed) or an error string.
 
     Request errors are returned, not raised, so one slow or unreachable call (for example
     while Dashboards is still starting) cannot abort the rest of the init run.
@@ -1300,22 +1302,36 @@ def upsert_explore_panel(workspace_id, panel_id, attributes, references):
         if response.status_code == 200:
             return "created"
         if response.status_code == 409:
-            response = requests.put(
-                url, auth=(USERNAME, PASSWORD), headers=headers,
-                json={"attributes": attributes, "references": references}, verify=False, timeout=10,
-            )
-            return "updated" if response.status_code == 200 else f"{response.status_code} {response.text[:100]}"
+            # The panel already exists. If the update fails it is still there, so say "exists".
+            try:
+                response = requests.put(
+                    url, auth=(USERNAME, PASSWORD), headers=headers,
+                    json={"attributes": attributes, "references": references}, verify=False, timeout=10,
+                )
+                if response.status_code == 200:
+                    return "updated"
+                return f"exists (update failed: {response.status_code} {response.text[:100]})"
+            except requests.exceptions.RequestException as e:
+                return f"exists (update failed: {e})"
         return f"{response.status_code} {response.text[:100]}"
     except requests.exceptions.RequestException as e:
         return str(e)
 
 
-def remove_legacy_visualization(workspace_id, vis_id):
-    """Delete the aggregation visualization an earlier version created under this id, if any.
+def remove_legacy_visualizations(workspace_id, vis_ids):
+    """Delete the aggregation visualizations an earlier version created under these ids, if any.
 
-    Upgraded deployments would otherwise list the old panel (which errors on an incomplete field
-    list) next to the new explore panel under the same title in the Visualize library.
+    Upgraded deployments would otherwise list the old panels (which error on an incomplete field
+    list) next to the new explore panels under the same titles in the Visualize library. Call this
+    only after the dashboard has been saved with the new `explore` references: an existing
+    dashboard still points at the old objects until then.
     """
+    for vis_id in vis_ids:
+        remove_legacy_visualization(workspace_id, vis_id)
+
+
+def remove_legacy_visualization(workspace_id, vis_id):
+    """Delete one legacy aggregation visualization, best effort."""
     base = f"{BASE_URL}/w/{workspace_id}" if workspace_id and workspace_id != "default" else BASE_URL
     try:
         requests.delete(
@@ -1330,7 +1346,9 @@ def agent_panel_query(vis, source="otel-v1-apm-span*"):
     """Return (PPL query, chart type, axes mapping) for one Agent Observability panel.
 
     Mirrors the old aggregation panels: documents missing a field are dropped, results are ranked by
-    value descending and capped (10 categories, as the old terms aggs were).
+    value descending and capped (10 categories, as the old terms aggs were). The split panel keeps
+    the top 50 (category, split) pairs overall, not the old top 10 categories by top 5 splits, so one
+    category with many split values can take more of the chart than before.
     """
     f = vis["field"]
     if vis.get("metric_field"):
@@ -1346,7 +1364,8 @@ def agent_panel_query(vis, source="otel-v1-apm-span*"):
     else:
         query = (f"source = {source} | where isnotnull(`{f}`) | stats count() as value by `{f}`"
                  " | sort - value | head 10")
-        mapping = {"size": "value", "color": f}
+        # size/color are pie roles; any other chart type gets a horizontal bar.
+        mapping = {"size": "value", "color": f} if vis["type"] == "pie" else {"x": "value", "y": f}
     return query, ("pie" if vis["type"] == "pie" else "bar"), mapping
 
 
@@ -1426,8 +1445,11 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
         result = upsert_explore_panel(workspace_id, vis["id"], attributes, references)
         if result in ("created", "updated"):
             created_vis_ids.append(vis["id"])
-            remove_legacy_visualization(workspace_id, vis["id"])
             print(f"  ✅ {'Created' if result == 'created' else 'Updated'} explore panel: {vis['title']}")
+        elif result.startswith("exists"):
+            # Already saved; keep it on the dashboard rather than rewriting the dashboard without it.
+            created_vis_ids.append(vis["id"])
+            print(f"  ⚠️  {vis['title']}: {result}")
         else:
             print(f"  ⚠️  {vis['title']}: {result}")
 
@@ -1482,6 +1504,7 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
 
         if response.status_code == 200:
             print(f"✅ Created Agent Observability dashboard")
+            remove_legacy_visualizations(workspace_id, created_vis_ids)
             set_default_dashboard(workspace_id, dashboard_id)
             return dashboard_id
         elif response.status_code == 409:
@@ -1498,6 +1521,7 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
             )
             if response.status_code == 200:
                 print(f"✅ Updated Agent Observability dashboard")
+                remove_legacy_visualizations(workspace_id, created_vis_ids)
                 set_default_dashboard(workspace_id, dashboard_id)
                 return dashboard_id
             else:
@@ -1566,6 +1590,9 @@ def create_promql_dashboard_from_yaml(workspace_id, config_path, prometheus_data
         if result in ("created", "updated"):
             created_ids.append(panel_id)
             print(f"  ✅ {panel_def['title']}" if result == "created" else f"  🔄 {panel_def['title']} (updated)")
+        elif result.startswith("exists"):
+            created_ids.append(panel_id)  # already saved; keep it on the dashboard
+            print(f"  ⚠️  {panel_def['title']}: {result}")
         else:
             print(f"  ⚠️  {panel_def['title']}: {result}")
 

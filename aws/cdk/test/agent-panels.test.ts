@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { AGENT_PANELS, agentPanelQuery, agentPanelObject, datasetDataSource } from '../custom-resources/ui-init/agent-panels';
+import { AGENT_PANELS, agentPanelQuery, agentPanelObject, datasetDataSource, syncAgentDashboard } from '../custom-resources/ui-init/agent-panels';
 
 const byId = (id: string) => AGENT_PANELS.find((p) => p.id === id)!;
 
@@ -66,5 +66,85 @@ describe('datasetDataSource', () => {
     assert.deepEqual(withDs.query.dataset.dataSource, ds);
     const without = JSON.parse(agentPanelObject(AGENT_PANELS[0], 'traces-id').attributes.kibanaSavedObjectMeta.searchSourceJSON);
     assert.equal('dataSource' in without.query.dataset, false);
+  });
+});
+
+describe('syncAgentDashboard', () => {
+  type Call = { op: 'post' | 'put' | 'del'; path: string };
+  const isDash = (path: string) => path.includes('/dashboard/');
+  const fake = (status: (c: Call) => number | Error) => {
+    const calls: Call[] = [];
+    const run = (op: Call['op']) => async (path: string) => {
+      const c = { op, path }; calls.push(c);
+      const s = status(c);
+      if (s instanceof Error) throw s;
+      return { status: s };
+    };
+    return { calls, api: { post: run('post'), put: run('put'), del: run('del') } };
+  };
+  const dels = (calls: { op: string }[]) => calls.map((c, i) => (c.op === 'del' ? i : -1)).filter((i) => i >= 0);
+  const lastDashSave = (calls: { op: string; path: string }[]) => Math.max(...calls.map((c, i) => (c.op !== 'del' && isDash(c.path) ? i : -1)));
+
+  it('creates panels and the dashboard, then deletes the legacy visualizations', async () => {
+    const { api, calls } = fake(() => 200);
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.dashboard, 'created');
+    assert.equal(r.panelIds.length, AGENT_PANELS.length);
+    assert.equal(r.removedLegacy.length, AGENT_PANELS.length);
+    assert.ok(dels(calls).every((i) => i > lastDashSave(calls)), 'legacy objects are deleted after the dashboard save');
+  });
+
+  it('updates an existing workspace: 409 on panels and dashboard becomes PUT, then deletes legacy', async () => {
+    const { api, calls } = fake((c) => (c.op === 'post' ? 409 : 200));
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.dashboard, 'updated');
+    assert.equal(r.panelIds.length, AGENT_PANELS.length);
+    assert.ok(calls.some((c) => c.op === 'put' && isDash(c.path)));
+    assert.ok(dels(calls).every((i) => i > lastDashSave(calls)));
+  });
+
+  it('keeps the legacy visualizations when the dashboard save fails (the old dashboard still references them)', async () => {
+    const { api, calls } = fake((c) => (isDash(c.path) ? (c.op === 'post' ? 409 : 500) : 200));
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.dashboard, 'failed');
+    assert.equal(dels(calls).length, 0);
+    assert.match(r.warnings.join(' '), /dashboard not saved: HTTP 500/);
+  });
+
+  it('keeps the legacy visualizations when the dashboard request throws', async () => {
+    const { api, calls } = fake((c) => (isDash(c.path) ? new Error('timeout') : 200));
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.dashboard, 'failed');
+    assert.equal(dels(calls).length, 0);
+  });
+
+  it('keeps a panel that exists (409) on the dashboard even when its update fails', async () => {
+    const { api } = fake((c) => (c.op === 'post' ? (isDash(c.path) ? 200 : 409) : c.op === 'put' ? 500 : 200));
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.panelIds.length, AGENT_PANELS.length);
+    assert.equal(r.warnings.length, AGENT_PANELS.length);
+  });
+
+  it('leaves a panel that could not be saved off the dashboard and keeps going', async () => {
+    const { api } = fake((c) => (c.path.endsWith('/explore/tool-usage-stats') ? 500 : 200));
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.panelIds.length, AGENT_PANELS.length - 1);
+    assert.ok(!r.panelIds.includes('tool-usage-stats'));
+    assert.equal(r.dashboard, 'created');
+  });
+
+  it('does not save a dashboard when no panel was saved', async () => {
+    const { api, calls } = fake(() => 500);
+    const r = await syncAgentDashboard(api, 'ws', 'traces-id');
+    assert.equal(r.dashboard, 'skipped');
+    assert.equal(calls.filter((c) => isDash(c.path)).length, 0);
+  });
+});
+
+describe('agentPanelQuery roles for other chart types', () => {
+  it('gives a non-pie panel with no metric or split horizontal bar roles, not pie roles', () => {
+    const q = agentPanelQuery({ id: 'x', title: 'X', type: 'horizontal_bar', field: 'f' });
+    assert.equal(q.chartType, 'bar');
+    assert.deepEqual(q.axesMapping, { x: 'value', y: 'f' });
   });
 });
