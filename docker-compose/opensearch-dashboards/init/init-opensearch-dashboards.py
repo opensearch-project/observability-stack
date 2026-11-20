@@ -1345,17 +1345,57 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
         }
     ]
 
+    # Build the panels as Explore (query-based) saved objects, not aggs-based visualizations.
+    # An aggs visualization looks each field up in the index pattern's stored field list and
+    # throws "Could not locate that index-pattern-field" when it is missing; the dynamic
+    # attributes.gen_ai.* fields are not there until telemetry has been indexed and the list
+    # refreshed. A PPL query names its fields as text, so these panels do not depend on that list.
     created_vis_ids = []
+    dataset = {
+        "id": traces_pattern_id, "title": "otel-v1-apm-span*", "type": "INDEX_PATTERN",
+        "language": "PPL", "timeFieldName": "endTime", "signalType": "traces",
+    }
     for vis in visualizations:
-        vis_id = create_chart_visualization(
-            workspace_id, vis["id"], vis["title"], vis["type"],
-            vis["field"], traces_pattern_id,
-            metric_field=vis.get("metric_field"),
-            split_field=vis.get("split_field")
-        )
-        if vis_id:
-            created_vis_ids.append(vis_id)
-            print(f"  ✅ Created visualization: {vis['title']}")
+        f = vis["field"]
+        if vis.get("metric_field"):
+            m = vis["metric_field"]
+            query = f"source = otel-v1-apm-span* | where isnotnull(`{f}`) | stats sum(`{m}`) as value by `{f}`"
+            mapping = {"x": f, "y": "value"}
+        elif vis.get("split_field"):
+            sp = vis["split_field"]
+            query = f"source = otel-v1-apm-span* | where isnotnull(`{sp}`) | stats count() as value by `{f}`, `{sp}`"
+            mapping = {"x": f, "y": "value", "color": sp}
+        else:
+            query = f"source = otel-v1-apm-span* | where isnotnull(`{f}`) | stats count() as value by `{f}`"
+            mapping = {"size": "value", "color": f}
+        chart = "pie" if vis["type"] == "pie" else "bar"
+        viz = json.dumps({"title": "", "chartType": chart, "params": {"addLegend": True, "addTooltip": True}, "axesMapping": mapping})
+        search_source = json.dumps({
+            "query": {"query": query, "language": "PPL", "dataset": dataset},
+            "filter": [], "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
+        })
+        payload = {
+            "attributes": {
+                "title": vis["title"], "description": "", "hits": 0, "columns": ["_source"], "sort": [],
+                "version": 1, "type": "traces", "visualization": viz,
+                "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
+                "kibanaSavedObjectMeta": {"searchSourceJSON": search_source},
+            },
+            "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": traces_pattern_id}],
+        }
+        base = f"{BASE_URL}/w/{workspace_id}" if workspace_id and workspace_id != "default" else BASE_URL
+        if workspace_id and workspace_id != "default":
+            payload["workspaces"] = [workspace_id]
+        hdr = {"Content-Type": "application/json", "osd-xsrf": "true"}
+        url = f"{base}/api/saved_objects/explore/{vis['id']}"
+        r = requests.post(url, auth=(USERNAME, PASSWORD), headers=hdr, json=payload, verify=False, timeout=10)
+        if r.status_code == 409:
+            r = requests.put(url, auth=(USERNAME, PASSWORD), headers=hdr, json={"attributes": payload["attributes"], "references": payload["references"]}, verify=False, timeout=10)
+        if r.status_code == 200:
+            created_vis_ids.append(vis["id"])
+            print(f"  ✅ Created explore panel: {vis['title']}")
+        else:
+            print(f"  ⚠️  {vis['title']}: {r.status_code} {r.text[:120]}")
 
     if not created_vis_ids:
         print("⚠️  No visualizations created, skipping dashboard")
@@ -1372,7 +1412,7 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
             "embeddableConfig": {},
             "panelRefName": f"panel_{i}"
         })
-        references.append({"name": f"panel_{i}", "type": "visualization", "id": vis_id})
+        references.append({"name": f"panel_{i}", "type": "explore", "id": vis_id})
 
     if workspace_id and workspace_id != "default":
         url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/dashboard/{dashboard_id}"
