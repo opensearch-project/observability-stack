@@ -1,0 +1,84 @@
+suite: genai evaluation (Agent Evaluations)
+templates:
+  - templates/data-prepper-pipeline-secret.yaml
+  - templates/genai-evaluation-index-configmap.yaml
+tests:
+  - it: routes evaluation results to the evaluations sub-pipeline and keeps other logs
+    template: templates/data-prepper-pipeline-secret.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "- logs: 'getEventType\\(\\) == \"LOG\" and /eventName != \"gen_ai.evaluation.result\"'"
+      - matchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "- evaluations: 'getEventType\\(\\) == \"LOG\" and /eventName == \"gen_ai.evaluation.result\"'"
+      - matchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "name: \"otel-evaluations-pipeline\"\\n\\s+routes: \\[\"evaluations\"\\]"
+      - notMatchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "- logs: 'getEventType\\(\\) == \"LOG\"'\\n"
+
+  - it: writes otel-v1-genai-evaluation with the inline index template
+    template: templates/data-prepper-pipeline-secret.yaml
+    asserts:
+      - matchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "otel-evaluations-pipeline:\\n(.*\\n)*?\\s+index_type: custom\\n\\s+index: otel-v1-genai-evaluation\\n\\s+template_type: index-template\\n\\s+template_content: \\|\\n\\s+\\{"
+      - matchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "\"plugins.index_state_management.rollover_alias\": \"otel-v1-genai-evaluation\""
+      # index_patterns come from the sink, not the inlined template
+      - notMatchRegex:
+          path: stringData["pipelines.yaml"]
+          pattern: "\"index_patterns\""
+
+  - it: renders the init files and env with Data Prepper
+    template: templates/genai-evaluation-index-configmap.yaml
+    asserts:
+      - hasDocuments:
+          count: 2
+      - documentIndex: 0
+        equal:
+          path: metadata.name
+          value: genai-evaluation-index-init
+      - documentIndex: 0
+        exists:
+          path: data["init-opensearch-dashboards.py"]
+      - documentIndex: 0
+        matchRegex:
+          path: data["otel-v1-genai-evaluation-index-template.json"]
+          pattern: "\"index_patterns\""
+      - documentIndex: 0
+        matchRegex:
+          path: data["otel-v1-genai-evaluation-policy.json"]
+          pattern: "\"rollover\""
+      - documentIndex: 1
+        equal:
+          path: data
+          value:
+            OPENSEARCH_ENDPOINT: https://opensearch-cluster-master:9200
+            ISM_RETENTION_DAYS: "7"
+            EVALUATION_FILES_DIR: /config/genai-evaluation
+
+  - it: passes the retention setting, and 0 keeps indices
+    template: templates/genai-evaluation-index-configmap.yaml
+    set:
+      ismRetentionDays: 0
+      opensearchServiceName: my-opensearch
+    documentIndex: 1
+    asserts:
+      - equal:
+          path: data.ISM_RETENTION_DAYS
+          value: "0"
+      - equal:
+          path: data.OPENSEARCH_ENDPOINT
+          value: https://my-opensearch:9200
+
+  - it: does not render without Data Prepper
+    template: templates/genai-evaluation-index-configmap.yaml
+    set:
+      data-prepper.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -69,3 +69,29 @@ tests:
           content:
             name: INSTALL_EBPF_EXAMPLE_DASHBOARD
             value: "true"
+
+  - it: should keep indices when ismRetentionDays is 0
+    set:
+      ismRetentionDays: 0
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: ISM_RETENTION_DAYS
+            value: "0"
+
+  - it: should mount the evaluation template and policy for the evaluation index
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: EVALUATION_FILES_DIR
+            value: /genai-evaluation
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: genai-evaluation
+            configMap:
+              name: genai-evaluation-index-init
+              optional: true
+

@@ -200,6 +200,16 @@ panels:
 
 **Syncing with docker-compose:** The docker-compose init script and dashboard YAMLs (`docker-compose/opensearch-dashboards/`) are the source of truth. The helm versions in `files/` should be kept in sync. The only helm-specific addition is the K8s Cluster Health dashboard (not applicable to docker-compose) and the `BASE_URL` env var override in the init script (line 11).
 
+## Agent Evaluations
+
+Evaluation results are OTel log events named `gen_ai.evaluation.result`. They work the same way as in docker compose:
+
+- **Pipeline.** Data Prepper routes those events to `otel-evaluations-pipeline`. That pipeline writes to the `otel-v1-genai-evaluation` write alias. All other logs still go to `logs-otel-v1`. The sink's inline index template is rendered from `files/genai-evaluation/otel-v1-genai-evaluation-index-template.json`, without `index_patterns`.
+- **Index init.** The Data Prepper pod has an init container, `genai-evaluation-index-init`, that runs `init-opensearch-dashboards.py evaluation-index`. It creates the ISM rollover policy, the index template and `otel-v1-genai-evaluation-000001` with the write alias before Data Prepper's first write.
+  - Evaluation indices are deleted after `ismRetentionDays`, like the other indices. `0` keeps them.
+  - The init dashboards Job runs the same idempotent step.
+- **Canary.** `examples.agentEvalCanary` (enabled with `examples.enabled`) runs the deterministic Agent Eval Canary from `docker-compose/agent-eval-canary`. It evaluates recent travel-planner traces and sessions, and runs an offline test suite every `suiteIntervalMinutes` (`"0"` turns the suite off).
+
 ## Metrics Pipeline
 
 Metrics flow into Cortex via three paths:
