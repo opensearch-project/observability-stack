@@ -1,0 +1,40 @@
+{{- /*
+GenAI evaluation index init (Agent Evaluations). The Data Prepper pod runs
+init-opensearch-dashboards.py in `evaluation-index` mode as an init container
+(values.yaml: data-prepper.initContainers, genai-evaluation-index-init). It creates the
+evaluation ISM rollover policy, the composable index template and
+otel-v1-genai-evaluation-000001 behind the otel-v1-genai-evaluation write alias before
+Data Prepper starts, the same way docker compose runs genai-evaluation-index-init before
+data-prepper. Without it the sink's first write creates a concrete otel-v1-genai-evaluation
+index and the alias can never be added. The step is idempotent.
+
+These are regular resources, not hooks, so they exist when the Data Prepper pod starts. The
+names are fixed because the data-prepper subchart does not template its values.
+*/ -}}
+{{- if index .Values "data-prepper" "enabled" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: genai-evaluation-index-init
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+data:
+  init-opensearch-dashboards.py: |
+{{ .Files.Get "files/init-opensearch-dashboards.py" | indent 4 }}
+  otel-v1-genai-evaluation-index-template.json: |
+{{ .Files.Get "files/genai-evaluation/otel-v1-genai-evaluation-index-template.json" | indent 4 }}
+  otel-v1-genai-evaluation-policy.json: |
+{{ .Files.Get "files/genai-evaluation/otel-v1-genai-evaluation-policy.json" | indent 4 }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: genai-evaluation-index-init-env
+  labels:
+    {{- include "observability-stack.labels" . | nindent 4 }}
+data:
+  OPENSEARCH_ENDPOINT: {{ printf "https://%s:9200" (.Values.opensearchServiceName | default "opensearch-cluster-master") | quote }}
+  # Evaluation indices are deleted after this many days, like the other indices (0 keeps them)
+  ISM_RETENTION_DAYS: {{ include "observability-stack.ismRetentionDays" . | quote }}
+  EVALUATION_FILES_DIR: "/config/genai-evaluation"
+{{- end }}

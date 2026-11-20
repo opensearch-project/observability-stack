@@ -176,6 +176,36 @@ data-prepper:
             secretKeyRef:
               name: opensearch-credentials
               key: password
+    # Agent Evaluations: create the evaluation ISM policy, index template and the
+    # otel-v1-genai-evaluation write alias before Data Prepper's first write (the compose
+    # genai-evaluation-index-init job). Idempotent; endpoint and retention come from the
+    # genai-evaluation-index-init-env ConfigMap (opensearchServiceName, ismRetentionDays).
+    # See templates/genai-evaluation-index-configmap.yaml.
+    - name: genai-evaluation-index-init
+      image: python:3.12-slim
+      command: ['sh', '-c', 'pip install -q requests pyyaml && python -u /config/genai-evaluation/init-opensearch-dashboards.py evaluation-index']
+      envFrom:
+        - configMapRef:
+            name: genai-evaluation-index-init-env
+      env:
+        - name: OPENSEARCH_USER
+          valueFrom:
+            secretKeyRef:
+              name: opensearch-credentials
+              key: username
+        - name: OPENSEARCH_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: opensearch-credentials
+              key: password
+      volumeMounts:
+        - name: genai-evaluation-index-init
+          mountPath: /config/genai-evaluation
+          readOnly: true
+  volumes:
+    - name: genai-evaluation-index-init
+      configMap:
+        name: genai-evaluation-index-init
   ports:
     - name: http-source
       port: 2021

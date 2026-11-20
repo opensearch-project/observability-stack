@@ -1175,11 +1175,15 @@ import {
 const EVAL_FILES = ['otel-v1-genai-evaluation-index-template.json', 'otel-v1-genai-evaluation-policy.json'];
 
 describe('evaluation index files', () => {
-  // The CLI, CDK and local compose stack ship their own copies; they must not drift.
+  // The CLI, CDK, local compose stack and Helm chart ship their own copies; they must not drift.
   for (const file of EVAL_FILES) {
     it(`${file} is identical in every copy`, () => {
       const cli = readFileSync(new URL(`../src/genai-evaluation/${file}`, import.meta.url), 'utf8');
-      for (const rel of [`../../cdk/lib/genai-evaluation/${file}`, `../../../docker-compose/data-prepper/${file}`]) {
+      for (const rel of [
+        `../../cdk/lib/genai-evaluation/${file}`,
+        `../../../docker-compose/data-prepper/${file}`,
+        `../../../charts/observability-stack/files/genai-evaluation/${file}`,
+      ]) {
         const url = new URL(rel, import.meta.url);
         if (!existsSync(url)) continue; // published package: only the CLI copy exists
         assert.equal(readFileSync(url, 'utf8'), cli, `${rel} differs from the CLI copy`);

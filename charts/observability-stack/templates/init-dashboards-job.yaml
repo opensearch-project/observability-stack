@@ -53,14 +53,26 @@ spec:
             - name: INSTALL_EBPF_EXAMPLE_DASHBOARD
               value: {{ .Values.ebpfDemo.enabled | default false | quote }}
             - name: ISM_RETENTION_DAYS
-              value: {{ .Values.ismRetentionDays | default 7 | quote }}
+              value: {{ include "observability-stack.ismRetentionDays" . | quote }}
+            - name: EVALUATION_FILES_DIR
+              value: "/genai-evaluation"
           volumeMounts:
             - name: init-script
               mountPath: /scripts
             - name: init-script
               mountPath: /config
+            # Not under /config: a mount nested in the init-script ConfigMap volume is fragile
+            - name: genai-evaluation
+              mountPath: /genai-evaluation
+              readOnly: true
       volumes:
         - name: init-script
           configMap:
             name: {{ include "observability-stack.fullname" . }}-init-script
+        # Evaluation template and policy for ensure_evaluation_index(); rendered with Data
+        # Prepper (genai-evaluation-index-configmap.yaml). Optional: without it the step is skipped.
+        - name: genai-evaluation
+          configMap:
+            name: genai-evaluation-index-init
+            optional: true
 {{- end }}

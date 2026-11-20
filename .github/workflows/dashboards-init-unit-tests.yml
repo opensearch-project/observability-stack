@@ -6,6 +6,7 @@ on:
     paths:
       - 'docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py'
       - 'charts/observability-stack/files/init-opensearch-dashboards.py'
+      - 'charts/observability-stack/files/genai-evaluation/**'
       - 'test/test_init_opensearch_dashboards.py'
       - '.github/workflows/dashboards-init-unit-tests.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'docker-compose/opensearch-dashboards/init/init-opensearch-dashboards.py'
       - 'charts/observability-stack/files/init-opensearch-dashboards.py'
+      - 'charts/observability-stack/files/genai-evaluation/**'
       - 'test/test_init_opensearch_dashboards.py'
       - '.github/workflows/dashboards-init-unit-tests.yml'
 

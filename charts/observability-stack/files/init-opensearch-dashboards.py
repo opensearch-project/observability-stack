@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import os
 import time
 import requests
@@ -97,6 +98,115 @@ def configure_ism_policies():
                 print(f"  ⚠️  Get {pid}: {resp.status_code}")
         except requests.exceptions.RequestException as e:
             print(f"  ⚠️  Error configuring {pid}: {e}")
+
+# GenAI evaluation results (Agent Evaluations): write alias over rollover indices. Data Prepper's
+# otel-evaluations-pipeline creates the same objects; whichever runs first wins, the other skips.
+EVALUATION_ALIAS = "otel-v1-genai-evaluation"
+EVALUATION_TEMPLATE_NAME = f"{EVALUATION_ALIAS}-index-template"
+EVALUATION_POLICY_ID = f"{EVALUATION_ALIAS}-policy"
+EVALUATION_FILES_DIR = os.getenv("EVALUATION_FILES_DIR", "/config/genai-evaluation")
+
+
+def evaluation_policy(policy, retention_days):
+    """The evaluation rollover policy plus a delete state after `retention_days` (0 keeps it).
+
+    Same shape as the other retention policies here and as the AWS installer's evaluation policy.
+    """
+    policy = json.loads(json.dumps(policy))
+    if retention_days <= 0:
+        return policy
+    p = policy["policy"]
+    p["description"] = f"Rollover and {retention_days}-day retention for GenAI evaluation results"
+    first = next(s for s in p["states"] if s["name"] == p["default_state"])
+    first["transitions"] = [{"state_name": "delete", "conditions": {"min_index_age": f"{retention_days}d"}}]
+    p["states"].append({"name": "delete", "actions": [{"delete": {}}], "transitions": []})
+    return policy
+
+
+def ensure_evaluation_index():
+    """Create the evaluation ISM policy, index template and write alias when missing.
+
+    The policy rolls over and deletes indices after ISM_RETENTION_DAYS, like the other indices
+    (0 keeps them). An existing policy is left as is, and the template is replaced only by a
+    higher `version`.
+    """
+    try:
+        with open(os.path.join(EVALUATION_FILES_DIR, f"{EVALUATION_TEMPLATE_NAME}.json")) as f:
+            template = json.load(f)
+        with open(os.path.join(EVALUATION_FILES_DIR, f"{EVALUATION_POLICY_ID}.json")) as f:
+            policy = evaluation_policy(json.load(f), ISM_RETENTION_DAYS)
+    except (OSError, ValueError) as e:
+        print(f"⚠️  Skipping evaluation index setup, template files not readable: {e}")
+        return False
+
+    print(f"🧪 Ensuring evaluation index {EVALUATION_ALIAS}...")
+    auth = (USERNAME, PASSWORD)
+    try:
+        url = f"{OPENSEARCH_ENDPOINT}/_plugins/_ism/policies/{EVALUATION_POLICY_ID}"
+        if requests.get(url, auth=auth, verify=False, timeout=10).status_code == 404:
+            resp = requests.put(url, auth=auth, json=policy, verify=False, timeout=10)
+            if resp.status_code not in (200, 201) and "version_conflict" not in resp.text:
+                print(f"  ⚠️  Create {EVALUATION_POLICY_ID}: {resp.status_code} {resp.text[:120]}")
+                return False
+
+        url = f"{OPENSEARCH_ENDPOINT}/_index_template/{EVALUATION_TEMPLATE_NAME}"
+        resp = requests.get(url, auth=auth, verify=False, timeout=10)
+        installed = None
+        if resp.status_code == 200:
+            found = resp.json().get("index_templates") or [{}]
+            installed = found[0].get("index_template", {}).get("version")
+        if installed is None or installed < template["version"]:
+            resp = requests.put(url, auth=auth, json=template, verify=False, timeout=10)
+            if resp.status_code != 200:
+                print(f"  ⚠️  Put {EVALUATION_TEMPLATE_NAME}: {resp.status_code} {resp.text[:120]}")
+                return False
+
+        if requests.get(f"{OPENSEARCH_ENDPOINT}/_alias/{EVALUATION_ALIAS}", auth=auth,
+                        verify=False, timeout=10).status_code == 200:
+            print(f"  ✅ {EVALUATION_ALIAS} ready")
+            return True
+        if requests.get(f"{OPENSEARCH_ENDPOINT}/{EVALUATION_ALIAS}", auth=auth,
+                        verify=False, timeout=10).status_code == 200:
+            print(f"  ⚠️  {EVALUATION_ALIAS} is an index, not an alias; leaving it in place")
+            return False
+        resp = requests.put(
+            f"{OPENSEARCH_ENDPOINT}/{EVALUATION_ALIAS}-000001", auth=auth,
+            json={"aliases": {EVALUATION_ALIAS: {"is_write_index": True}}}, verify=False, timeout=10,
+        )
+        if resp.status_code == 200 or "resource_already_exists_exception" in resp.text:
+            print(f"  ✅ {EVALUATION_ALIAS} ready")
+            return True
+        print(f"  ⚠️  Create {EVALUATION_ALIAS}-000001: {resp.status_code} {resp.text[:120]}")
+        return False
+    except requests.exceptions.RequestException as e:
+        print(f"  ⚠️  Error setting up {EVALUATION_ALIAS}: {e}")
+        return False
+
+
+def run_evaluation_index_init(attempts=30, delay_seconds=5):
+    """Create the evaluation objects before Data Prepper starts writing results.
+
+    Data Prepper's sink would otherwise create a concrete otel-v1-genai-evaluation index on its
+    first start, which blocks the write alias. Retries while OpenSearch is still starting.
+    """
+    auth = (USERNAME, PASSWORD)
+    for attempt in range(1, attempts + 1):
+        if ensure_evaluation_index():
+            return True
+        try:
+            # A concrete index with the alias name (an older stack) is kept: Data Prepper writes
+            # to it, so there is nothing to wait for.
+            if (requests.get(f"{OPENSEARCH_ENDPOINT}/_alias/{EVALUATION_ALIAS}", auth=auth,
+                             verify=False, timeout=10).status_code == 404
+                    and requests.get(f"{OPENSEARCH_ENDPOINT}/{EVALUATION_ALIAS}", auth=auth,
+                                     verify=False, timeout=10).status_code == 200):
+                return True
+        except requests.exceptions.RequestException:
+            pass
+        print(f"  ⏳ Evaluation index not ready (attempt {attempt}/{attempts}), retrying...")
+        time.sleep(delay_seconds)
+    return False
+
 
 def wait_for_dashboards():
     """Wait for OpenSearch Dashboards to be ready"""
@@ -1843,6 +1953,9 @@ def main():
     # Configure ISM retention policies (overrides Data Prepper rollover-only defaults)
     configure_ism_policies()
 
+    # Evaluation index for Agent Evaluations (rollover only)
+    ensure_evaluation_index()
+
     # Check for existing workspace
     workspace_id = get_existing_workspace()
 
@@ -2090,8 +2203,12 @@ if __name__ == "__main__":
     # backstop never blocks init completion (or a Helm hook):
     #   (default)      → main(): fast one-shot setup + immediate field warm
     #   refresh-loop   → periodic field refresh until indices populate
+    #   evaluation-index → only the evaluation policy, template and write alias,
+    #                      retried until OpenSearch accepts them (runs before Data Prepper)
     mode = sys.argv[1] if len(sys.argv) > 1 else "init"
     if mode == "refresh-loop":
         run_field_refresh_backstop()
+    elif mode == "evaluation-index":
+        sys.exit(0 if run_evaluation_index_init() else 1)
     else:
         main()

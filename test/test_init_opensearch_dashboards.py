@@ -164,10 +164,11 @@ class CreateIndexPatternTests(unittest.TestCase):
 
 class EnsureEvaluationIndexTests(unittest.TestCase):
     COMPOSE_INITIALIZER = INITIALIZER_PATHS[0]
+    EVALUATION_FILES_DIR = REPOSITORY_ROOT / "docker-compose/data-prepper"
 
     def setUp(self):
         self.initializer = load_initializer(self.COMPOSE_INITIALIZER)
-        self.initializer.EVALUATION_FILES_DIR = str(REPOSITORY_ROOT / "docker-compose/data-prepper")
+        self.initializer.EVALUATION_FILES_DIR = str(self.EVALUATION_FILES_DIR)
         self.endpoint = self.initializer.OPENSEARCH_ENDPOINT
 
     def _routes(self, routes):
@@ -260,6 +261,40 @@ class EnsureEvaluationIndexTests(unittest.TestCase):
         self.initializer.ensure_evaluation_index = Mock(return_value=False)
         self._routes({})
         self.assertFalse(self.initializer.run_evaluation_index_init(attempts=3, delay_seconds=0))
+
+
+class ChartEnsureEvaluationIndexTests(EnsureEvaluationIndexTests):
+    """The Helm chart runs the same evaluation index setup from its own copy of the files."""
+
+    COMPOSE_INITIALIZER = INITIALIZER_PATHS[1]
+    EVALUATION_FILES_DIR = REPOSITORY_ROOT / "charts/observability-stack/files/genai-evaluation"
+
+
+class ChartEvaluationSyncTests(unittest.TestCase):
+    """The chart's init script and evaluation files must not drift from docker compose."""
+
+    COMPOSE_FILES = REPOSITORY_ROOT / "docker-compose/data-prepper"
+    CHART_FILES = REPOSITORY_ROOT / "charts/observability-stack/files/genai-evaluation"
+
+    @staticmethod
+    def _evaluation_block(path):
+        text = path.read_text()
+        start = text.index("# GenAI evaluation results (Agent Evaluations)")
+        return text[start:text.index("def wait_for_dashboards():", start)]
+
+    def test_evaluation_code_is_identical(self):
+        compose, chart = INITIALIZER_PATHS
+        self.assertEqual(self._evaluation_block(compose), self._evaluation_block(chart))
+        for path in INITIALIZER_PATHS:
+            text = path.read_text()
+            with self.subTest(path=path.name, parent=path.parent.name):
+                self.assertIn('elif mode == "evaluation-index":', text)
+                self.assertIn("    ensure_evaluation_index()\n", text)
+
+    def test_evaluation_files_are_identical(self):
+        for name in ("otel-v1-genai-evaluation-index-template.json", "otel-v1-genai-evaluation-policy.json"):
+            with self.subTest(file=name):
+                self.assertEqual((self.COMPOSE_FILES / name).read_text(), (self.CHART_FILES / name).read_text())
 
 
 class DataPrepperEvaluationTemplateTests(unittest.TestCase):
