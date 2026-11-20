@@ -143,7 +143,9 @@ describe('names from StackDisplayName', () => {
     const { template: t } = synth('managed');
     assert.deepEqual(props(t, 'AWS::OSIS::Pipeline')[0].PipelineName, join('obs-', ref, '-ingest'));
     assert.deepEqual(props(t, 'AWS::APS::Workspace')[0].Alias, join('obs-', ref, '-metrics'));
-    assert.deepEqual(props(t, 'Custom::PrometheusDataSource')[0].DataSourceName, join(ref, '_prometheus'));
+    // Hyphens in the name become underscores: data source names allow [a-z0-9_] only.
+    assert.deepEqual(props(t, 'Custom::PrometheusDataSource')[0].DataSourceName,
+      { 'Fn::Join': ['_', [{ 'Fn::Join': ['_', { 'Fn::Split': ['-', ref] }] }, 'prometheus']] });
     assert.deepEqual(props(t, 'AWS::OpenSearchService::Domain')[0].DomainName, join('obs-', ref));
   });
 

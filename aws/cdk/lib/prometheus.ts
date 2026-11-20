@@ -51,7 +51,8 @@ export class PrometheusConstruct extends Construct {
       workspaceConfiguration: { retentionPeriodInDays: props.metricsRetentionDays },
     });
 
-    const dqsDataSourceName = `${props.displayName}_prometheus`;
+    // Data source names allow [a-z0-9_] only, and stack names can have hyphens.
+    const dqsDataSourceName = cdk.Fn.join('_', [cdk.Fn.join('_', cdk.Fn.split('-', props.displayName)), 'prometheus']);
 
     this.dqsRole = new iam.Role(this, 'DqsRole', {
       assumedBy: new iam.ServicePrincipal('directquery.opensearchservice.amazonaws.com', {
