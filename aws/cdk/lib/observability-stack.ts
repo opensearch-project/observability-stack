@@ -148,6 +148,8 @@ export class ObservabilityStack extends cdk.Stack {
             FgacRoles: JSON.stringify(['readall']),
           },
         });
+        // Both mappings write the security index; concurrent writes fail with a 409 version conflict.
+        if (fgacMapping) demoFgac.node.addDependency(fgacMapping);
         demo.instance.node.addDependency(demoFgac);
       }
     }
