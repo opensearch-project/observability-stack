@@ -1,6 +1,8 @@
 /**
  * FGAC role mapping custom resource handler.
- * Maps IAM roles to OpenSearch all_access and security_manager via the Security API.
+ * Maps IAM roles to OpenSearch security roles via the Security API: all_access and
+ * security_manager by default, or the roles in FgacRoles (for example ["readall"] for a
+ * read-only caller).
  * Runs as the domain's IAM master user and signs requests with SigV4.
  */
 import { SignatureV4 } from '@aws-sdk/signature-v4';
@@ -12,6 +14,7 @@ interface Props {
   OpenSearchEndpoint: string;
   RoleArns: string; // JSON array of ARNs to map
   Region: string;
+  FgacRoles?: string; // JSON array of security role names; default all_access + security_manager
 }
 
 interface Event {
@@ -38,6 +41,22 @@ export function parseRoleArns(raw: string | undefined): string[] {
   return valid;
 }
 
+const DEFAULT_FGAC_ROLES = ['all_access', 'security_manager'];
+const SECURITY_ROLE_NAME = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * The security roles to map: FgacRoles when it is a non-empty JSON array of role names,
+ * else all_access and security_manager. Never throws, like parseRoleArns.
+ */
+export function parseFgacRoles(raw: string | undefined): string[] {
+  if (!raw) return DEFAULT_FGAC_ROLES;
+  let names: unknown;
+  try { names = JSON.parse(raw); } catch { names = undefined; }
+  if (!Array.isArray(names)) return DEFAULT_FGAC_ROLES;
+  const valid = names.filter((n): n is string => typeof n === 'string' && SECURITY_ROLE_NAME.test(n));
+  return valid.length ? [...new Set(valid)] : DEFAULT_FGAC_ROLES;
+}
+
 /** Backend roles after an update: existing entries minus revoked ones and '*', plus the new set. */
 export function mergeBackendRoles(existing: string[], add: string[], revoke: string[]): string[] {
   const kept = existing.filter((r) => r !== '*' && !revoke.includes(r));
@@ -45,15 +64,16 @@ export function mergeBackendRoles(existing: string[], add: string[], revoke: str
 }
 
 export async function handler(event: Event) {
-  const { OpenSearchEndpoint, RoleArns, Region } = event.ResourceProperties;
+  const { OpenSearchEndpoint, RoleArns, Region, FgacRoles } = event.ResourceProperties;
   const roleArns = parseRoleArns(RoleArns);
+  const fgacRoles = parseFgacRoles(FgacRoles);
   const base = `https://${OpenSearchEndpoint}`;
   const sign = signerFor(Region);
 
   if (event.RequestType === 'Delete') {
     // Best-effort: remove role mappings
     try {
-      for (const role of FGAC_ROLES) {
+      for (const role of fgacRoles) {
         await removeMappings(sign, base, role, roleArns);
       }
     } catch { /* best effort */ }
@@ -64,7 +84,14 @@ export async function handler(event: Event) {
   const revoked = event.RequestType === 'Update'
     ? parseRoleArns(event.OldResourceProperties?.RoleArns).filter((r) => !roleArns.includes(r))
     : [];
-  for (const role of FGAC_ROLES) {
+  // Security roles this resource mapped before but no longer lists lose all of its ARNs.
+  const droppedRoles = event.RequestType === 'Update'
+    ? parseFgacRoles(event.OldResourceProperties?.FgacRoles).filter((r) => !fgacRoles.includes(r))
+    : [];
+  for (const role of droppedRoles) {
+    await removeMappings(sign, base, role, [...roleArns, ...revoked]);
+  }
+  for (const role of fgacRoles) {
     const existing = await getBackendRoles(sign, base, role);
     await putBackendRoles(sign, base, role, mergeBackendRoles(existing, roleArns, revoked));
   }
@@ -72,7 +99,6 @@ export async function handler(event: Event) {
   return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
 }
 
-const FGAC_ROLES = ['all_access', 'security_manager'];
 type Signer = (url: string, method: 'GET' | 'PATCH', body?: string) => Promise<Response>;
 
 function signerFor(region: string): Signer {

@@ -1,23 +1,38 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as aoss from 'aws-cdk-lib/aws-opensearchserverless';
 import { Construct } from 'constructs';
 import { IngestionPipeline } from './ingestion-pipeline';
 
+export interface DemoOpenSearchTarget {
+  serverless: boolean;
+  /** Domain or collection URL, with https://. */
+  url: string;
+  /** Domain or collection ARN. */
+  arn: string;
+  /** Collection name (serverless only). */
+  collectionName?: string;
+}
+
 export interface DemoWorkloadProps {
   pipeline: IngestionPipeline;
+  /** Where the eval canary reads agent spans. Without it the canary does not run. */
+  opensearch?: DemoOpenSearchTarget;
 }
 
 export class DemoWorkload extends Construct {
   public readonly instance: ec2.Instance;
+  public readonly role: iam.Role;
 
   constructor(scope: Construct, id: string, props: DemoWorkloadProps) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
+    const region = stack.region;
     const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
 
-    const role = new iam.Role(this, 'InstanceRole', {
+    const role = this.role = new iam.Role(this, 'InstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonSSMManagedInstanceCore'),
@@ -28,6 +43,47 @@ export class DemoWorkload extends Construct {
       resources: [props.pipeline.pipeline.attrPipelineArn],
     }));
 
+    // Read access for the eval canary, which scores agent spans and sends the results back
+    // through the collector. Managed domains also need an FGAC readall mapping (the stack adds it).
+    const target = props.opensearch;
+    if (target?.serverless) {
+      if (!target.collectionName) throw new Error('DemoWorkload: serverless target needs collectionName');
+      role.addToPolicy(new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [target.arn] }));
+      new aoss.CfnAccessPolicy(this, 'CanaryReadAccess', {
+        name: `${target.collectionName.slice(0, 22)}-demo-read`,
+        type: 'data',
+        policy: cdk.Fn.toJsonString([{
+          Rules: [
+            { ResourceType: 'index', Resource: [`index/${target.collectionName}/*`], Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] },
+          ],
+          Principal: [role.roleArn],
+        }]),
+      });
+    } else if (target) {
+      role.addToPolicy(new iam.PolicyStatement({
+        actions: ['es:ESHttpGet', 'es:ESHttpPost'],
+        resources: [target.arn, `${target.arn}/*`],
+      }));
+    }
+    const canaryEnv = target ? [
+      '',
+      '# Eval canary: reads agent spans from the domain or collection with SigV4 (instance role)',
+      '# and sends gen_ai.evaluation.result events through the collector to the pipeline.',
+      'cat >> .env << \'CANARYEOF\'',
+      'COMPOSE_PROFILES=aws-evals',
+      'EVAL_CANARY_OPENSEARCH_URL=${OpenSearchUrl}',
+      `OPENSEARCH_AWS_SERVICE=${target.serverless ? 'aoss' : 'es'}`,
+      `AWS_REGION=${region}`,
+      'CANARYEOF',
+      'export COMPOSE_PROFILES=aws-evals',
+    ] : [
+      '',
+      '# Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES',
+      '# (overriding the local-backends value committed in .env) to prune the',
+      '# services that require those backends.',
+      'export COMPOSE_PROFILES=',
+    ];
+
     this.instance = new ec2.Instance(this, 'Instance', {
       vpc,
       instanceType: new ec2.InstanceType('t3.xlarge'),
@@ -37,11 +93,14 @@ export class DemoWorkload extends Construct {
         deviceName: '/dev/xvda',
         volume: ec2.BlockDeviceVolume.ebs(30, { volumeType: ec2.EbsDeviceVolumeType.GP3 }),
       }],
-      requireImdsv2: true,
+    });
+    // IMDSv2 with hop limit 2, so containers (collector, eval canary) reach instance credentials.
+    this.instance.instance.addPropertyOverride('MetadataOptions', {
+      HttpTokens: 'required',
+      HttpPutResponseHopLimit: 2,
     });
 
     const pipelineName = props.pipeline.pipelineName;
-    const region = stack.region;
 
     // Use Fn::Sub to inject the OSIS endpoint at deploy time
     const osiEndpoint = cdk.Fn.join('', [
@@ -187,11 +246,7 @@ export class DemoWorkload extends Construct {
           '          memory: 500M',
           '    logging: *logging',
           'MANAGEDEOF',
-          '',
-          '# Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES',
-          '# (overriding the local-backends value committed in .env) to prune the',
-          '# services that require those backends.',
-          'export COMPOSE_PROFILES=',
+          ...canaryEnv,
           '',
           '# Kafka\'s healthcheck can exceed compose\'s dependency grace window on',
           '# first boot, leaving kafka-dependent services in Created state. Retry',
@@ -200,7 +255,7 @@ export class DemoWorkload extends Construct {
           'sleep 60',
           'docker compose -f docker-compose.managed.yml up -d',
         ].join('\n'),
-        { OsiEndpoint: osiEndpoint },
+        { OsiEndpoint: osiEndpoint, OpenSearchUrl: target?.url ?? '' },
       ]},
     });
 

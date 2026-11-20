@@ -41,6 +41,7 @@ export class ObservabilityStack extends cdk.Stack {
 
     // FGAC role mapping (managed domains only — serverless uses IAM)
     let fgacMapping: cdk.CustomResource | undefined;
+    let fgacProvider: cr.Provider | undefined;
     if (!isServerless) {
       const fgacFn = new NodejsFunction(this, 'FgacMappingFn', {
         runtime: Runtime.NODEJS_22_X,
@@ -51,7 +52,7 @@ export class ObservabilityStack extends cdk.Stack {
         bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
       });
 
-      const fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
+      fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
       fgacMapping = new cdk.CustomResource(this, 'FgacMapping', {
         serviceToken: fgacProvider.serviceToken,
         properties: {
@@ -125,7 +126,29 @@ export class ObservabilityStack extends cdk.Stack {
     }
 
     if (props.enableDemo ?? false) {
-      new DemoWorkload(this, 'DemoWorkload', { pipeline });
+      const demo = new DemoWorkload(this, 'DemoWorkload', {
+        pipeline,
+        opensearch: {
+          serverless: isServerless,
+          // Collection endpoints include the scheme; domain endpoints do not.
+          url: isServerless ? infra.domainEndpoint : `https://${infra.domainEndpoint}`,
+          arn: infra.domainArn,
+          collectionName: infra.collectionName,
+        },
+      });
+      // The eval canary reads agent spans. Managed domains map the demo role to readall.
+      if (fgacProvider) {
+        const demoFgac = new cdk.CustomResource(this, 'DemoFgacMapping', {
+          serviceToken: fgacProvider.serviceToken,
+          properties: {
+            OpenSearchEndpoint: infra.domainEndpoint,
+            RoleArns: JSON.stringify([demo.role.roleArn]),
+            Region: this.region,
+            FgacRoles: JSON.stringify(['readall']),
+          },
+        });
+        demo.instance.node.addDependency(demoFgac);
+      }
     }
 
     new cdk.CfnOutput(this, 'OpenSearchEndpoint', { value: infra.domainEndpoint });

@@ -1,6 +1,8 @@
 """Agent eval canary: deterministic online and offline evaluations of the example agents.
 
-No LLM and no AWS credentials. Every cycle (EVAL_CANARY_INTERVAL seconds) it:
+No LLM. Locally it reads traces from the stack's OpenSearch with basic auth; on AWS
+(OPENSEARCH_AWS_SERVICE=aoss or es) it signs those reads with SigV4 using the instance's
+credentials. Every cycle (EVAL_CANARY_INTERVAL seconds) it:
 
 1. Online, span level: lists recent agent roots in OpenSearch (OpenSearchTraceRetriever),
    skips traces this canary already evaluated (find_evaluated_trace_ids by evaluator), and posts
@@ -46,6 +48,13 @@ from opensearch_genai_observability_sdk_py import (
 OS_HOST = os.environ.get("OPENSEARCH_HOST", "https://opensearch:9200")
 OS_USER = os.environ.get("OPENSEARCH_USER", "admin")
 OS_PASS = os.environ.get("OPENSEARCH_PASSWORD", "admin")
+# AWS backends: "aoss" (OpenSearch Serverless) or "es" (managed domain) signs the reads with
+# SigV4 instead of basic auth. AWS_REGION picks the signing region.
+OS_AWS_SERVICE = os.environ.get("OPENSEARCH_AWS_SERVICE", "").strip().lower()
+AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION", "")
+# Matches the local rollover indices (otel-v1-apm-span-000001) and the single serverless
+# index (otel-v1-apm-span) alike; the SDK's default otel-v1-apm-span-* misses the latter.
+SPAN_INDEX = os.environ.get("OPENSEARCH_SPAN_INDEX", "otel-v1-apm-span*")
 OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
 INTERVAL = int(os.environ.get("EVAL_CANARY_INTERVAL", "120"))
 LOOKBACK_MINUTES = int(os.environ.get("EVAL_CANARY_LOOKBACK_MINUTES", "15"))
@@ -382,8 +391,27 @@ def planner_ready() -> bool:
         return False
 
 
+def make_retriever() -> OpenSearchTraceRetriever:
+    """Basic auth for the local stack; SigV4 (instance credentials) for AWS backends."""
+    if OS_AWS_SERVICE:
+        if OS_AWS_SERVICE not in ("aoss", "es"):
+            raise ValueError(f"OPENSEARCH_AWS_SERVICE must be aoss or es, not {OS_AWS_SERVICE!r}")
+        if not AWS_REGION:
+            raise ValueError("AWS_REGION is required with OPENSEARCH_AWS_SERVICE")
+        import botocore.session
+        from opensearchpy import RequestsAWSV4SignerAuth
+
+        credentials = botocore.session.get_session().get_credentials()
+        auth = RequestsAWSV4SignerAuth(credentials, AWS_REGION, OS_AWS_SERVICE)
+        return OpenSearchTraceRetriever(host=OS_HOST, index=SPAN_INDEX, auth=auth, verify_certs=True)
+    # The local stack's OpenSearch has a self-signed certificate
+    return OpenSearchTraceRetriever(
+        host=OS_HOST, index=SPAN_INDEX, auth=(OS_USER, OS_PASS), verify_certs=False
+    )
+
+
 def run() -> None:
-    retriever = OpenSearchTraceRetriever(host=OS_HOST, auth=(OS_USER, OS_PASS), verify_certs=False)
+    retriever = make_retriever()
     log.info("Agent eval canary started: every %ds, lookback %dm, suite every %dm",
              INTERVAL, LOOKBACK_MINUTES, SUITE_INTERVAL_MINUTES)
 

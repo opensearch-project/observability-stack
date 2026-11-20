@@ -182,23 +182,30 @@ services:
   # Requires a local OpenSearch backend; gated behind the local-backends
   # profile (see COMPOSE_PROFILES in .env).
   example-agent-eval-canary:
-    profiles: ["local-backends"]
+    # local-backends: the local stack. aws-evals: an AWS observability stack's demo, which reads
+    # traces from the domain or collection with SigV4 (set EVAL_CANARY_OPENSEARCH_URL,
+    # OPENSEARCH_AWS_SERVICE and AWS_REGION) and sends results through the collector.
+    profiles: ["local-backends", "aws-evals"]
     build:
       context: ./docker-compose/agent-eval-canary
       dockerfile: Dockerfile
     container_name: agent-eval-canary
     environment:
-      - OPENSEARCH_HOST=https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}
+      - OPENSEARCH_HOST=${EVAL_CANARY_OPENSEARCH_URL:-https://${OPENSEARCH_HOST}:${OPENSEARCH_PORT}}
       - OPENSEARCH_USER=${OPENSEARCH_USER}
       - OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD}
+      # AWS backends: aoss or es signs the reads with SigV4 (instance credentials)
+      - OPENSEARCH_AWS_SERVICE=${OPENSEARCH_AWS_SERVICE:-}
+      - AWS_REGION=${AWS_REGION:-}
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       - EVAL_CANARY_INTERVAL=${EVAL_CANARY_INTERVAL}
       - EVAL_CANARY_LOOKBACK_MINUTES=${EVAL_CANARY_LOOKBACK_MINUTES}
       # Offline test suite (evaluate()) against the travel planner; 0 turns it off
       - EVAL_CANARY_SUITE_INTERVAL_MINUTES=${EVAL_CANARY_SUITE_INTERVAL_MINUTES:-30}
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
+    # No depends_on opensearch: an AWS stack's demo has no opensearch service, and the
+    # canary waits for OpenSearch to answer before its first cycle (local and AWS).
     depends_on:
-      - opensearch
       - otel-collector
       - example-travel-planner
     networks:

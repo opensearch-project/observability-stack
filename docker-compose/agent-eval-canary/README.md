@@ -1,11 +1,29 @@
 # Agent Eval Canary (deterministic)
 
-Evaluates the example agents with code checks: no LLM, no AWS credentials, no cost. It uses the
+Evaluates the example agents with code checks: no LLM and no cost. It uses the
 [OpenSearch GenAI SDK](https://github.com/opensearch-project/genai-observability-sdk-py) (installed
 0.3.0 or later from PyPI).
 
 Runs with the example services when the local OpenSearch backend is used (`local-backends`
 profile, see `COMPOSE_PROFILES` in `.env`).
+
+On AWS (an OpenSearch Service domain or an OpenSearch Serverless collection) it runs under the
+`aws-evals` profile and reads spans with SigV4, using the default AWS credential chain (the EC2
+instance role on the demo instance). The CDK stack and the CLI installer set this up on the demo
+instance. To run it yourself:
+
+| Variable | Value |
+|---|---|
+| `COMPOSE_PROFILES` | `aws-evals` |
+| `EVAL_CANARY_OPENSEARCH_URL` | `https://<domain or collection endpoint>` |
+| `OPENSEARCH_AWS_SERVICE` | `es` (domain) or `aoss` (collection) |
+| `AWS_REGION` | the domain or collection region |
+| `OPENSEARCH_SPAN_INDEX` | optional, default `otel-v1-apm-span*` |
+
+The credentials need read access to the span index: `es:ESHttpGet` and `es:ESHttpPost` plus the
+`readall` security role on a domain with fine-grained access control, or `aoss:APIAccessAll` plus
+a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on a collection. Results
+go through the collector, so the pipeline writes them, not the canary.
 
 Every result is a `gen_ai.evaluation.result` OTel log event. Data Prepper routes it to the
 `otel-v1-genai-evaluation` write alias, where it joins the evaluated trace on `traceId` /

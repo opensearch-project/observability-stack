@@ -97,6 +97,53 @@ async function getVpcSubnetForInstance(ec2, subnetIds, instanceType) {
   return match.SubnetId;
 }
 
+/**
+ * Where the eval canary reads agent spans: the domain or collection endpoint, the SigV4
+ * service and the resources the demo role needs to read. Null when the endpoint is unknown.
+ */
+function canaryTarget(cfg) {
+  if (!cfg.opensearchEndpoint) return null;
+  const url = /^https?:\/\//.test(cfg.opensearchEndpoint) ? cfg.opensearchEndpoint : `https://${cfg.opensearchEndpoint}`;
+  if (cfg.opensearchType === 'serverless') {
+    return {
+      url, service: 'aoss',
+      actions: ['aoss:APIAccessAll'],
+      resources: [`arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${cfg.collectionId || '*'}`],
+    };
+  }
+  const domain = `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName || '*'}`;
+  return { url, service: 'es', actions: ['es:ESHttpGet', 'es:ESHttpPost'], resources: [domain, `${domain}/*`] };
+}
+
+/** Data access policy that lets the demo role read the collection (name <= 32 chars). */
+export function demoReadPolicyName(collectionName) {
+  return `${collectionName.slice(0, 22)}-demo-read`;
+}
+
+/** Security roles the demo role is mapped to on managed domains. destroy removes the same set. */
+export const DEMO_FGAC_ROLES = ['readall'];
+
+// User data that enables the eval canary (profile aws-evals) with SigV4 settings, or clears
+// COMPOSE_PROFILES when there is nothing to read from.
+function canaryEnvScript(cfg) {
+  const t = canaryTarget(cfg);
+  if (!t) {
+    return `# Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES
+# (overriding the local-backends value committed in .env) to prune the services
+# that require those backends.
+export COMPOSE_PROFILES=`;
+  }
+  return `# Eval canary: reads agent spans from the domain or collection with SigV4 (instance
+# role) and sends gen_ai.evaluation.result events through the collector to the pipeline.
+cat >> .env << 'CANARYEOF'
+COMPOSE_PROFILES=aws-evals
+EVAL_CANARY_OPENSEARCH_URL=${t.url}
+OPENSEARCH_AWS_SERVICE=${t.service}
+AWS_REGION=${cfg.region}
+CANARYEOF
+export COMPOSE_PROFILES=aws-evals`;
+}
+
 function buildUserData(cfg) {
   const osiEndpoint = `https://${cfg.ingestEndpoints[0]}`;
   const region = cfg.region;
@@ -235,10 +282,7 @@ services:
     logging: *logging
 MANAGEDEOF
 
-# Managed mode has no local opensearch/prometheus. Clear COMPOSE_PROFILES
-# (overriding the local-backends value committed in .env) to prune the services
-# that require those backends.
-export COMPOSE_PROFILES=
+${canaryEnvScript(cfg)}
 
 # Kafka's healthcheck can exceed compose's dependency grace window on first boot,
 # leaving kafka-dependent services in 'Created' state. Retry once — second pass
@@ -311,7 +355,61 @@ async function createDemoInstanceProfile(iam, cfg) {
   return profileName;
 }
 
-export { tags as _tags, tagSpec as _tagSpec, buildUserData as _buildUserData, getVpcSubnetForInstance as _getVpcSubnetForInstance };
+// Read access for the eval canary: an IAM policy on the demo role, plus a data access policy
+// (serverless) or a readall FGAC mapping (managed). Not fatal: the rest of the demo still runs.
+async function grantCanaryRead(iam, cfg, roleName) {
+  const t = canaryTarget(cfg);
+  if (!t) return;
+  const roleArn = `arn:aws:iam::${cfg.accountId}:role/${roleName}`;
+  try {
+    await iam.send(new PutRolePolicyCommand({
+      RoleName: roleName, PolicyName: 'opensearch-read',
+      PolicyDocument: JSON.stringify({ Version: '2012-10-17', Statement: [{ Effect: 'Allow', Action: t.actions, Resource: t.resources }] }),
+    }));
+    if (cfg.opensearchType === 'serverless') {
+      await putDemoReadAccessPolicy(cfg, roleArn);
+    } else if (cfg.vpcId) {
+      printWarning(`VPC domain: map ${roleArn} to the readall role so the eval canary can read spans.`);
+    } else {
+      await mapDemoRoleReadall(cfg, roleArn);
+    }
+    printSuccess('Eval canary read access granted');
+  } catch (e) {
+    printWarning(`Eval canary read access: ${e.message}. Agent evaluations stay empty until the demo role can read spans.`);
+  }
+}
+
+async function putDemoReadAccessPolicy(cfg, roleArn) {
+  const { OpenSearchServerlessClient, CreateAccessPolicyCommand, GetAccessPolicyCommand, UpdateAccessPolicyCommand } =
+    await import('@aws-sdk/client-opensearchserverless');
+  const client = new OpenSearchServerlessClient({ region: cfg.region });
+  const name = demoReadPolicyName(cfg.aossCollectionName);
+  const policy = JSON.stringify([{
+    Rules: [{ ResourceType: 'index', Resource: [`index/${cfg.aossCollectionName}/*`], Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] }],
+    Principal: [roleArn],
+  }]);
+  try {
+    await client.send(new CreateAccessPolicyCommand({ name, type: 'data', policy }));
+  } catch (e) {
+    if (!/ConflictException|already exists/i.test(`${e.name} ${e.message}`)) throw e;
+    const { accessPolicyDetail: d } = await client.send(new GetAccessPolicyCommand({ name, type: 'data' }));
+    await client.send(new UpdateAccessPolicyCommand({ name, type: 'data', policyVersion: d.policyVersion, policy }));
+  }
+}
+
+async function mapDemoRoleReadall(cfg, roleArn) {
+  const { domainFetchFor } = await import('./aws.mjs');
+  const { domainFetch } = await domainFetchFor(cfg);
+  for (const role of DEMO_FGAC_ROLES) {
+    const url = `${canaryTarget(cfg).url}/_plugins/_security/api/rolesmapping/${role}`;
+    const cur = await domainFetch(url, 'GET');
+    const existing = cur.ok ? ((await cur.json())?.[role]?.backend_roles || []) : [];
+    const resp = await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: [...new Set([...existing, roleArn])] }]));
+    if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
+  }
+}
+
+export { canaryTarget as _canaryTarget, canaryEnvScript as _canaryEnvScript, tags as _tags, tagSpec as _tagSpec, buildUserData as _buildUserData, getVpcSubnetForInstance as _getVpcSubnetForInstance };
 
 export async function launchDemoInstance(cfg) {
   printStep('Launching EC2 demo instance...');
@@ -362,6 +460,7 @@ export async function launchDemoInstance(cfg) {
   const profileSpinner = createSpinner('Creating instance profile...').start();
   const profileName = await createDemoInstanceProfile(iam, cfg);
   profileSpinner.succeed(`Instance profile: ${profileName}`);
+  await grantCanaryRead(iam, cfg, profileName);
 
   const launchSpinner = createSpinner(`Launching ${INSTANCE_TYPE} instance${inVpc ? ` in ${subnetId}` : ''}...`).start();
   const { Instances } = await ec2.send(new RunInstancesCommand({
@@ -417,6 +516,8 @@ export async function teardownDemoInstance(cfg) {
 
   // Delete instance profile + role
   const roleName = `${cfg.pipelineName}-ec2-demo-role`;
+  try { await iam.send(new DeleteRolePolicyCommand({ RoleName: roleName, PolicyName: 'opensearch-read' })); }
+  catch (e) { if (e.name !== 'NoSuchEntityException') printWarning(`Role policy cleanup: ${e.message}`); }
   try {
     await iam.send(new RemoveRoleFromInstanceProfileCommand({ InstanceProfileName: roleName, RoleName: roleName }));
     await iam.send(new DeleteInstanceProfileCommand({ InstanceProfileName: roleName }));

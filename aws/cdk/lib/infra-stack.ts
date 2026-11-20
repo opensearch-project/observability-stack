@@ -22,6 +22,8 @@ export class InfraStack extends cdk.Stack {
   public readonly opensearchType: string;
   public readonly domainEndpoint: string;
   public readonly domainArn: string;
+  /** Serverless collection name; empty for managed domains. */
+  public readonly collectionName: string;
   public readonly fgacAdminRoleArn: string;
   public readonly pipelineRoleArn: string;
   public readonly ampWorkspaceArn: string;
@@ -60,6 +62,7 @@ export class InfraStack extends cdk.Stack {
 
       this.domainEndpoint = serverless.collectionEndpoint;
       this.domainArn = serverless.collectionArn;
+      this.collectionName = collectionName;
       this.fgacAdminRoleArn = '';
       this.pipelineRoleArn = serverless.pipelineRole.roleArn;
     } else {
@@ -71,6 +74,7 @@ export class InfraStack extends cdk.Stack {
 
       this.domainEndpoint = opensearch.domain.domainEndpoint;
       this.domainArn = opensearch.domain.domainArn;
+      this.collectionName = '';
       this.fgacAdminRoleArn = opensearch.fgacAdminRole.roleArn;
       // Stacks deployed with basic-auth FGAC import this ARN; keep the export so they can update.
       this.exportValue(opensearch.masterPasswordSecret.secretArn);
