@@ -407,7 +407,10 @@ async function mapDemoRoleReadall(cfg, roleArn) {
     const url = `${canaryTarget(cfg).url}/_plugins/_security/api/rolesmapping/${role}`;
     const cur = await domainFetch(url, 'GET');
     const existing = cur.ok ? ((await cur.json())?.[role]?.backend_roles || []) : [];
-    const resp = await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: [...new Set([...existing, roleArn])] }]));
+    const roles = [...new Set([...existing, roleArn])];
+    let resp = await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+    // readall has no mapping on a new domain, and a missing mapping cannot be patched
+    if (resp.status === 404) resp = await domainFetch(url, 'PUT', JSON.stringify({ backend_roles: roles }));
     if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
   }
 }

@@ -99,7 +99,7 @@ export async function handler(event: Event) {
   return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
 }
 
-type Signer = (url: string, method: 'GET' | 'PATCH', body?: string) => Promise<Response>;
+type Signer = (url: string, method: 'GET' | 'PATCH' | 'PUT', body?: string) => Promise<Response>;
 
 function signerFor(region: string): Signer {
   const signer = new SignatureV4({ credentials: defaultProvider(), region, service: 'es', sha256: Sha256 });
@@ -126,9 +126,11 @@ async function getBackendRoles(sign: Signer, base: string, role: string): Promis
   return (data as any)?.[role]?.backend_roles || [];
 }
 
-async function putBackendRoles(sign: Signer, base: string, role: string, roles: string[]) {
-  const resp = await sign(`${base}/_plugins/_security/api/rolesmapping/${role}`, 'PATCH',
-    JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+export async function putBackendRoles(sign: Signer, base: string, role: string, roles: string[]) {
+  const url = `${base}/_plugins/_security/api/rolesmapping/${role}`;
+  let resp = await sign(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+  // A role with no mapping yet (readall on a new domain) cannot be patched: create the mapping.
+  if (resp.status === 404) resp = await sign(url, 'PUT', JSON.stringify({ backend_roles: roles }));
   if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
 }
 
