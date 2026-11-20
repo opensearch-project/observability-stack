@@ -78,6 +78,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
       assert.ok(demo.length > 0);
       for (const [id, r] of demo) assert.equal(r.Condition, 'DeployDemo', id);
       assert.equal(template.Outputs.DemoInstanceId.Condition, 'DeployDemo');
+      if (opensearchType === 'managed') assert.equal(template.Resources.DemoFgacMapping?.Condition, 'DeployDemo');
     });
   });
 }
@@ -92,6 +93,12 @@ describe('teardown', () => {
         assert.ok(ref, `${id} has no log group`);
         assert.equal(template.Resources[ref].Type, 'AWS::Logs::LogGroup');
         assert.equal(template.Resources[ref].DeletionPolicy, 'Delete');
+        const roleRef = r.Properties.Role['Fn::GetAtt']?.[0];
+        const policies = Object.values<any>(template.Resources).filter((p) => p.Type === 'AWS::IAM::Policy'
+          && p.Properties.Roles.some((x: any) => x.Ref === roleRef || JSON.stringify(x).includes(roleRef)));
+        const denied = policies.some((p) => p.Properties.PolicyDocument.Statement.some(
+          (st: any) => st.Effect === 'Deny' && ([] as string[]).concat(st.Action).includes('logs:CreateLogGroup')));
+        assert.ok(denied, `${id}'s role can recreate its log group after a delete`);
       }
     });
   }

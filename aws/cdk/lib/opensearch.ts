@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { denyCreateLogGroup } from './function-log-group';
 
 export interface OpenSearchConstructProps {
   domainName: string;
@@ -25,6 +26,7 @@ export class OpenSearchConstruct extends Construct {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
     });
+    this.fgacAdminRole.addToPolicy(denyCreateLogGroup());
 
     this.domain = new opensearch.Domain(this, 'Domain', {
       domainName: props.domainName,

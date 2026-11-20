@@ -5,7 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
-import { functionLogGroup } from './function-log-group';
+import { denyCreateLogGroup, functionLogGroup } from './function-log-group';
 
 // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/direct-query-prometheus-creating.html#direct-query-prometheus-manual-role-permissions
 export const DQS_APS_ACTIONS = [
@@ -93,6 +93,7 @@ export class PrometheusConstruct extends Construct {
       ],
       resources: ['*'],
     }));
+    dqsFn.addToRolePolicy(denyCreateLogGroup());
     dqsFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iam:PassRole'],
       resources: [this.dqsRole.roleArn],

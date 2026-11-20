@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { denyCreateLogGroup } from './function-log-group';
 import { OpenSearchConstruct } from './opensearch';
 import { OpenSearchServerlessConstruct } from './opensearch-serverless';
 import { PrometheusConstruct } from './prometheus';
@@ -60,6 +61,7 @@ export class InfraStack extends Construct {
       actions: ['es:*', 'opensearch:*', 'aoss:*'],
       resources: ['*'],
     }));
+    uiInitRole.addToPolicy(denyCreateLogGroup());
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {
