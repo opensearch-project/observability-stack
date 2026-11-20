@@ -5,6 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { functionLogGroup } from './function-log-group';
 import { jsonArray } from './stack-parameters';
 
 export interface OpenSearchAppConstructProps {
@@ -58,6 +59,7 @@ export class OpenSearchAppConstruct extends Construct {
 
     // UI init Lambda
     const uiInitFn = new NodejsFunction(this, 'UiInitFn', {
+      logGroup: functionLogGroup(this, 'UiInitFn'),
       runtime: Runtime.NODEJS_22_X,
       handler: 'cfnHandler',
       entry: path.join(__dirname, '..', 'custom-resources', 'ui-init', 'index.ts'),

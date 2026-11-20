@@ -5,6 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { functionLogGroup } from './function-log-group';
 
 // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/direct-query-prometheus-creating.html#direct-query-prometheus-manual-role-permissions
 export const DQS_APS_ACTIONS = [
@@ -78,6 +79,7 @@ export class PrometheusConstruct extends Construct {
     }));
 
     const dqsFn = new NodejsFunction(this, 'DqsFn', {
+      logGroup: functionLogGroup(this, 'DqsFn'),
       runtime: Runtime.NODEJS_22_X,
       handler: 'cfnHandler',
       entry: path.join(__dirname, '..', 'custom-resources', 'dqs-datasource', 'index.ts'),

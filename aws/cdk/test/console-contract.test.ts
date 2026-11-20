@@ -82,6 +82,21 @@ for (const [opensearchType, backend, storageType, outputs] of [
   });
 }
 
+describe('teardown', () => {
+  for (const type of ['managed', 'serverless'] as const) {
+    it(`writes every function's logs to a log group the ${type} stack deletes`, () => {
+      const { template } = synth(type);
+      for (const [id, r] of Object.entries<any>(template.Resources)) {
+        if (r.Type !== 'AWS::Lambda::Function') continue;
+        const ref = r.Properties.LoggingConfig?.LogGroup?.Ref;
+        assert.ok(ref, `${id} has no log group`);
+        assert.equal(template.Resources[ref].Type, 'AWS::Logs::LogGroup');
+        assert.equal(template.Resources[ref].DeletionPolicy, 'Delete');
+      }
+    });
+  }
+});
+
 describe('create ordering in one stack (managed)', () => {
   const { template } = synth('managed');
   const fgacPolicy = Object.keys(template.Resources).find(

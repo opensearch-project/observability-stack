@@ -4,6 +4,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { functionLogGroup } from './function-log-group';
 import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_TEMPLATE_JSON, evaluationPolicyJson } from './ingestion-pipeline';
 import { OpenSearchAppConstruct } from './opensearch-app';
 import { DemoWorkload } from './demo-workload';
@@ -91,6 +92,7 @@ export class ObservabilityStack extends cdk.Stack {
     let fgacServiceToken: string | undefined;
     if (!isServerless) {
       const fgacFn = new NodejsFunction(this, 'FgacMappingFn', {
+        logGroup: functionLogGroup(this, 'FgacMappingFn'),
         runtime: Runtime.NODEJS_22_X,
         handler: 'cfnHandler',
         entry: path.join(__dirname, '..', 'custom-resources', 'fgac-mapping', 'index.ts'),
@@ -116,6 +118,7 @@ export class ObservabilityStack extends cdk.Stack {
     let evalIndex: cdk.CustomResource | undefined;
     if (!isServerless) {
       const evalIndexFn = new NodejsFunction(this, 'EvalIndexFn', {
+        logGroup: functionLogGroup(this, 'EvalIndexFn'),
         runtime: Runtime.NODEJS_22_X,
         handler: 'cfnHandler',
         entry: path.join(__dirname, '..', 'custom-resources', 'eval-index', 'index.ts'),
