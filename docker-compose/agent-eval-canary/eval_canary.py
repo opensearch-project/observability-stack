@@ -172,8 +172,12 @@ def production_checks(retriever: OpenSearchTraceRetriever, root) -> None:
     by_id = {s.span_id: s for s in spans}
 
     def top_level_tool(s) -> bool:
-        parent = by_id.get(s.parent_span_id)
-        return not (parent and parent.operation_name == "execute_tool" and parent.tool_name == s.tool_name)
+        parent, hops = by_id.get(s.parent_span_id), 0
+        while parent is not None and hops < 50:  # HTTP spans sit between the client and server spans
+            if parent.operation_name == "execute_tool" and parent.tool_name == s.tool_name:
+                return False
+            parent, hops = by_id.get(parent.parent_span_id), hops + 1
+        return True
 
     calls = [s for s in spans if (s.operation_name == "execute_tool" and top_level_tool(s))
              or (s.operation_name == "invoke_agent" and s.span_id != me.span_id and s.name.endswith("-agent"))]
