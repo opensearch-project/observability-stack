@@ -33,8 +33,15 @@ for (const [opensearchType, backend, storageType, outputs] of [
       const tags = stack.tags.tagValues();
       assert.equal(tags['opensearch:obs-stack-generation'], 'v2');
       assert.equal(tags['opensearch:obs-backend'], backend);
-      assert.deepEqual(stack.resolve(tags['opensearch:observability-stack']), { Ref: 'StackDisplayName' });
+      assert.equal(tags['opensearch:observability-stack'], 'contract');
       assert.equal(tags['observability-stack'], 'ObsStack-contract');
+    });
+
+    it('tags resources from the parameters', () => {
+      const ws = Object.values<any>(template.Resources).find((r) => r.Type === 'AWS::APS::Workspace');
+      const tag = (k: string) => ws.Properties.Tags.find((t: any) => t.Key === k)?.Value;
+      assert.deepEqual(tag('opensearch:observability-stack'), { Ref: 'StackDisplayName' });
+      assert.deepEqual(tag('observability-stack'), { Ref: 'AWS::StackName' });
     });
 
     it('uses the resource types the console maps to provisioning steps', () => {

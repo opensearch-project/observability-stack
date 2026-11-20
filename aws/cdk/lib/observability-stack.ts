@@ -71,8 +71,8 @@ export class ObservabilityStack extends cdk.Stack {
     // Tags.of a stack sets stack-level tags, which CloudFormation copies to every resource that supports tags.
     // Read by the CLI installer's list and destroy.
     cdk.Tags.of(this).add('observability-stack', this.stackName);
-    cdk.Tags.of(this).add('opensearch:observability-stack', displayName);
-    cdk.Tags.of(this).add('opensearch:observability-stack-source', 'cdk');
+    cdk.Tags.of(this).add('opensearch:observability-stack', props.displayName);
+    cdk.Tags.of(this).add('opensearch:observability-stack-source', String(this.node.tryGetContext('observabilityStackSource') ?? 'cdk'));
     cdk.Tags.of(this).add('opensearch:obs-stack-generation', 'v2');
     cdk.Tags.of(this).add('opensearch:obs-backend', backend);
     const version = this.node.tryGetContext('observabilityStackVersion');
@@ -235,5 +235,12 @@ export class ObservabilityStack extends cdk.Stack {
     out('AppId', app.appId);
     out('WorkspaceId', app.workspaceId);
     out('WorkspaceUrl', app.workspaceUrl);
+
+    // Stack tags can't hold intrinsics, so they carry the -c values. Resource tags take the parameters,
+    // which is what a template the console fills in needs.
+    for (const child of this.node.children) {
+      cdk.Tags.of(child).add('observability-stack', cdk.Aws.STACK_NAME, { priority: 200 });
+      cdk.Tags.of(child).add('opensearch:observability-stack', displayName, { priority: 200 });
+    }
   }
 }
