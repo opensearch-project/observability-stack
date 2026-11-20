@@ -27,18 +27,24 @@ After deployment, the `WorkspaceUrl` output is a link you can open directly in y
 
 ## Configuration
 
-Edit `bin/app.ts` to customize:
+Every choice is a CloudFormation parameter of the stack, with the same name as in the console's template. A `-c` value sets the parameter's default:
 
-```typescript
-// OpenSearch domain sizing
-osInstanceType: 'r6g.large.search',
-osInstanceCount: 1,
-osVolumeSize: 100,
+| Context (`-c`) | Parameter | Default | Backend |
+|---|---|---|---|
+| `stackName` (required) | `StackDisplayName` | | both |
+| `adminRoleArns` | `AdminRoleArns` | empty | both |
+| `enableDemo` | `DeployDemoWorkload` | `true` | both |
+| `osInstanceType` | `DomainInstanceType` | `r7g.large.search` | managed |
+| `osInstanceCount` | `DomainInstanceCount` | `1` | managed |
+| `osVolumeSize` | `DomainVolumeGB` | `100` | managed |
+| `aossMinOcu` | `CollectionMinOCU` | `0` | serverless |
+| `aossMaxOcu` | `CollectionMaxOCU` | `16` | serverless |
+| `minOcu` | `MinOCU` | `1` | both |
+| `maxOcu` | `MaxOCU` | `4` | both |
+| `metricsRetentionDays` | `MetricsRetentionDays` | `150` | both |
+| | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | both |
 
-// OSIS pipeline capacity (OpenSearch Compute Units)
-minOcu: 1,
-maxOcu: 4,
-```
+`cdk deploy --parameters <Name>=<value>` overrides a parameter for one deploy.
 
 The [demo workload](#demo-workload) is deployed by default. To skip it:
 
@@ -64,10 +70,7 @@ On serverless, the collection's data access policy lists the OSIS pipeline role,
 
 On managed domains, the FGAC master user is an IAM role the stack creates (`FgacAdminRole`), and the domain access policy admits signed requests from the deploying account. Sign requests with SigV4; HTTP basic authentication isn't accepted.
 
-On upgrade:
-
-- The FGAC role mappings, application admins and serverless data access policy are set to the roles above. To keep access for other roles, list them in `adminRoleArns`. Explicit FGAC mappings you added yourself are kept; application admins are replaced by the list on every deploy.
-- The master user changes from the internal `admin` user to `FgacAdminRole`, which turns off basic authentication. Internal users aren't deleted. The `OpenSearchMasterPassword` secret is kept but no longer used.
+The FGAC role mappings, application admins and serverless data access policy are set to the roles above on every deploy. Explicit FGAC mappings you added yourself are kept; application admins are replaced by the list.
 
 ### OpenSearch Serverless
 
@@ -88,6 +91,14 @@ cdk deploy -c stackName=mystack -c opensearchType=serverless -c aossMinOcu=1 -c 
 ### Upgrading from the two-stack layout
 
 Earlier versions deployed two stacks, `ObsInfra` and `ObservabilityStack`. They can't be updated in place to `ObsStack-<name>`. Destroy them with the version that created them (`cdk destroy --all`), then deploy with `-c stackName=<name>`.
+
+### Console templates
+
+```bash
+npm run export-templates -- --version <git tag>
+```
+
+writes `dist/templates/observability-stack-domain.json` and `observability-stack-serverless.json`, the templates the Amazon OpenSearch Service console deploys. Each is this stack with the Lambda bundles inlined, so it needs no CDK bootstrap or asset bucket. `--version` is the tag the demo instance clones and the template's `TemplateVersion`; it defaults to the current commit, which only works for a deploy if it's also a branch or tag name.
 
 ## Architecture
 
