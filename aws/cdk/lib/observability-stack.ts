@@ -128,6 +128,7 @@ export class ObservabilityStack extends cdk.Stack {
     if (props.enableDemo ?? false) {
       const demo = new DemoWorkload(this, 'DemoWorkload', {
         pipeline,
+        vpcId: this.node.tryGetContext('demoVpcId'),
         opensearch: {
           serverless: isServerless,
           // Collection endpoints include the scheme; domain endpoints do not.

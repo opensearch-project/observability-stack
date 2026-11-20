@@ -176,6 +176,12 @@ The instance also runs the example agents and the [agent eval canary](../../dock
 
 The instance runs in a private subnet of its own VPC, with outbound access through a NAT gateway. It has no public IP; connect with Session Manager. The NAT gateway is billed hourly and per GB while the demo runs.
 
+To run the instance in an existing VPC instead, pass its ID. The stack then creates no VPC or NAT gateway, and puts the instance in one of the VPC's private subnets that route through a NAT gateway (synth fails if there is none). The instance needs outbound access to Session Manager, GitHub, Docker Hub and the OSIS endpoint.
+
+```bash
+cdk deploy --all -c demoVpcId=vpc-0123456789abcdef0
+```
+
 ## Useful Commands
 
 ```bash

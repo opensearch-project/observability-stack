@@ -22,6 +22,8 @@ export interface DemoWorkloadProps {
   pipeline: IngestionPipeline;
   /** Where the eval canary reads agent spans. Without it the canary does not run. */
   opensearch?: DemoOpenSearchTarget;
+  /** Existing VPC to run the instance in. It needs a private subnet that routes through a NAT gateway. */
+  vpcId?: string;
 }
 
 export class DemoWorkload extends Construct {
@@ -33,15 +35,17 @@ export class DemoWorkload extends Construct {
 
     const stack = cdk.Stack.of(this);
     const region = stack.region;
-    // No public IP; egress through the NAT gateway, which also works with VPC Block Public Access.
-    const vpc = new ec2.Vpc(this, 'Vpc', {
-      maxAzs: 1,
-      natGateways: 1,
-      subnetConfiguration: [
-        { name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
-        { name: 'private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
-      ],
-    });
+    // No public IP; egress through a NAT gateway, which also works with VPC Block Public Access.
+    const vpc = props.vpcId
+      ? ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: props.vpcId })
+      : new ec2.Vpc(this, 'Vpc', {
+        maxAzs: 1,
+        natGateways: 1,
+        subnetConfiguration: [
+          { name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+          { name: 'private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
+        ],
+      });
 
     const role = this.role = new iam.Role(this, 'InstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
