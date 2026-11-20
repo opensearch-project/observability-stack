@@ -3,7 +3,6 @@ import * as osis from 'aws-cdk-lib/aws-osis';
 import { Construct } from 'constructs';
 import * as fs from 'fs';
 import * as path from 'path';
-import { pipelineNameFor } from './pipeline-name';
 
 // GenAI evaluation index: write alias (managed) or index (serverless) for gen_ai.evaluation.result
 // log events. Same template as the CLI installer and the local compose stack.
@@ -60,6 +59,8 @@ export interface IngestionPipelineProps {
   prometheusWorkspaceId: string;
   pipelineRoleArn: string;
   region: string;
+  /** OSIS pipeline name, obs-<display name>-ingest. */
+  pipelineName: string;
   minOcu: number;
   maxOcu: number;
   serverless?: boolean;
@@ -73,7 +74,7 @@ export class IngestionPipeline extends Construct {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
-    this.pipelineName = pipelineNameFor(stack.stackName);
+    this.pipelineName = props.pipelineName;
 
     // CollectionEndpoint includes the scheme; DomainEndpoint doesn't. Both are
     // unresolved tokens at synth time, so the prefix can't be detected.

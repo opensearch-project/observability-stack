@@ -33,7 +33,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
       const tags = stack.tags.tagValues();
       assert.equal(tags['opensearch:obs-stack-generation'], 'v2');
       assert.equal(tags['opensearch:obs-backend'], backend);
-      assert.equal(tags['opensearch:observability-stack'], 'contract');
+      assert.deepEqual(stack.resolve(tags['opensearch:observability-stack']), { Ref: 'StackDisplayName' });
       assert.equal(tags['observability-stack'], 'ObsStack-contract');
     });
 
@@ -57,8 +57,20 @@ for (const [opensearchType, backend, storageType, outputs] of [
       assert.equal(template.Outputs.ObsStackGeneration.Value, 'V2');
     });
 
-    it('has a DeployDemoWorkload parameter', () => {
-      assert.equal(template.Parameters?.DeployDemoWorkload?.Default, 'true');
+    it('has the parameters the console prefills, by name', () => {
+      const expected = opensearchType === 'managed'
+        ? ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'DomainInstanceType', 'DomainInstanceCount', 'DomainVolumeGB', 'MinOCU', 'MaxOCU', 'MetricsRetentionDays', 'LatestAl2023Ami']
+        : ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'MinOCU', 'MaxOCU', 'CollectionMinOCU', 'CollectionMaxOCU', 'MetricsRetentionDays', 'LatestAl2023Ami'];
+      assert.deepEqual(Object.keys(template.Parameters).filter((k) => k !== 'BootstrapVersion'), expected);
+      assert.equal(template.Parameters.DeployDemoWorkload.Default, 'true');
+      assert.equal(template.Parameters.StackDisplayName.Default, 'contract');
+    });
+
+    it('creates every demo resource only under the DeployDemo condition', () => {
+      const demo = Object.entries<any>(template.Resources).filter(([id]) => id.startsWith('DemoWorkload'));
+      assert.ok(demo.length > 0);
+      for (const [id, r] of demo) assert.equal(r.Condition, 'DeployDemo', id);
+      assert.equal(template.Outputs.DemoInstanceId.Condition, 'DeployDemo');
     });
   });
 }

@@ -7,6 +7,8 @@ import { PrometheusConstruct } from './prometheus';
 
 export interface InfraStackProps {
   opensearchType?: 'managed' | 'serverless';
+  /** Days of metrics the Prometheus workspace keeps (default 150). */
+  metricsRetentionDays?: number;
   osInstanceType?: string;
   osInstanceCount?: number;
   osVolumeSize?: number;
@@ -33,7 +35,15 @@ export class InfraStack extends Construct {
   public readonly dqsRoleArn: string;
   public readonly uiInitRoleArn: string;
 
-  constructor(scope: Construct, id: string, props: InfraStackProps) {
+  public readonly pipelineRole: iam.Role;
+
+  constructor(scope: Construct, id: string, props: InfraStackProps & {
+    /** Resources are named obs-<displayName>-*. */
+    displayName: string;
+    /** The AdminRoleArns parameter, and whether it has entries. */
+    adminRoleList?: string[];
+    adminRoleListNotEmpty?: cdk.CfnCondition;
+  }) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
@@ -53,10 +63,12 @@ export class InfraStack extends Construct {
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {
-      const collectionName = `obs-${stack.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+      const collectionName = `obs-${props.displayName}`;
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
-        dataAccessRoleArns: [uiInitRole.roleArn, ...(props.adminRoleArns ?? [])],
+        dataAccessRoleArns: [uiInitRole.roleArn],
+        dataAccessRoleList: props.adminRoleList,
+        dataAccessRoleListNotEmpty: props.adminRoleListNotEmpty,
         minOcu: props.aossMinOcu,
         maxOcu: props.aossMaxOcu,
       });
@@ -65,10 +77,11 @@ export class InfraStack extends Construct {
       this.domainArn = serverless.collectionArn;
       this.collectionName = collectionName;
       this.fgacAdminRoleArn = '';
+      this.pipelineRole = serverless.pipelineRole;
       this.pipelineRoleArn = serverless.pipelineRole.roleArn;
     } else {
       const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
-        instanceType: props.osInstanceType ?? 'r6g.large.search',
+        instanceType: props.osInstanceType ?? 'r7g.large.search',
         instanceCount: props.osInstanceCount ?? 1,
         volumeSize: props.osVolumeSize ?? 100,
       });
@@ -77,11 +90,14 @@ export class InfraStack extends Construct {
       this.domainArn = opensearch.domain.domainArn;
       this.collectionName = '';
       this.fgacAdminRoleArn = opensearch.fgacAdminRole.roleArn;
+      this.pipelineRole = opensearch.pipelineRole;
       this.pipelineRoleArn = opensearch.pipelineRole.roleArn;
     }
 
     const prometheus = new PrometheusConstruct(this, 'Prometheus', {
       domainArn: this.domainArn,
+      displayName: props.displayName,
+      metricsRetentionDays: props.metricsRetentionDays ?? 150,
     });
 
     this.ampWorkspaceArn = prometheus.workspace.attrArn;

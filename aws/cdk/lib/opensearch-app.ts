@@ -5,6 +5,7 @@ import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { jsonArray } from './stack-parameters';
 
 export interface OpenSearchAppConstructProps {
   /** Stack display name; the application is named obs-<displayName>-app. */
@@ -15,6 +16,8 @@ export interface OpenSearchAppConstructProps {
   uiInitRole: iam.IRole;
   /** IAM role ARNs made OpenSearch UI application admins, in addition to the UI init role. */
   adminRoleArns?: string[];
+  /** Set when adminRoleArns is a list parameter: whether it has entries. */
+  adminRoleArnsNotEmpty?: cdk.CfnCondition;
   /**
    * Resources UI init must wait for. The ingestion pipeline creates the indices from its templates
    * when it starts, and UI init stores each index pattern's fields from them.
@@ -41,7 +44,7 @@ export class OpenSearchAppConstruct extends Construct {
       name: appName,
       appConfigs: [{
         key: 'opensearchDashboards.dashboardAdmin.groups',
-        value: stack.toJsonString([props.uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
+        value: jsonArray([props.uiInitRole.roleArn], props.adminRoleArns, props.adminRoleArnsNotEmpty),
       }],
       dataSources: [
         { dataSourceArn: props.domainArn },

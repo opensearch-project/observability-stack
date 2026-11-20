@@ -33,12 +33,13 @@ new ObservabilityStack(app, `ObsStack-${stackName}`, {
     aossMaxOcu: optionalNumber('aossMaxOcu'),
   }),
   ...(opensearchType !== 'serverless' && {
-    osInstanceType: 'r6g.large.search',
-    osInstanceCount: 1,
-    osVolumeSize: 100,
+    osInstanceType: app.node.tryGetContext('osInstanceType'),
+    osInstanceCount: optionalNumber('osInstanceCount'),
+    osVolumeSize: optionalNumber('osVolumeSize'),
   }),
-  minOcu: 1,
-  maxOcu: 4,
+  minOcu: optionalNumber('minOcu'),
+  maxOcu: optionalNumber('maxOcu'),
+  metricsRetentionDays: optionalNumber('metricsRetentionDays'),
   enableDemo,
   adminRoleArns,
   // -c evaluationRetentionDays=<days>: evaluation indices are deleted after this many days (default 7, 0 keeps them)

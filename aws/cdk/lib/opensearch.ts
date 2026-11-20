@@ -1,7 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 export interface OpenSearchConstructProps {
@@ -15,22 +14,11 @@ export class OpenSearchConstruct extends Construct {
   public readonly pipelineRole: iam.Role;
   /** FGAC master user. The FGAC mapping Lambda runs as this role. */
   public readonly fgacAdminRole: iam.Role;
-  /** Unused. Kept so ObservabilityStack deployments that still import its ARN can update. */
-  public readonly masterPasswordSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: OpenSearchConstructProps) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
-
-    this.masterPasswordSecret = new secretsmanager.Secret(this, 'MasterPassword', {
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: 'admin' }),
-        generateStringKey: 'password',
-        excludePunctuation: false,
-        passwordLength: 24,
-      },
-    });
 
     this.fgacAdminRole = new iam.Role(this, 'FgacAdminRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
@@ -38,7 +26,7 @@ export class OpenSearchConstruct extends Construct {
     });
 
     this.domain = new opensearch.Domain(this, 'Domain', {
-      version: opensearch.EngineVersion.openSearch('3.5'),
+      version: opensearch.EngineVersion.openSearch('3.7'),
       capacity: {
         dataNodeInstanceType: props.instanceType,
         dataNodes: props.instanceCount,

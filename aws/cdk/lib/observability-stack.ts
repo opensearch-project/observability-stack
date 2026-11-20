@@ -8,6 +8,7 @@ import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_TEMPLATE_JSON, evaluati
 import { OpenSearchAppConstruct } from './opensearch-app';
 import { DemoWorkload } from './demo-workload';
 import { InfraStack, InfraStackProps } from './infra-stack';
+import { StackParameters, jsonArray } from './stack-parameters';
 
 export interface ObservabilityStackProps extends cdk.StackProps, InfraStackProps {
   /** Name shown in the console; the stack is ObsStack-<displayName> and resources are tagged with it. */
@@ -25,8 +26,42 @@ export class ObservabilityStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ObservabilityStackProps) {
     super(scope, id, props);
 
-    const infra = new InfraStack(this, 'Infra', props);
-    const isServerless = infra.opensearchType === 'serverless';
+    const isServerless = props.opensearchType === 'serverless';
+    // User choices are template parameters with -c defaults, so the synthesized template is the one the console deploys.
+    const params = new StackParameters(this, 'Parameters', isServerless, {
+      displayName: props.displayName,
+      adminRoleArns: props.adminRoleArns ?? [],
+      enableDemo: props.enableDemo ?? false,
+      osInstanceType: props.osInstanceType ?? 'r7g.large.search',
+      osInstanceCount: props.osInstanceCount ?? 1,
+      osVolumeSize: props.osVolumeSize ?? 100,
+      minOcu: props.minOcu ?? 1,
+      maxOcu: props.maxOcu ?? 4,
+      aossMinOcu: props.aossMinOcu ?? 0,
+      aossMaxOcu: props.aossMaxOcu ?? 16,
+      metricsRetentionDays: props.metricsRetentionDays ?? 150,
+    });
+    const displayName = params.displayName;
+
+    const infra = new InfraStack(this, 'Infra', {
+      ...props,
+      displayName,
+      osInstanceType: params.osInstanceType,
+      osInstanceCount: params.osInstanceCount,
+      osVolumeSize: params.osVolumeSize,
+      aossMinOcu: params.aossMinOcu,
+      aossMaxOcu: params.aossMaxOcu,
+      metricsRetentionDays: params.metricsRetentionDays,
+      adminRoleArns: undefined,
+      adminRoleList: params.adminRoleArns,
+      adminRoleListNotEmpty: params.hasAdminRoleArns,
+    });
+    // The console finds the stack as ObsStack-<StackDisplayName>; a stack under another name fails to create.
+    const stackNameOk = new cdk.CfnCondition(this, 'StackNameOk', {
+      expression: cdk.Fn.conditionEquals(cdk.Aws.STACK_NAME, `ObsStack-${displayName}`),
+    });
+    stackNameOk.overrideLogicalId('StackNameOk');
+    (infra.pipelineRole.node.defaultChild as cdk.CfnResource).cfnOptions.condition = stackNameOk;
     const backend = isServerless ? 'aossv2' : 'aos-domain';
 
     // Read by the console's Observability stacks page. The stack name and this Description
@@ -36,7 +71,7 @@ export class ObservabilityStack extends cdk.Stack {
     // Tags.of a stack sets stack-level tags, which CloudFormation copies to every resource that supports tags.
     // Read by the CLI installer's list and destroy.
     cdk.Tags.of(this).add('observability-stack', this.stackName);
-    cdk.Tags.of(this).add('opensearch:observability-stack', props.displayName);
+    cdk.Tags.of(this).add('opensearch:observability-stack', displayName);
     cdk.Tags.of(this).add('opensearch:observability-stack-source', 'cdk');
     cdk.Tags.of(this).add('opensearch:obs-stack-generation', 'v2');
     cdk.Tags.of(this).add('opensearch:obs-backend', backend);
@@ -70,7 +105,7 @@ export class ObservabilityStack extends cdk.Stack {
         resourceType: 'Custom::FgacMapping',
         properties: {
           OpenSearchEndpoint: infra.domainEndpoint,
-          RoleArns: JSON.stringify([infra.pipelineRoleArn, uiInitRole.roleArn, ...(props.adminRoleArns ?? [])]),
+          RoleArns: jsonArray([infra.pipelineRoleArn, uiInitRole.roleArn], params.adminRoleArns, params.hasAdminRoleArns),
           Region: this.region,
         },
       });
@@ -110,8 +145,9 @@ export class ObservabilityStack extends cdk.Stack {
       prometheusWorkspaceId: infra.ampWorkspaceId,
       pipelineRoleArn: infra.pipelineRoleArn,
       region: this.region,
-      minOcu: props.minOcu ?? 1,
-      maxOcu: props.maxOcu ?? 4,
+      pipelineName: `obs-${displayName}-ingest`,
+      minOcu: params.minOcu,
+      maxOcu: params.maxOcu,
       serverless: isServerless,
     });
 
@@ -124,12 +160,13 @@ export class ObservabilityStack extends cdk.Stack {
 
     // OpenSearch Application + UI init
     const app = new OpenSearchAppConstruct(this, 'OpenSearchApp', {
-      displayName: props.displayName,
+      displayName,
       domainArn: infra.domainArn,
       domainEndpoint: infra.domainEndpoint,
       dqsDataSourceArn: infra.dqsDataSourceArn,
       uiInitRole,
-      adminRoleArns: props.adminRoleArns,
+      adminRoleArns: params.adminRoleArns,
+      adminRoleArnsNotEmpty: params.hasAdminRoleArns,
       uiInitDependsOn: [pipeline],
     });
     if (!props.adminRoleArns?.length) {
@@ -146,42 +183,37 @@ export class ObservabilityStack extends cdk.Stack {
     pipeline.node.addDependency(infra);
     app.node.addDependency(infra);
 
-    const enableDemo = props.enableDemo ?? false;
-    // Records the synth-time demo choice for the console, which reads it to show or hide the demo step.
-    new cdk.CfnParameter(this, 'DeployDemoWorkload', {
-      type: 'String',
-      default: String(enableDemo),
-      allowedValues: [String(enableDemo)],
-      description: 'Whether this stack deploys the demo workload. Set with -c enableDemo at synth time.',
+    const gitRef = this.node.tryGetContext('observabilityStackVersion');
+    const demo = new DemoWorkload(this, 'DemoWorkload', {
+      pipeline,
+      amiId: params.amiId,
+      condition: params.deployDemo,
+      gitRef: gitRef ? String(gitRef) : undefined,
+      opensearch: {
+        serverless: isServerless,
+        // Collection endpoints include the scheme; domain endpoints do not.
+        url: isServerless ? infra.domainEndpoint : `https://${infra.domainEndpoint}`,
+        arn: infra.domainArn,
+        collectionName: infra.collectionName,
+      },
     });
-    if (enableDemo) {
-      const demo = new DemoWorkload(this, 'DemoWorkload', {
-        pipeline,
-        opensearch: {
-          serverless: isServerless,
-          // Collection endpoints include the scheme; domain endpoints do not.
-          url: isServerless ? infra.domainEndpoint : `https://${infra.domainEndpoint}`,
-          arn: infra.domainArn,
-          collectionName: infra.collectionName,
+    // The eval canary reads agent spans. Managed domains map the demo role to readall.
+    if (fgacServiceToken) {
+      const demoFgac = new cdk.CustomResource(this, 'DemoFgacMapping', {
+        serviceToken: fgacServiceToken,
+        resourceType: 'Custom::FgacMapping',
+        properties: {
+          OpenSearchEndpoint: infra.domainEndpoint,
+          RoleArns: JSON.stringify([demo.role.roleArn]),
+          Region: this.region,
+          FgacRoles: JSON.stringify(['readall']),
         },
       });
-      // The eval canary reads agent spans. Managed domains map the demo role to readall.
-      if (fgacServiceToken) {
-        const demoFgac = new cdk.CustomResource(this, 'DemoFgacMapping', {
-          serviceToken: fgacServiceToken,
-          resourceType: 'Custom::FgacMapping',
-          properties: {
-            OpenSearchEndpoint: infra.domainEndpoint,
-            RoleArns: JSON.stringify([demo.role.roleArn]),
-            Region: this.region,
-            FgacRoles: JSON.stringify(['readall']),
-          },
-        });
-        demoFgac.node.addDependency(infra);
-        // Both mappings write the security index; concurrent writes fail with a 409 version conflict.
-        if (fgacMapping) demoFgac.node.addDependency(fgacMapping);
-        demo.instance.node.addDependency(demoFgac);
-      }
+      (demoFgac.node.defaultChild as cdk.CfnResource).cfnOptions.condition = params.deployDemo;
+      demoFgac.node.addDependency(infra);
+      // Both mappings write the security index; concurrent writes fail with a 409 version conflict.
+      if (fgacMapping) demoFgac.node.addDependency(fgacMapping);
+      demo.instance.node.addDependency(demoFgac);
     }
 
     const osisEndpoint = cdk.Fn.join('', ['https://', cdk.Fn.select(0, pipeline.pipeline.attrIngestEndpointUrls)]);

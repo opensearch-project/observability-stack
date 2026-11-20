@@ -31,6 +31,8 @@ export const DQS_APS_ACTIONS = [
 
 export interface PrometheusConstructProps {
   domainArn: string;
+  displayName: string;
+  metricsRetentionDays: number;
 }
 
 export class PrometheusConstruct extends Construct {
@@ -44,10 +46,11 @@ export class PrometheusConstruct extends Construct {
     const stack = cdk.Stack.of(this);
 
     this.workspace = new aps.CfnWorkspace(this, 'Workspace', {
-      alias: `observability-stack-${stack.stackName}`,
+      alias: `obs-${props.displayName}-metrics`,
+      workspaceConfiguration: { retentionPeriodInDays: props.metricsRetentionDays },
     });
 
-    const dqsDataSourceName = `prometheus_${stack.stackName}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    const dqsDataSourceName = `${props.displayName}_prometheus`;
 
     this.dqsRole = new iam.Role(this, 'DqsRole', {
       assumedBy: new iam.ServicePrincipal('directquery.opensearchservice.amazonaws.com', {
