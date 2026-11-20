@@ -6,6 +6,7 @@ on:
     paths:
       - 'examples/**'
       - 'docker-compose/canary/**'
+      - 'docker-compose/agent-eval-canary/**'
       - '.github/workflows/publish-images.yml'
   workflow_dispatch:
 
@@ -31,6 +32,8 @@ jobs:
             context: examples/plain-agents/multi-agent-planner/mcp-server
           - name: canary
             context: docker-compose/canary
+          - name: agent-eval-canary
+            context: docker-compose/agent-eval-canary
           - name: ebpf-demo-go
             context: examples/ebpf-demo/go
             platforms: linux/amd64,linux/arm64

@@ -400,6 +400,19 @@ examples:
   canary:
     image: "ghcr.io/kylehounslow/observability-stack/canary:latest"
     interval: "120"
+  # Agent Eval Canary (docker-compose/agent-eval-canary): online evaluations of recent agent
+  # traces and sessions plus a scheduled offline test suite against the travel planner.
+  # Writes gen_ai.evaluation.result events for the Agent Evaluations UI. Runs with the examples.
+  agentEvalCanary:
+    enabled: true
+    image: "ghcr.io/kylehounslow/observability-stack/agent-eval-canary:latest"
+    # Seconds between online evaluation passes
+    interval: "120"
+    # How far back each pass looks for finished traces and sessions
+    lookbackMinutes: "15"
+    # Minutes between offline test suite runs; "0" turns the suite off
+    suiteIntervalMinutes: "30"
+    memoryLimit: "128Mi"
 
 # -- OpenTelemetry eBPF Instrumentation (optional)
 # OBI DaemonSet that traces processes without an OTel SDK. Runs privileged with hostPID and hostNetwork.

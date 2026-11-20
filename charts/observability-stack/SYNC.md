@@ -22,6 +22,8 @@ These must be updated in the Helm chart whenever they change in Docker Compose:
 - **Cortex ruler rule files** — `docker-compose/prometheus/rules-stack/*.yml` ↔ `charts/observability-stack/files/rules-stack/*.yml`; same for `rules-otel-demo/`
 - **Alertmanager config** — `docker-compose/alertmanager/alertmanager.yml` ↔ `charts/observability-stack/files/alertmanager.yml`
 - **Init scripts** — `init-cortex-rules.py`, `init-stack-monitors.py`, `init-otel-demo-monitors.py`, `init-anomaly-detectors.py`, `init-opensearch-dashboards.py` are bit-for-bit identical between compose and chart
+- **GenAI evaluation files**: `docker-compose/data-prepper/otel-v1-genai-evaluation-{index-template,policy}.json` ↔ `charts/observability-stack/files/genai-evaluation/` are identical. The tests in `test/test_init_opensearch_dashboards.py` and `aws/cli-installer/test/unit.test.mjs` check this. The chart's pipeline renders `template_content` from the JSON file, so it cannot drift.
+- **Evaluation index init code**: the evaluation block in `init-opensearch-dashboards.py` (from the `# GenAI evaluation results` comment through `run_evaluation_index_init`) and the `evaluation-index` mode are identical between compose and chart. The rest of `init-opensearch-dashboards.py` already differs between the two copies, and this sync does not reconcile it. The chart copy has a default workspace, Prometheus datasource recovery after a key change, anonymous-role access and the `BASE_URL`/`OPENSEARCH_ENDPOINT` overrides. The compose copy has built-in sample data and visualization samples. `init-stack-monitors.py` and `init-otel-demo-monitors.py` also differ by a few lines.
 - **OpenSearch Dashboards** — all feature flags and settings in `opensearch_dashboards.template.yml`
 
 ## What Is Intentionally Different (Do NOT Sync)
@@ -41,6 +43,8 @@ These must be updated in the Helm chart whenever they change in Docker Compose:
 | Cortex Service name | `prometheus` (compose service) | `<release>-prometheus-server` (Service) | Backwards-compat with previous Prometheus-subchart consumers |
 | Alerting init containers | 2 containers (base + otel-demo) | 2 Helm Jobs at hook-weight 15 (`alerting-rules-monitors-init`, `otel-demo-alerting-rules-monitors-init`) | Helm post-install hooks vs compose `service_completed_successfully` |
 | Alertmanager hostname in `cortex.yaml` | Bare `alertmanager:9093` | Sprig `replace`-substituted to `<release>-alertmanager:9093` at render time | `tpl` would re-evaluate Cortex's own template tokens |
+| GenAI evaluation index init | One-shot `genai-evaluation-index-init` service; `data-prepper` depends on it (`service_completed_successfully`) | Init container `genai-evaluation-index-init` on the Data Prepper pod, plus the same step in the init dashboards Job | Hooks run after Data Prepper starts, so only an init container guarantees the write alias exists before the first write |
+| Agent Eval Canary image | Built locally from `docker-compose/agent-eval-canary` | `ghcr.io/kylehounslow/observability-stack/agent-eval-canary:latest` (`publish-images.yml`) | Same image pattern as the other examples |
 | OpenSearch hostname in `alertmanager.yml` | Bare `opensearch:9200` | Brace placeholder `{{OPENSEARCH_HOST}}` → `<opensearchServiceName>:9200` | Same `tpl`-avoidance reason; `opensearchServiceName` is a chart values key |
 
 ## SOP: Detecting and Fixing Drift
