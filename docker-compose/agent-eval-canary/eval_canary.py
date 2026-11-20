@@ -4,14 +4,13 @@ No LLM. Locally it reads traces from the stack's OpenSearch with basic auth; on 
 (OPENSEARCH_AWS_SERVICE=aoss or es) it signs those reads with SigV4 using the instance's
 credentials. Every cycle (EVAL_CANARY_INTERVAL seconds) it:
 
-1. Online, span level: lists recent agent roots in OpenSearch (OpenSearchTraceRetriever),
-   skips traces this canary already evaluated (find_evaluated_trace_ids by evaluator), and posts
-   four code checks on each agent root span with score().
-2. Online, session level: grades each finished conversation (gen_ai.conversation.id) of the
-   travel planner as a whole (score(conversation_id=...), level "session").
-3. Offline, every EVAL_CANARY_SUITE_INTERVAL_MINUTES: runs the travel_planner_smoke test suite with
-   evaluate() against the running travel planner, as a named eval run. Three of its five cases
-   inject faults and are expected to fail.
+1. Production checks: lists recent agent traces in OpenSearch (OpenSearchTraceRetriever), skips
+   traces already graded (find_evaluated_trace_ids by evaluator), and posts code checks on each
+   agent root span with score(), each with an explanation drawn from the trace.
+2. Conversation checks: grades each finished Travel Planner conversation (gen_ai.conversation.id)
+   as a whole (score(conversation_id=...), level "session").
+3. Every EVAL_CANARY_SUITE_INTERVAL_MINUTES: runs the "Trip planning regression" suite with
+   evaluate() against the released planner and the release candidate, one named run each.
 
 Results are gen_ai.evaluation.result log events. Data Prepper routes them to the
 otel-v1-genai-evaluation write alias. The canary's own logs go through OTel logs too: a failed
@@ -62,11 +61,16 @@ SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_SUITE_INTERVAL_MINUTES"
 # A session is graded once its newest turn is this old (the conversation is over)
 SESSION_IDLE_SECONDS = int(os.environ.get("EVAL_CANARY_SESSION_IDLE_SECONDS", "90"))
 TRAVEL_PLANNER_URL = os.environ.get("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
+# The release candidate; when set, the offline suite runs against it too
+TRAVEL_PLANNER_CANDIDATE_URL = os.environ.get("TRAVEL_PLANNER_CANDIDATE_URL", "")
 PLANNER_AGENT_NAME = "Travel Planner"
-PLANNER_AGENT_VERSION = os.environ.get("PLANNER_AGENT_VERSION", "1.1.0")
+PLANNER_AGENT_VERSION = os.environ.get("PLANNER_AGENT_VERSION", "1.3.0")
 
-TRACE_EVALUATOR = "trace_health_check"
-SESSION_EVALUATOR = "session_health_check"
+PRODUCTION_EVALUATOR = "Production checks"
+PRODUCTION_DESCRIPTION = ("Code checks on every production trace: task completion, destination, tool calls, "
+                          "repeated calls and response time")
+SESSION_EVALUATOR = "Conversation checks"
+SESSION_DESCRIPTION = "Code checks on finished conversations: whether the user got a complete plan"
 EVALUATION_INDEX = "otel-v1-genai-evaluation*"
 
 # Services whose agent traces are evaluated online
@@ -99,84 +103,29 @@ def log_on_span(level: int, trace_id: str, span_id: str | None, message: str, *a
 
 
 # ---------------------------------------------------------------------------
-# Online, span level
+# Shared checks (online and offline use the same rules)
 # ---------------------------------------------------------------------------
 
-def _status_is_error(span) -> bool:
-    status = (span.raw or {}).get("status") or {}
-    code = str(status.get("code") or "").upper()
-    return "ERROR" in code or code == "2"
+# Attractions the events agent knows per city (its built-in data). A plan for one city that
+# recommends another city's attractions is off destination.
+CITY_ATTRACTIONS = {
+    "paris": ["Louvre Late Night", "Seine River Cruise", "Jazz at Le Caveau"],
+    "london": ["West End Show", "Borough Market Food Tour", "British Museum Exhibition"],
+    "tokyo": ["Shibuya Night Walk", "Tsukiji Outer Market", "Robot Restaurant Show"],
+    "berlin": ["Berlin Wall Tour", "Techno Night", "Museum Island Visit"],
+    "new york": ["Broadway Show", "Central Park Walk", "Jazz at Blue Note"],
+    "sydney": ["Opera House Tour", "Bondi Beach Day", "Harbour Bridge Climb"],
+    "mumbai": ["Bollywood Studio Tour", "Street Food Walk", "Gateway of India Visit"],
+    "seattle": ["Pike Place Market Tour", "Space Needle Visit", "Coffee Crawl"],
+}
+RESPONSE_TIME_BUDGET_S = 15
 
 
-def trace_health(retriever: OpenSearchTraceRetriever, root) -> None:
-    """Post four code checks on the agent root span of one trace."""
-    session = retriever.get_traces(root.trace_id)
-    spans = [s for tr in session.traces for s in tr.spans]
-    if not spans:
-        return
-
-    has_input = any(s.input_messages for s in spans)
-    has_output = any(s.output_messages for s in spans)
-    tools = [s for s in spans if s.operation_name == "execute_tool"]
-
-    def returned_data(s) -> bool:
-        result = (s.tool_call_result or "").strip() or "".join(m.content or "" for m in s.output_messages).strip()
-        return result not in ("", "[]", "{}", "null")
-
-    tools_with_data = [s for s in tools if returned_data(s)]
-    errored = [s.name for s in spans if _status_is_error(s)]
-
-    common = dict(
-        trace_id=root.trace_id,
-        span_id=root.span_id,
-        evaluator=TRACE_EVALUATOR,
-        evaluator_version="2",
-        evaluator_type="code",
-        agent_name=root.agent_name or None,
-        agent_version=root.agent_version or None,
-    )
-    results = []
-
-    coverage = round((0.33 if has_input else 0) + (0.34 if has_output else 0) + (0.33 if tools else 0), 2)
-    results.append(("span_coverage", coverage, dict(
-        threshold=0.67, score_min=0, score_max=1,
-        explanation=f"input={'yes' if has_input else 'no'}, output={'yes' if has_output else 'no'}, tools={'yes' if tools else 'no'}",
-    )))
-    results.append(("error_free", 0.0 if errored else 1.0, dict(
-        label="fail" if errored else "pass",
-        explanation=f"spans with ERROR status: {', '.join(sorted(set(errored))[:5])}" if errored else "all spans OK",
-    )))
-    rate = round(len(tools_with_data) / len(tools), 2) if tools else 1.0
-    results.append(("tool_call_success_rate", rate, dict(
-        threshold=0.75, score_min=0, score_max=1,
-        explanation=f"{len(tools_with_data)}/{len(tools)} tool calls returned data" if tools else "no tool calls",
-    )))
-    diversity = round(len({s.tool_name for s in tools}) / len(tools), 2) if tools else 1.0
-    results.append(("tool_diversity", diversity, dict(
-        threshold=0.34, score_min=0, score_max=1,
-        explanation=f"{len({s.tool_name for s in tools})} unique tool(s) across {len(tools)} call(s)",
-    )))
-
-    failed = []
-    for name, value, kwargs in results:
-        score(name, value, **common, **kwargs)
-        passed = (kwargs.get("label") == "pass") if "label" in kwargs else value >= kwargs["threshold"]
-        if not passed:
-            failed.append(f"{name}={value}")
-    if failed:
-        log_on_span(logging.WARNING, root.trace_id, root.span_id,
-                    "Evaluation failed for %s: %s", root.agent_name or root.name, ", ".join(failed),
-                    **{"gen_ai.evaluation.evaluator": TRACE_EVALUATOR})
-    log.info("Scored trace %s (%s): %s", root.trace_id[:12], root.agent_name,
-             " ".join(f"{n}={v}" for n, v, _ in results))
-
-
-# ---------------------------------------------------------------------------
-# Online, session level
-# ---------------------------------------------------------------------------
-
-def _conversation_id(span) -> str:
-    return str(((span.raw or {}).get("attributes") or {}).get("gen_ai.conversation.id") or "")
+def foreign_attractions(destination: str, text: str) -> list[str]:
+    """Attractions of other cities named in a plan for destination."""
+    dest = (destination or "").lower()
+    low = (text or "").lower()
+    return [a for city, names in CITY_ATTRACTIONS.items() if city != dest for a in names if a.lower() in low]
 
 
 def _parse_time(value: str) -> datetime | None:
@@ -186,8 +135,139 @@ def _parse_time(value: str) -> datetime | None:
         return None
 
 
+def _seconds(span) -> float | None:
+    start, end = _parse_time(span.start_time), _parse_time(span.end_time)
+    return round((end - start).total_seconds(), 2) if start and end else None
+
+
+def _status_is_error(span) -> bool:
+    status = (span.raw or {}).get("status") or {}
+    code = str(status.get("code") or "").upper()
+    return "ERROR" in code or code == "2"
+
+
+def _text(messages) -> str:
+    return " ".join(m.content or "" for m in messages)
+
+
+# ---------------------------------------------------------------------------
+# Online: production checks on each agent trace (no ground truth)
+# ---------------------------------------------------------------------------
+
+def production_checks(retriever: OpenSearchTraceRetriever, root) -> None:
+    """Grade one production trace of an agent with the production checks."""
+    spans = [s for tr in retriever.get_traces(root.trace_id).traces for s in tr.spans]
+    if not spans:
+        return
+    agent = root.agent_name or root.name
+    planner = agent == PLANNER_AGENT_NAME
+    # The agent root's own span carries the answer; for the planner it is the invoke_agent span
+    me = next((s for s in spans if s.span_id == root.span_id), root)
+    answer = _text(me.output_messages)
+    attrs = (me.raw or {}).get("attributes") or {}
+    destination = str(attrs.get("destination") or "")
+
+    # One logical call per tool: an MCP call also has server-side spans for the same tool below the
+    # caller's span, without the result. Count only the topmost span of each call.
+    by_id = {s.span_id: s for s in spans}
+
+    def top_level_tool(s) -> bool:
+        parent = by_id.get(s.parent_span_id)
+        return not (parent and parent.operation_name == "execute_tool" and parent.tool_name == s.tool_name)
+
+    calls = [s for s in spans if (s.operation_name == "execute_tool" and top_level_tool(s))
+             or (s.operation_name == "invoke_agent" and s.span_id != me.span_id and s.name.endswith("-agent"))]
+
+    def returned_data(s) -> bool:
+        if _status_is_error(s):
+            return False
+        if s.operation_name == "invoke_agent":
+            return True
+        result = (s.tool_call_result or "").strip() or _text(s.output_messages).strip()
+        return result not in ("", "[]", "{}", "null")
+
+    def label(s) -> str:
+        return s.tool_name or s.name.replace("tools/call ", "")
+
+    results = []
+    if planner:
+        missing = []
+        if not any(s.name.endswith("weather-agent") and s.operation_name == "invoke_agent" and returned_data(s) for s in spans):
+            missing.append("weather forecast")
+        if not any(s.name.endswith("events-agent") and s.operation_name == "invoke_agent" and returned_data(s) for s in spans):
+            missing.append("attractions")
+        if not any(label(s) == "fetch_flights_api" and returned_data(s) for s in spans):
+            missing.append("flights")
+        results.append(("Task completion", dict(
+            value=0.0 if missing else 1.0, label="fail" if missing else "pass",
+            explanation=(f"The plan for {destination} is missing: {', '.join(missing)}." if missing
+                         else f"The plan for {destination} covers weather, attractions and flights."),
+        )))
+        off = foreign_attractions(destination, answer)
+        results.append(("Stays on destination", dict(
+            value=0.0 if off else 1.0, label="fail" if off else "pass",
+            explanation=(f"Recommends {', '.join(off)}, which are not in {destination}." if off
+                         else f"Every recommendation is in {destination}."),
+        )))
+
+    if calls:
+        ok = [s for s in calls if returned_data(s)]
+        failed = sorted({label(s) for s in calls if not returned_data(s)})
+        results.append(("Tool call success", dict(
+            value=round(len(ok) / len(calls), 2), threshold=0.75, score_min=0, score_max=1,
+            explanation=f"{len(ok)} of {len(calls)} calls returned data" + (f"; failed: {', '.join(failed)}." if failed else "."),
+        )))
+        seen: dict[tuple, int] = {}
+        for s in calls:
+            key = (label(s), s.tool_call_arguments or _text(s.input_messages))
+            seen[key] = seen.get(key, 0) + 1
+        repeats = [f"{k[0]} ({n} times)" for k, n in seen.items() if n > 1]
+        results.append(("No repeated tool calls", dict(
+            value=0.0 if repeats else 1.0, label="fail" if repeats else "pass",
+            explanation=(f"Called with the same arguments more than once: {', '.join(repeats)}." if repeats
+                         else f"{len(calls)} calls, none repeated."),
+        )))
+
+    took = _seconds(me)
+    if took is not None:
+        results.append(("Response time", dict(
+            value=took, threshold=RESPONSE_TIME_BUDGET_S, direction="minimize", score_min=0,
+            explanation=f"Answered in {took:.1f} s (budget {RESPONSE_TIME_BUDGET_S} s).",
+        )))
+
+    failed_checks = []
+    for name, kwargs in results:
+        value = kwargs.pop("value")
+        score(name, value, trace_id=root.trace_id, span_id=root.span_id,
+              evaluator=PRODUCTION_EVALUATOR, evaluator_version="3", evaluator_type="code",
+              evaluator_description=PRODUCTION_DESCRIPTION,
+              agent_name=root.agent_name or None, agent_version=root.agent_version or None, **kwargs)
+        if "label" in kwargs:
+            passed = kwargs["label"] == "pass"
+        elif kwargs.get("direction") == "minimize":
+            passed = value <= kwargs["threshold"]
+        else:
+            passed = value >= kwargs["threshold"]
+        if not passed:
+            failed_checks.append(name)
+    if failed_checks:
+        log_on_span(logging.WARNING, root.trace_id, root.span_id,
+                    "%s failed production checks: %s", agent, ", ".join(failed_checks),
+                    **{"gen_ai.evaluation.evaluator": PRODUCTION_EVALUATOR})
+    log.info("Scored trace %s (%s %s): %d checks, %d failed", root.trace_id[:12], agent,
+             root.agent_version or "", len(results), len(failed_checks))
+
+
+# ---------------------------------------------------------------------------
+# Online: conversation checks on finished Travel Planner sessions
+# ---------------------------------------------------------------------------
+
+def _conversation_id(span) -> str:
+    return str(((span.raw or {}).get("attributes") or {}).get("gen_ai.conversation.id") or "")
+
+
 def _graded_sessions(retriever: OpenSearchTraceRetriever, session_ids: list[str]) -> set[str]:
-    """Sessions that already have a result of this canary's session evaluator."""
+    """Sessions that already have a result of the conversation checks."""
     if not session_ids:
         return set()
     body = {
@@ -207,7 +287,7 @@ def _graded_sessions(retriever: OpenSearchTraceRetriever, session_ids: list[str]
 
 
 def grade_sessions(retriever: OpenSearchTraceRetriever, roots, graded_locally: set[str]) -> None:
-    """Grade finished travel-planner conversations as a whole (session-level results)."""
+    """Grade finished Travel Planner conversations as a whole (session-level results)."""
     newest: dict[str, datetime] = {}
     agents: dict[str, tuple[str, str]] = {}
     for root in roots:
@@ -225,70 +305,102 @@ def grade_sessions(retriever: OpenSearchTraceRetriever, roots, graded_locally: s
             graded_locally.add(sid)
             continue
         session = retriever.get_traces(sid)
-        turns = [s for tr in session.traces for s in tr.spans
-                 if s.agent_name == PLANNER_AGENT_NAME and s.operation_name == "invoke_agent"]
+        turns = sorted((s for tr in session.traces for s in tr.spans
+                        if s.agent_name == PLANNER_AGENT_NAME and s.operation_name == "invoke_agent"),
+                       key=lambda s: s.start_time)
         if not turns:
             continue
-        failed_turns = [t for t in turns if _status_is_error(t)]
-        rate = round(1 - len(failed_turns) / len(turns), 2)
+        degraded = [t for t in turns if _status_is_error(t)]
         agent_name, agent_version = agents[sid]
-        score(
-            "session_success_rate", rate,
-            conversation_id=sid,
-            threshold=1.0, score_min=0, score_max=1,
-            explanation=f"{len(turns) - len(failed_turns)}/{len(turns)} turns answered without a sub-agent failure",
-            evaluator=SESSION_EVALUATOR, evaluator_type="code",
-            evaluator_description="Every turn of the conversation produced a complete plan",
-            agent_name=agent_name, agent_version=agent_version or None,
-        )
+        common = dict(conversation_id=sid, evaluator=SESSION_EVALUATOR, evaluator_type="code",
+                      evaluator_description=SESSION_DESCRIPTION,
+                      agent_name=agent_name, agent_version=agent_version or None)
+        last_ok = not _status_is_error(turns[-1])
+        score("Goal achieved", 1.0 if last_ok else 0.0, label="pass" if last_ok else "fail",
+              explanation=(f"The last of {len(turns)} turns returned a complete plan." if last_ok
+                           else f"The conversation ended on a degraded answer (turn {len(turns)} of {len(turns)})."),
+              **common)
+        rate = round(1 - len(degraded) / len(turns), 2)
+        score("Turns answered fully", rate, threshold=0.8, score_min=0, score_max=1,
+              explanation=f"{len(turns) - len(degraded)} of {len(turns)} turns got a full answer.",
+              **common)
         graded_locally.add(sid)
-        if failed_turns:
-            last = failed_turns[-1]
+        if degraded:
+            last = degraded[-1]
             log_on_span(logging.WARNING, last.trace_id, last.span_id,
-                        "Session %s failed its evaluation: %d of %d turns degraded", sid,
-                        len(failed_turns), len(turns), **{"gen_ai.conversation.id": sid})
-        log.info("Scored session %s: %d turn(s), session_success_rate=%.2f", sid, len(turns), rate)
+                        "Conversation %s: %d of %d turns degraded", sid, len(degraded), len(turns),
+                        **{"gen_ai.conversation.id": sid})
+        log.info("Scored conversation %s: %d turn(s), goal %s", sid, len(turns), "met" if last_ok else "missed")
 
 
 # ---------------------------------------------------------------------------
-# Offline: the travel_planner_smoke test suite
+# Offline: the "Trip planning regression" test suite, run against each release
 # ---------------------------------------------------------------------------
 
+def _case(case_id, request, destination, origin, currency, *, budget=None, fault=None, category):
+    data = {"case_id": case_id, "case_name": request,
+            "input": {"destination": destination, "origin": origin, "message": request},
+            "expected": {"currency": currency, "budget_usd": budget},
+            "metadata": {"category": category}}
+    if fault:
+        data["input"]["fault"] = fault
+    return data
+
+
+SUITE_NAME = "Trip planning regression"
 SUITE = [
-    {"case_id": "paris-ok", "case_name": "Paris from Seattle",
-     "input": {"destination": "Paris", "origin": "Seattle"},
-     "expected": {"keywords": ["Paris", "EUR"]}},
-    {"case_id": "tokyo-ok", "case_name": "Tokyo from Portland",
-     "input": {"destination": "Tokyo", "origin": "Portland"},
-     "expected": {"keywords": ["Tokyo", "JPY"]}},
-    # Deliberately failing cases: each injects a fault, the agents log it at WARN / ERROR
-    {"case_id": "london-weather-tool-error", "case_name": "London, weather tool fails",
-     "input": {"destination": "London", "origin": "Boston", "fault": {"weather": {"type": "tool_error"}}},
-     "expected": {"keywords": ["London", "GBP"]}},
-    {"case_id": "berlin-wrong-city-events", "case_name": "Berlin, events agent answers for Tokyo",
-     "input": {"destination": "Berlin", "origin": "Denver",
-               "fault": {"events": {"type": "wrong_city", "wrong_city": "tokyo"}}},
-     "expected": {"keywords": ["Berlin", "EUR"],
-                  "forbidden": ["Shibuya", "Tsukiji", "Robot Restaurant"]}},
-    {"case_id": "sydney-events-rate-limited", "case_name": "Sydney, events agent rate limited",
-     "input": {"destination": "Sydney", "origin": "Austin", "fault": {"events": {"type": "rate_limited"}}},
-     "expected": {"keywords": ["Sydney", "AUD"]}},
+    # Single city, dates given
+    _case("lisbon-march", "Plan a 4-day trip to Lisbon from Chicago in March.", "Lisbon", "Chicago", "EUR", category="Single city"),
+    _case("kyoto-april", "Plan 5 days in Kyoto in April, flying from San Francisco.", "Kyoto", "San Francisco", "JPY", category="Single city"),
+    _case("paris-june", "I'm going to Paris in June for a week. What should I see? I fly from Boston.", "Paris", "Boston", "EUR", category="Single city"),
+    _case("seoul-october", "Plan a 3-day trip to Seoul in October from Seattle.", "Seoul", "Seattle", "KRW", category="Single city"),
+    _case("reykjavik-feb", "What should I do on a 4-day trip to Reykjavik in February? Leaving from Denver.", "Reykjavik", "Denver", "ISK", category="Single city"),
+    _case("sydney-december", "Plan 10 days in Sydney in December from Los Angeles.", "Sydney", "Los Angeles", "AUD", category="Single city"),
+    # Budget limits
+    _case("rome-budget", "Plan 5 days in Rome in May under $2,500, flying from New York.", "Rome", "New York", "EUR", budget=2500, category="Budget"),
+    _case("tokyo-budget", "A week in Tokyo in November with a budget of $3,500, from Portland.", "Tokyo", "Portland", "JPY", budget=3500, category="Budget"),
+    _case("barcelona-tight", "Weekend in Barcelona this weekend from Chicago, under $1,200 total.", "Barcelona", "Chicago", "EUR", budget=1200, category="Budget"),
+    _case("mexico-city-budget", "4 days in Mexico City in January for under $1,500, from Austin.", "Mexico City", "Austin", "MXN", budget=1500, category="Budget"),
+    _case("singapore-budget", "Plan 6 days in Singapore in August, budget of $4,000, flying from Seattle.", "Singapore", "Seattle", "SGD", budget=4000, category="Budget"),
+    # No travel dates
+    _case("berlin-no-dates", "Plan a trip to Berlin from Denver.", "Berlin", "Denver", "EUR", category="No dates"),
+    _case("london-no-dates", "Put together a 4-day itinerary for London. We're coming from Boston.", "London", "Boston", "GBP", category="No dates"),
+    _case("mumbai-no-dates", "What should I do on a work trip to Mumbai? I fly in from San Francisco.", "Mumbai", "San Francisco", "INR", category="No dates"),
+    _case("seattle-no-dates", "Plan 3 days in Seattle from Chicago, around $1,800.", "Seattle", "Chicago", None, budget=1800, category="No dates"),
+    # Families and groups
+    _case("tokyo-family", "Family trip to Tokyo next week with two kids, flying from Los Angeles. What's worth seeing?", "Tokyo", "Los Angeles", "JPY", category="Family"),
+    _case("new-york-family", "Plan 4 days in New York in July for a family of four from Atlanta.", "New York", "Atlanta", None, category="Family"),
+    # Multi-turn style follow-ups as single requests
+    _case("paris-cheaper", "Can you find cheaper flights to Paris from Seattle for 5 days in September?", "Paris", "Seattle", "EUR", category="Follow-up"),
+    _case("sydney-instead", "Actually, plan 7 days in Sydney in March instead, from Dallas.", "Sydney", "Dallas", "AUD", category="Follow-up"),
+    # Unknown or ambiguous destinations
+    _case("portland-ambiguous", "Plan a weekend in Portland in October from Boston.", "Portland", "Boston", None, category="Ambiguous"),
+    _case("cusco-unknown", "Plan 5 days in Cusco in May from Miami.", "Cusco", "Miami", "PEN", category="Unknown city"),
+    # Sub-agent incidents the planner should survive
+    _case("london-weather-outage", "Plan 4 days in London in April from New York.", "London", "New York", "GBP",
+          fault={"weather": {"type": "tool_error"}}, category="Resilience"),
+    _case("sydney-events-rate-limited", "Plan 5 days in Sydney in February from Austin.", "Sydney", "Austin", "AUD",
+          fault={"events": {"type": "rate_limited"}}, category="Resilience"),
+    _case("berlin-events-wrong-city", "Plan 3 days in Berlin in June from Denver.", "Berlin", "Denver", "EUR",
+          fault={"events": {"type": "wrong_city", "wrong_city": "tokyo"}}, category="Resilience"),
 ]
+
+_planner_url = {"value": TRAVEL_PLANNER_URL}
 
 
 @observe(name=PLANNER_AGENT_NAME, op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT)
 def plan_trip(case_input: dict) -> dict:
-    """The task: call the running travel planner over HTTP.
+    """The task: send the case's request to the running travel planner over HTTP.
 
     This invoke_agent CLIENT span is the trace's agent root: evaluate() stamps the test.* ids on it
     and parents the results to it. The planner continues the trace (traceparent header), so its
     spans and its WARN / ERROR logs are in the same trace.
     """
-    enrich(input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Plan a trip to {case_input['destination']}"}]}])
+    enrich(input_messages=[{"role": "user", "parts": [{"type": "text", "content": case_input["message"]}]}])
     headers: dict[str, str] = {}
     inject(headers)
     started = time.time()
-    resp = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=case_input, headers=headers, timeout=90)
+    resp = requests.post(f"{_planner_url['value']}/plan", json=case_input, headers=headers, timeout=120)
     resp.raise_for_status()
     data = resp.json()
     data["elapsed_s"] = round(time.time() - started, 2)
@@ -300,88 +412,108 @@ def plan_trip(case_input: dict) -> dict:
     return data
 
 
-@scorer(name="plan_complete", threshold=1.0, score_min=0, score_max=1, evaluator_type="code",
-        description="The plan has weather, events, flights and currency")
-def plan_complete(input, output, expected):
-    sections = [bool(output.get("weather")), bool(output.get("events")), bool(output.get("flights")),
-                bool(output.get("currency"))]
-    return round(sum(sections) / len(sections), 2)
+@scorer(name="Plan is complete", evaluator_type="code",
+        description="The plan covers the weather forecast, attractions and flights for the destination")
+def plan_is_complete(input, output, expected):
+    missing = [name for key, name in (("weather", "weather forecast"), ("events", "attractions"), ("flights", "flights"))
+               if not output.get(key)]
+    return EvalScore(name="Plan is complete", value=0.0 if missing else 1.0, label="fail" if missing else "pass",
+                     explanation=f"Missing: {', '.join(missing)}." if missing else "Weather, attractions and flights are all included.")
 
 
-@scorer(name="no_sub_agent_errors", evaluator_type="code", description="No sub-agent or tool call failed")
-def no_sub_agent_errors(input, output, expected):
-    return not output.get("errors")
-
-
-@scorer(name="latency_budget", threshold=15, direction="minimize", score_min=0, evaluator_type="code",
-        description="End-to-end plan latency in seconds")
-def latency_budget(input, output, expected):
-    return output["elapsed_s"]
-
-
-@scorer(name="answer_relevance", threshold=1.0, score_min=0, score_max=1, evaluator_type="code",
-        description="The recommendation names the destination")
-def answer_relevance(input, output, expected):
-    return 1.0 if input["destination"].lower() in output.get("recommendation", "").lower() else 0.0
-
-
-def keyword_overlap(input, output, expected):
-    """A library-style metric: the result names its own evaluator (lib.keyword_overlap).
-
-    Checks that the plan (recommendation, flights, currency) names the expected keywords.
-
-    It is not this scorer's own result, so it keeps its own threshold and type. It shares the
-    evaluation name answer_relevance with the scorer above, so the local result key is
-    "answer_relevance (lib.keyword_overlap)".
-    """
-    text = " ".join([output.get("recommendation", ""), json.dumps(output.get("flights") or {}),
-                     json.dumps(output.get("currency") or {})]).lower()
-    keywords = expected.get("keywords", [])
-    hits = [k for k in keywords if k.lower() in text]
-    return EvalScore(
-        name="answer_relevance",
-        value=round(len(hits) / len(keywords), 2) if keywords else 1.0,
-        evaluator="lib.keyword_overlap",
-        evaluator_type="code",
-        threshold=0.67,
-        score_min=0,
-        score_max=1,
-        explanation=f"found {', '.join(hits) or 'none'} of {', '.join(keywords)}",
-    )
-
-
-@scorer(name="no_foreign_attractions", evaluator_type="code",
-        description="No attraction of another city is recommended")
-def no_foreign_attractions(input, output, expected):
+@scorer(name="Stays on destination", evaluator_type="code",
+        description="Every recommended attraction is in the requested city")
+def stays_on_destination(input, output, expected):
     text = output.get("recommendation", "") + " " + " ".join(e.get("name", "") for e in output.get("events", []))
-    return not any(term.lower() in text.lower() for term in expected.get("forbidden", []))
+    off = foreign_attractions(input["destination"], text)
+    return EvalScore(name="Stays on destination", value=0.0 if off else 1.0, label="fail" if off else "pass",
+                     explanation=(f"Recommends {', '.join(off)}, which are not in {input['destination']}." if off
+                                  else f"Every recommendation is in {input['destination']}."))
+
+
+@scorer(name="Respects budget", evaluator_type="code",
+        description="When the request has a budget, the plan estimates the cost and stays within it")
+def respects_budget(input, output, expected):
+    budget = expected.get("budget_usd")
+    if not budget:
+        return []  # not applicable: the request has no budget
+    est = output.get("estimate")
+    if not est:
+        return EvalScore(name="Respects budget", value=0.0, label="fail",
+                         explanation=f"The request has a ${budget:,} budget, but the plan gives no cost estimate.")
+    ok = est["total_usd"] <= budget
+    return EvalScore(name="Respects budget", value=1.0 if ok else 0.0, label="pass" if ok else "fail",
+                     explanation=f"Estimated ${est['total_usd']:,} against a ${budget:,} budget.")
+
+
+@scorer(name="Correct local currency", evaluator_type="code",
+        description="Prices are converted to the destination's currency")
+def correct_local_currency(input, output, expected):
+    want = expected.get("currency")
+    got = (output.get("currency") or {}).get("to_currency")
+    if want is None:
+        ok = got is None
+        return EvalScore(name="Correct local currency", value=1.0 if ok else 0.0, label="pass" if ok else "fail",
+                         explanation="No conversion needed for a US destination." if ok
+                         else f"Converted to {got} for a US destination.")
+    ok = got == want
+    return EvalScore(name="Correct local currency", value=1.0 if ok else 0.0, label="pass" if ok else "fail",
+                     explanation=f"Converted to {got}." if ok else f"Expected {want}, got {got or 'no conversion'}.")
+
+
+@scorer(name="Response time", threshold=RESPONSE_TIME_BUDGET_S, direction="minimize", score_min=0,
+        evaluator_type="code", description=f"End-to-end answer time in seconds, budget {RESPONSE_TIME_BUDGET_S} s")
+def response_time(input, output, expected):
+    took = output["elapsed_s"]
+    return EvalScore(name="Response time", value=took, explanation=f"Answered in {took:.1f} s.")
+
+
+SUITE_SCORERS = [plan_is_complete, stays_on_destination, respects_budget, correct_local_currency, response_time]
+
+
+def _planner_version(url: str) -> str | None:
+    try:
+        return requests.get(f"{url}/health", timeout=5).json().get("agent_version")
+    except (requests.RequestException, ValueError):
+        return None
 
 
 def run_suite() -> None:
+    """Run the suite against the released planner and, when present, the candidate release."""
+    targets = [("release", TRAVEL_PLANNER_URL)]
+    if TRAVEL_PLANNER_CANDIDATE_URL:
+        targets.append(("candidate", TRAVEL_PLANNER_CANDIDATE_URL))
     started = datetime.now(timezone.utc)
-    result = evaluate(
-        name="travel_planner_smoke",
-        task=plan_trip,
-        data=SUITE,
-        scores=[plan_complete, no_sub_agent_errors, latency_budget, answer_relevance, keyword_overlap,
-                no_foreign_attractions],
-        agent_name=PLANNER_AGENT_NAME,
-        agent_version=PLANNER_AGENT_VERSION,
-        run_name=f"canary {started:%Y-%m-%d %H:%M} UTC",
-        run_description="Scheduled smoke suite: two healthy trips and three cases with injected faults that should fail",
-        metadata={"app.canary": "agent-eval-canary"},
-    )
-    for case in result.cases:
-        failed = sorted(k for k, v in (case.verdicts or {}).items() if v == "fail")
-        log.info("Suite case %s: %s scores=%s", case.case_id, case.status, case.scores)
-        if case.status != "pass" and case.trace_id:
-            log_on_span(logging.WARNING if case.status == "fail" else logging.ERROR, case.trace_id, case.span_id,
-                        "Test case %s %s: %s", case.case_id, case.status,
-                        ", ".join(failed) or case.error_type or "error",
-                        **{"test.case.id": case.case_id, "test.suite.name": "travel_planner_smoke"})
-    summary = result.summary
-    log.info("Suite run %s done: %d pass, %d fail, %d error", summary.run_id,
-             summary.pass_count, summary.fail_count, summary.error_count)
+    for role, url in targets:
+        version = _planner_version(url) or PLANNER_AGENT_VERSION
+        _planner_url["value"] = url
+        if role == "candidate":
+            description = (f"Release check of the {version} candidate on {len(SUITE)} trip requests "
+                           "(single city, budgets, no dates, families, unknown cities, sub-agent outages) "
+                           "before it is promoted.")
+        else:
+            description = f"Baseline: the released {version} planner on the same {len(SUITE)} trip requests."
+        result = evaluate(
+            name=SUITE_NAME,
+            task=plan_trip,
+            data=SUITE,
+            scores=SUITE_SCORERS,
+            agent_name=PLANNER_AGENT_NAME,
+            agent_version=version,
+            run_name=f"{version} {role}, {started:%b %d %H:%M} UTC",
+            run_description=description,
+            metadata={"app.canary": "agent-eval-canary", "release.role": role},
+        )
+        for case in result.cases:
+            failed = sorted(k for k, v in (case.verdicts or {}).items() if v == "fail")
+            if case.status != "pass" and case.trace_id:
+                log_on_span(logging.WARNING if case.status == "fail" else logging.ERROR, case.trace_id, case.span_id,
+                            "Test case %s %s: %s", case.case_id, case.status,
+                            ", ".join(failed) or case.error_type or "error",
+                            **{"test.case.id": case.case_id, "test.suite.name": SUITE_NAME})
+        summary = result.summary
+        log.info("Suite run %s (%s %s): %d pass, %d fail, %d error", summary.run_id, role, version,
+                 summary.pass_count, summary.fail_count, summary.error_count)
 
 
 def planner_ready() -> bool:
@@ -438,12 +570,12 @@ def run() -> None:
                 since=datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES),
             )
             if roots:
-                done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots], evaluator=TRACE_EVALUATOR)
+                done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots], evaluator=PRODUCTION_EVALUATOR)
                 pending = [r for r in roots if r.trace_id not in done and r.trace_id not in recently_scored]
                 log.info("Online: %d recent agent traces, %d to evaluate", len(roots), len(pending))
                 for root in pending:
                     try:
-                        trace_health(retriever, root)
+                        production_checks(retriever, root)
                         recently_scored[root.trace_id] = time.time()
                     except Exception:  # noqa: BLE001
                         log.exception("Failed to evaluate trace %s", root.trace_id[:12])

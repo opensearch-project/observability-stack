@@ -34,23 +34,42 @@ import requests
 
 
 TRAVEL_PLANNER_URL = os.getenv("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
+# The candidate release serves a share of new conversations (a canary rollout); unset = none
+TRAVEL_PLANNER_CANDIDATE_URL = os.getenv("TRAVEL_PLANNER_CANDIDATE_URL", "")
+CANDIDATE_TRAFFIC_SHARE = float(os.getenv("CANDIDATE_TRAFFIC_SHARE", "0.2"))
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
 FAULT_PANEL_URL = os.getenv("FAULT_PANEL_URL", "http://fault-panel:8085")
 CANARY_INTERVAL = int(os.getenv("CANARY_INTERVAL", "30"))
 
-DESTINATIONS = ["Paris", "Tokyo", "London", "Berlin", "Sydney", "New York", "Mumbai", "Seattle"]
+DESTINATIONS = ["Paris", "Tokyo", "London", "Berlin", "Sydney", "New York", "Mumbai", "Seattle",
+                "Lisbon", "Kyoto", "Rome", "Barcelona", "Mexico City", "Reykjavik", "Singapore", "Seoul"]
+MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+          "October", "November", "December"]
+
+# How real users open a conversation. About a third give no travel dates, which the candidate
+# release handles badly (it skips the forecast); about half give a budget.
+OPENERS = [
+    "Plan a {days}-day trip to {dest} from {origin} in {month}.",
+    "I'm flying from {origin} to {dest} in {month} for {days} days with a budget of ${budget}. What should we do?",
+    "Weekend in {dest} from {origin} this weekend, under ${budget} total.",
+    "Can you plan {days} days in {dest} in {month}? Two adults flying out of {origin}, around ${budget}.",
+    "Plan a trip to {dest} from {origin}.",
+    "Put together a {days}-day itinerary for {dest}. We're coming from {origin} and want to keep it under ${budget}.",
+    "Family trip to {dest} next week with two kids, flying from {origin}. What's worth seeing?",
+    "What should I do on a {days}-day work trip to {dest}? I fly in from {origin}.",
+]
 ORIGINS = ["Portland", "Seattle", "San Francisco", "New York", "Chicago", "Denver", "Austin", "Boston"]
 
 # Defaults (used when fault panel is unreachable)
 DEFAULT_FAULT_WEIGHTS = {
-    "none": 0.50,
-    "weather_error": 0.10,
-    "weather_rate_limited": 0.08,
-    "weather_high_latency": 0.07,
-    "events_error": 0.08,
-    "events_rate_limited": 0.07,
-    "partial_failure": 0.10,
+    "none": 0.82,
+    "weather_error": 0.03,
+    "weather_rate_limited": 0.03,
+    "weather_high_latency": 0.04,
+    "events_error": 0.02,
+    "events_rate_limited": 0.04,
+    "partial_failure": 0.02,
 }
 
 # Conversations: (turns, seconds between turns) per kind, and how often each kind starts.
@@ -62,19 +81,19 @@ SESSION_KINDS = {
     "long_running": {"weight": 0.05, "turns": (8, 12), "gap_s": (300, 600)},
 }
 MAX_LONG_RUNNING = 2  # long-running conversations open at once; one is started at boot
-MID_TURN_FAILURE_RATE = 0.35  # conversations of 3+ turns where a middle turn fails
+MID_TURN_FAILURE_RATE = 0.15  # conversations of 3+ turns where a middle turn fails
 MID_TURN_FAULTS = ["weather_error", "events_error", "weather_rate_limited", "partial_failure"]
 USER_ID_RATE = 0.7  # conversations with a signed-in user
 USERS = [f"user-{name}" for name in ("ava", "ben", "chen", "dara", "eli", "fatima", "gus", "hana")]
 
 FOLLOW_UPS = [
-    "What will the weather be like in {dest} while I'm there?",
-    "Any events in {dest} this weekend?",
+    "What will the weather be like in {dest} in {month}?",
+    "Any concerts or festivals in {dest} while I'm there?",
     "Can you find cheaper flights to {dest} from {origin}?",
-    "What currency do I need in {dest}, and what's the rate?",
+    "Does that fit in ${budget}?",
     "Actually, how about {dest} instead?",
-    "Compare that with a trip to {dest}.",
-    "Keep {dest}, but plan it for a family with kids.",
+    "Compare that with {days} days in {dest}.",
+    "Keep {dest}, but make it work for a family with kids.",
 ]
 
 DEFAULT_TRACE_SHAPE_WEIGHTS = {
@@ -146,7 +165,19 @@ def check_health():
 
 
 def new_session_id():
-    return f"canary_{uuid.uuid4().hex[:12]}"
+    return f"conv-{uuid.uuid4().hex[:12]}"
+
+
+def trip_details():
+    return {"days": random.choice([3, 4, 5, 7, 10]), "month": random.choice(MONTHS),
+            "budget": f"{random.choice([1200, 1800, 2500, 3500, 5000]):,}"}
+
+
+def pick_planner():
+    """The released planner, or the candidate for its share of conversations."""
+    if TRAVEL_PLANNER_CANDIDATE_URL and random.random() < CANDIDATE_TRAFFIC_SHARE:
+        return TRAVEL_PLANNER_CANDIDATE_URL
+    return TRAVEL_PLANNER_URL
 
 
 @dataclass
@@ -161,17 +192,20 @@ class Conversation:
     gap_s: tuple
     user_id: str | None = None
     fail_turn: int | None = None  # 0-based index of the middle turn that fails
+    planner_url: str = TRAVEL_PLANNER_URL
+    trip: dict = field(default_factory=trip_details)
     done: int = 0
     next_at: float = field(default_factory=time.time)
 
     def next_turn(self):
         """(message, destination) of the next turn."""
         if self.done == 0:
-            return f"Plan a trip to {self.destination} from {self.origin}", self.destination
-        template = random.choice(FOLLOW_UPS)
-        if "instead" in template or "Compare" in template:
-            self.destination = random.choice([d for d in DESTINATIONS if d != self.destination])
-        return template.format(dest=self.destination, origin=self.origin), self.destination
+            template = random.choice(OPENERS)
+        else:
+            template = random.choice(FOLLOW_UPS)
+            if "instead" in template or "Compare" in template:
+                self.destination = random.choice([d for d in DESTINATIONS if d != self.destination])
+        return template.format(dest=self.destination, origin=self.origin, **self.trip), self.destination
 
 
 def new_conversation(kind=None):
@@ -190,6 +224,7 @@ def new_conversation(kind=None):
         gap_s=spec["gap_s"],
         user_id=random.choice(USERS) if random.random() < USER_ID_RATE else None,
         fail_turn=fail_turn,
+        planner_url=pick_planner(),
     )
 
 
@@ -217,12 +252,12 @@ def invoke_turn(conv, fault_weights):
         f"  [{conv.kind} {conv.done}/{conv.turns}] {conv.session_id}"
         f"{' ' + conv.user_id if conv.user_id else ''}: {message!r} (fault: {fault_name})"
     )
-    return post_plan(payload)
+    return post_plan(payload, conv.planner_url)
 
 
-def post_plan(payload):
+def post_plan(payload, planner_url=TRAVEL_PLANNER_URL):
     try:
-        response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
+        response = requests.post(f"{planner_url}/plan", json=payload, timeout=60)
     except requests.RequestException as e:
         print(f"           → request failed: {e}")
         return False
@@ -271,10 +306,13 @@ def invoke_deep(destinations):
     session_id = new_session_id()
     print(f"  [deep] session {session_id}: comparing {len(destinations)} destinations from {origin}: {', '.join(destinations)}")
     results = 0
+    planner_url = pick_planner()
+    trip = trip_details()
     for dest in destinations:
-        payload = {"destination": dest, "origin": origin, "session_id": session_id}
+        payload = {"destination": dest, "origin": origin, "session_id": session_id,
+                   "message": f"Compare {trip['days']} days in {dest} in {trip['month']}, flying from {origin}."}
         try:
-            response = requests.post(f"{TRAVEL_PLANNER_URL}/plan", json=payload, timeout=60)
+            response = requests.post(f"{planner_url}/plan", json=payload, timeout=60)
             if response.status_code == 200:
                 results += 1
         except Exception:

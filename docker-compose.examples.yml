@@ -75,12 +75,16 @@ services:
     container_name: canary
     environment:
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
+      - TRAVEL_PLANNER_CANDIDATE_URL=http://travel-planner-candidate:8000
+      # Share of conversations sent to the candidate release (canary rollout)
+      - CANDIDATE_TRAFFIC_SHARE=${CANDIDATE_TRAFFIC_SHARE:-0.2}
       - WEATHER_AGENT_URL=http://weather-agent:8000
       - EVENTS_AGENT_URL=http://events-agent:8002
       - FAULT_PANEL_URL=http://fault-panel:8085
       - CANARY_INTERVAL=${CANARY_INTERVAL}
     depends_on:
       - example-travel-planner
+      - example-travel-planner-candidate
       - example-weather-agent
       - example-events-agent
       - example-fault-panel
@@ -102,6 +106,42 @@ services:
     ports:
       - "8003:8000"
     environment:
+      # The released version; travel-planner-candidate runs the next one
+      - AGENT_VERSION=1.3.0
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
+      - WEATHER_AGENT_URL=http://weather-agent:8000
+      - EVENTS_AGENT_URL=http://events-agent:8002
+      - MCP_SERVER_URL=http://mcp-server:8003
+      - FAULT_PANEL_URL=http://fault-panel:8085
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN:-}
+      - BEDROCK_MODEL_ID=${BEDROCK_MODEL_ID:-global.anthropic.claude-haiku-4-5-20251001-v1:0}
+    depends_on:
+      - otel-collector
+      - example-weather-agent
+      - example-events-agent
+      - example-mcp-server
+    networks:
+      - observability-stack-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging: *logging
+
+  # Multi-Agent Planner: Travel Planner candidate release (1.4.0), serving a share of the traffic.
+  # Same image, different behavior: parallel sub-agent calls and a budget estimate, plus a
+  # regression (no forecast without travel dates) that the evaluations surface.
+  example-travel-planner-candidate:
+    build:
+      context: ./examples/plain-agents/multi-agent-planner/orchestrator
+      dockerfile: Dockerfile
+    container_name: travel-planner-candidate
+    environment:
+      - AGENT_VERSION=1.4.0
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       - WEATHER_AGENT_URL=http://weather-agent:8000
       - EVENTS_AGENT_URL=http://events-agent:8002
@@ -203,11 +243,14 @@ services:
       # Offline test suite (evaluate()) against the travel planner; 0 turns it off
       - EVAL_CANARY_SUITE_INTERVAL_MINUTES=${EVAL_CANARY_SUITE_INTERVAL_MINUTES:-30}
       - TRAVEL_PLANNER_URL=http://travel-planner:8000
+      # The release candidate; the offline suite compares it with the released planner
+      - TRAVEL_PLANNER_CANDIDATE_URL=http://travel-planner-candidate:8000
     # No depends_on opensearch: an AWS stack's demo has no opensearch service, and the
     # canary waits for OpenSearch to answer before its first cycle (local and AWS).
     depends_on:
       - otel-collector
       - example-travel-planner
+      - example-travel-planner-candidate
     networks:
       - observability-stack-network
     restart: unless-stopped

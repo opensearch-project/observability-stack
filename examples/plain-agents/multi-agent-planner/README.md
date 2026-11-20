@@ -313,11 +313,26 @@ and Agent Traces shows it in the trace flyout (**Related logs**, and **Logs** on
 The eval canaries log failed results and test cases at WARN on the evaluated span, so a failing
 evaluation and the agent's own WARN / ERROR logs sit on the same trace.
 
+## Two releases
+
+Compose runs the planner twice from the same image, with `AGENT_VERSION` picking the behavior:
+
+| Service | Version | Behavior |
+|---|---|---|
+| `travel-planner` | 1.3.0 (released) | asks the weather agent, then the events agent; no cost estimate |
+| `travel-planner-candidate` | 1.4.0 (candidate) | asks both in parallel, adds an `estimate_trip_cost` step when the request has a budget, and skips the forecast when it has no travel dates |
+
+The canary traffic generator sends `CANDIDATE_TRAFFIC_SHARE` (default 0.2) of new conversations to
+the candidate, so Agent Traces and the evaluations compare the two versions on the same kind of
+traffic. Requests read like real ones ("Plan 5 days in Rome in May under $2,500, flying from New
+York."); the planner reads the trip length, month and budget from them.
+
 ## Evaluations
 
 With a local OpenSearch, the [agent eval canary](../../../docker-compose/agent-eval-canary/README.md)
-grades these agents with code checks (online per trace and per session, plus a scheduled
-`travel_planner_smoke` test suite with deliberately failing cases), and the opt-in
+grades these agents with code checks (production checks per trace, conversation checks per
+session, and a scheduled "Trip planning regression" suite that compares the 1.3.0 release with the
+1.4.0 candidate), and the opt-in
 [LLM eval canary](../../../docker-compose/agent-eval-canary-llm/README.md) adds a Bedrock judge.
 Results are stored in `otel-v1-genai-evaluation`.
 

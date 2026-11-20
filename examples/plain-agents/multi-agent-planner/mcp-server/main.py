@@ -260,7 +260,7 @@ async def fetch_attractions(destination: str) -> dict:
                     "action": "query",
                     "list": "search",
                     "srsearch": f"{destination} tourist attractions landmarks",
-                    "srlimit": 5,
+                    "srlimit": 15,
                     "format": "json",
                 },
                 headers={"User-Agent": "ObservabilityStackDemo/1.0"},
@@ -271,6 +271,12 @@ async def fetch_attractions(destination: str) -> dict:
                 results = search_data.get("query", {}).get("search", [])
                 for r in results:
                     title = r.get("title", "")
+                    # Search also returns list and overview articles, and the city itself
+                    if (title.lower() == destination.lower() or "(disambiguation)" in title
+                            or title.startswith(NOT_ATTRACTION_PREFIXES)):
+                        continue
+                    if len(events) == 5:
+                        break
                     snippet = r.get("snippet", "").replace('<span class="searchmatch">', "").replace("</span>", "")
                     events.append({
                         "name": title,
@@ -287,15 +293,26 @@ async def fetch_attractions(destination: str) -> dict:
             }
 
 
+NOT_ATTRACTION_PREFIXES = ("List of", "Lists of", "Tourism in", "Outline of", "History of", "Culture of",
+                           "Geography of", "Economy of", "Transport in", "Timeline of")
+US_CITIES = {"portland", "seattle", "san francisco", "new york", "chicago", "denver", "austin", "boston",
+             "los angeles", "atlanta", "dallas", "miami"}
+NEARBY = {frozenset(p) for p in (("seattle", "vancouver"), ("seattle", "toronto"), ("new york", "toronto"))}
+
+
 async def fetch_flights(origin: str, destination: str, date: str = None) -> dict:
-    """Generate realistic mock flight data (no free flight API exists)."""
+    """Generate realistic mock flight data (no free flight API exists): domestic and
+    international routes get matching durations and fares."""
+    o, d = (origin or "").lower(), (destination or "").lower()
+    domestic = (o in US_CITIES and d in US_CITIES) or frozenset((o, d)) in NEARBY
+    duration_range, price_range = ((70, 360), (110, 480)) if domestic else ((480, 1080), (520, 1650))
     num_flights = random.randint(2, 4)
     flights = []
     for i in range(num_flights):
         dep_hour = random.randint(6, 20)
-        duration_min = random.randint(45, 320)
+        duration_min = random.randint(*duration_range)
         arr_hour = dep_hour + duration_min // 60
-        price = random.randint(89, 650)
+        price = random.randint(*price_range)
         flights.append({
             "airline": random.choice(AIRLINES),
             "departure": f"{dep_hour:02d}:{random.randint(0,59):02d}",
