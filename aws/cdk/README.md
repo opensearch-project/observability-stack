@@ -174,15 +174,21 @@ Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running t
 
 The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
 
-The instance runs in a private subnet of its own VPC, with outbound access through a NAT gateway. It has no public IP; connect with Session Manager. The NAT gateway is billed hourly and per GB while the demo runs. This works with VPC Block Public Access in ingress-only mode; bidirectional mode also blocks NAT gateway traffic unless the VPC has an exclusion.
+By default the instance runs in a public subnet of the account's default VPC, with a public IP and no inbound rules; connect with Session Manager. It needs outbound internet access, which VPC Block Public Access blocks in both modes. Two opt-in alternatives:
 
-The VPC uses the Region's first Availability Zone. If that zone doesn't offer `t3.xlarge`, the instance fails to launch and the deploy rolls back; pick another zone:
+| Option | Network |
+|--------|---------|
+| (default) | Public subnet of the default VPC, public IP |
+| `-c demoPrivateSubnet=true` | A new one-AZ VPC with a NAT gateway; the instance in its private subnet with no public IP. Works with Block Public Access in ingress-only mode (bidirectional mode also blocks NAT gateway traffic unless the VPC has an exclusion). The NAT gateway and its Elastic IP are billed hourly while the demo runs, and the VPC counts toward the Region's VPC quota (5 by default) |
+| `-c demoVpcId=<vpc-id>` | An existing VPC; the stack creates no VPC or NAT gateway |
 
 ```bash
-cdk deploy --all -c demoAz=us-east-1b
+cdk deploy --all -c demoPrivateSubnet=true
 ```
 
-To run the instance in an existing VPC, pass its ID, and preferably the subnet. The stack then creates no VPC or NAT gateway. The instance needs outbound access to Session Manager, GitHub, Docker Hub and the OSIS endpoint, for example through a NAT gateway.
+The instance uses the Region's first Availability Zone. If that zone doesn't offer `t3.xlarge`, the launch fails and the deploy rolls back; pick another zone with `-c demoAz=us-east-1b` (default VPC or `demoPrivateSubnet`).
+
+To run the instance in an existing VPC, pass its ID, and preferably the subnet. The instance needs outbound access to Session Manager, GitHub, Docker Hub and the OSIS endpoint, for example through a NAT gateway.
 
 ```bash
 cdk deploy --all -c demoVpcId=vpc-0123456789abcdef0 -c demoSubnetId=subnet-0123456789abcdef0

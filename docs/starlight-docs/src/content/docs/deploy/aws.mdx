@@ -98,7 +98,7 @@ cdk deploy --all --context opensearchType=serverless
 
 **Without the demo workload:** add `--context enableDemo=false` to either command.
 
-**Demo networking:** the demo instance runs in a private subnet of a VPC the stack creates, with a NAT gateway, so it has no public IP and works with VPC Block Public Access in ingress-only mode. The NAT gateway and its Elastic IP are billed hourly while the demo runs. To use an existing VPC instead, add `--context demoVpcId=<vpc-id> --context demoSubnetId=<subnet-id>`, with a subnet that has outbound internet access. `--context demoAz=<zone>` picks the zone of the VPC the stack creates.
+**Demo networking:** by default the demo instance runs in a public subnet of the account's default VPC, with a public IP. If the account has VPC Block Public Access turned on, add `--context demoPrivateSubnet=true`: the stack creates a VPC with a NAT gateway and runs the instance in its private subnet (the NAT gateway and its Elastic IP are billed hourly while the demo runs). To use an existing VPC, add `--context demoVpcId=<vpc-id> --context demoSubnetId=<subnet-id>`, with a subnet that has outbound internet access. `--context demoAz=<zone>` picks the instance's zone.
 
 See [aws/cdk/README.md](https://github.com/opensearch-project/observability-stack/tree/main/aws/cdk) for configuration, architecture details, and SigV4 telemetry setup.
 
