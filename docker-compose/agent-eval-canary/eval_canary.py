@@ -157,7 +157,8 @@ def _text(messages) -> str:
 def production_checks(retriever: OpenSearchTraceRetriever, root) -> None:
     """Grade one production trace of an agent with the production checks."""
     spans = [s for tr in retriever.get_traces(root.trace_id).traces for s in tr.spans]
-    if not spans:
+    # Test cases of the offline suite are graded by the suite, not as production traffic
+    if not spans or any("test.suite.run.id" in ((s.raw or {}).get("attributes") or {}) for s in spans):
         return
     agent = root.agent_name or root.name
     planner = agent == PLANNER_AGENT_NAME
@@ -489,7 +490,6 @@ def run_suite() -> None:
     targets = [("release", TRAVEL_PLANNER_URL)]
     if TRAVEL_PLANNER_CANDIDATE_URL:
         targets.append(("candidate", TRAVEL_PLANNER_CANDIDATE_URL))
-    started = datetime.now(timezone.utc)
     for role, url in targets:
         version = _planner_version(url) or PLANNER_AGENT_VERSION
         _planner_url["value"] = url
@@ -506,7 +506,7 @@ def run_suite() -> None:
             scores=SUITE_SCORERS,
             agent_name=PLANNER_AGENT_NAME,
             agent_version=version,
-            run_name=f"{version} {role}, {started:%b %d %H:%M} UTC",
+            run_name=f"{version} {role}",
             run_description=description,
             metadata={"app.canary": "agent-eval-canary", "release.role": role},
         )

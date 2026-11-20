@@ -99,7 +99,7 @@ The demo runs two releases of the Travel Planner: 1.3.0 (released) and 1.4.0 (a 
 
 - **Production checks**, every `EVAL_CANARY_INTERVAL` seconds (120): `list_root_spans()` finds recent agent traces of the three agents. Each gets results from the **Production checks** evaluator: Task completion and Stays on destination (Travel Planner), Tool call success, No repeated tool calls and Response time. Each result explains itself from the trace, for example "The plan for Berlin is missing: weather forecast."
 - **Conversation checks**: once a Travel Planner conversation has been idle for `EVAL_CANARY_SESSION_IDLE_SECONDS` (90), it gets Goal achieved and Turns answered fully, with `score(conversation_id=...)` at level `session`.
-- **Trip planning regression**, every `EVAL_CANARY_SUITE_INTERVAL_MINUTES` (30; `0` turns it off): `evaluate()` runs 24 trip requests (single city, budgets, no dates, families, unknown cities, sub-agent outages) against each release, as runs named "1.3.0 release, <time> UTC" and "1.4.0 candidate, <time> UTC". Scorers: Plan is complete, Stays on destination, Respects budget, Correct local currency and Response time.
+- **Trip planning regression**, every `EVAL_CANARY_SUITE_INTERVAL_MINUTES` (30; `0` turns it off): `evaluate()` runs 24 trip requests (single city, budgets, no dates, families, unknown cities, sub-agent outages) against each release, as runs named "1.3.0 release" and "1.4.0 candidate". Scorers: Plan is complete, Stays on destination, Respects budget, Correct local currency and Response time.
 
 ### LLM eval canary
 

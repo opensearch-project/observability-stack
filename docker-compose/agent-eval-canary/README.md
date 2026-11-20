@@ -79,7 +79,7 @@ idle for `EVAL_CANARY_SESSION_IDLE_SECONDS`, by evaluator **Conversation checks*
 ### Offline: "Trip planning regression" (every `EVAL_CANARY_SUITE_INTERVAL_MINUTES`)
 
 `evaluate()` runs the suite against the released planner and the candidate, as two runs:
-"1.3.0 release, <time> UTC" and "1.4.0 candidate, <time> UTC". Each run description says what
+"1.3.0 release" and "1.4.0 candidate". Each run description says what
 it checks. The task is an `invoke_agent` CLIENT span that sends the case's request to the planner
 over HTTP; the planner continues the trace, so each case is one trace with the planner's spans and
 logs below the case's root span.
