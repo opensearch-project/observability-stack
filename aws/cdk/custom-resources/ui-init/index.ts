@@ -176,10 +176,8 @@ export async function handler(event: Event) {
     }, Region);
     wsId = (wsResp.data as any)?.result?.id;
     console.log('Workspace create response:', JSON.stringify(wsResp.data));
-    if (!wsId) {
-      console.log('WARNING: Workspace creation failed, returning without WorkspaceId');
-      return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: 'NONE' } };
-    }
+    // A stack without its workspace isn't usable, so fail the create instead of reporting success.
+    if (!wsId) throw new Error(`Workspace creation failed: ${wsResp.status} ${JSON.stringify(wsResp.data).slice(0, 300)}`);
   }
 
   // Associate data-source + data-connection with workspace
