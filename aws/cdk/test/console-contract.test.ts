@@ -4,7 +4,9 @@ import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { ObservabilityStack } from '../lib/observability-stack';
 
-// What the Amazon OpenSearch Service console's Observability stack page reads from a stack.
+// The Observability stack page of the Amazon OpenSearch Service console lists stacks named ObsStack-<name> and reads
+// their Description marker, tags, resource types, outputs and parameters. These tests pin that contract, plus the
+// names, conditions and ordering a template generated from this stack (scripts/export-templates.ts) relies on.
 function synth(opensearchType: 'managed' | 'serverless') {
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const stack = new ObservabilityStack(app, 'ObsStack-contract', {
@@ -22,7 +24,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
   ['managed', 'aos-domain', 'AWS::OpenSearchService::Domain', ['DomainEndpoint', 'DomainArn']],
   ['serverless', 'aossv2', 'AWS::OpenSearchServerless::Collection', ['AOSSEndpoint', 'CollectionArn']],
 ] as const) {
-  describe(`console contract (${opensearchType})`, () => {
+  describe(`Amazon OpenSearch Service console's Observability stack page (${opensearchType})`, () => {
     const { stack, template } = synth(opensearchType);
 
     it('ends the Description with the generation and backend marker', () => {
@@ -130,4 +132,73 @@ describe('create ordering in one stack (managed)', () => {
       assert.ok((r.DependsOn ?? []).includes(fgacPolicy), `${id} (${r.Type}) does not depend on ${fgacPolicy}`);
     }
   });
+});
+
+describe('names from StackDisplayName', () => {
+  const join = (...parts: unknown[]) => ({ 'Fn::Join': ['', parts] });
+  const ref = { Ref: 'StackDisplayName' };
+  const props = (t: any, type: string) => Object.values<any>(t.Resources).filter((r) => r.Type === type).map((r) => r.Properties);
+
+  it('names the managed backend like the console templates', () => {
+    const { template: t } = synth('managed');
+    assert.deepEqual(props(t, 'AWS::OSIS::Pipeline')[0].PipelineName, join('obs-', ref, '-ingest'));
+    assert.deepEqual(props(t, 'AWS::APS::Workspace')[0].Alias, join('obs-', ref, '-metrics'));
+    assert.deepEqual(props(t, 'Custom::PrometheusDataSource')[0].DataSourceName, join(ref, '_prometheus'));
+    assert.deepEqual(props(t, 'AWS::OpenSearchService::Domain')[0].DomainName, join('obs-', ref));
+  });
+
+  it('names the serverless collection obs-<name>', () => {
+    const { template: t } = synth('serverless');
+    assert.deepEqual(props(t, 'AWS::OpenSearchServerless::Collection')[0].Name, join('obs-', ref));
+  });
+
+  it('ends the application name with part of the stack ID, so a retry after a failed create gets a new name', () => {
+    const { template: t } = synth('managed');
+    const name = props(t, 'AWS::OpenSearchService::Application')[0].Name['Fn::Join'];
+    assert.deepEqual(name[1].slice(0, 3), ['obs', ref, 'app']);
+    assert.match(JSON.stringify(name[1][3]), /AWS::StackId/);
+  });
+});
+
+/** Every Fn::If on the condition named `condition`, anywhere in `value`. */
+function findIfs(value: unknown, condition: string): unknown[][] {
+  if (Array.isArray(value)) return value.flatMap((v) => findIfs(v, condition));
+  if (value && typeof value === 'object') {
+    const ifArgs = (value as any)['Fn::If'];
+    const own = Array.isArray(ifArgs) && ifArgs[0] === condition ? [ifArgs] : [];
+    return [...own, ...Object.values(value).flatMap((v) => findIfs(v, condition))];
+  }
+  return [];
+}
+
+describe('conditions', () => {
+  it('creates the pipeline role only when the stack is named ObsStack-<StackDisplayName>', () => {
+    const { template: t } = synth('managed');
+    assert.deepEqual(t.Conditions.StackNameOk['Fn::Equals'][0], { Ref: 'AWS::StackName' });
+    const pipeline = Object.values<any>(t.Resources).find((r) => r.Type === 'AWS::OSIS::Pipeline');
+    const roleId = pipeline.Properties.PipelineRoleArn['Fn::GetAtt'][0];
+    assert.equal(t.Resources[roleId].Condition, 'StackNameOk');
+  });
+
+  for (const type of ['managed', 'serverless'] as const) {
+    it(`leaves an empty AdminRoleArns out of the role lists (${type})`, () => {
+      const { template: t } = synth(type);
+      const lists = Object.values<any>(t.Resources).flatMap((r) => {
+        const p = r.Properties ?? {};
+        if (r.Type === 'Custom::FgacMapping' && r.Properties.FgacRoles === undefined) return [p.RoleArns];
+        if (r.Type === 'AWS::OpenSearchService::Application') return [p.AppConfigs[0].Value];
+        if (r.Type === 'AWS::OpenSearchServerless::AccessPolicy' && JSON.stringify(p.Policy).includes('AdminRoleArns')) return [p.Policy];
+        return [];
+      });
+      assert.equal(lists.length, 2);
+      for (const value of lists) {
+        const ifs = findIfs(value, 'HasAdminRoleArns');
+        assert.equal(ifs.length, 1, `not conditional on HasAdminRoleArns: ${JSON.stringify(value).slice(0, 120)}`);
+        const [, withList, withoutList] = ifs[0];
+        assert.ok(JSON.stringify(withList).includes('"Ref":"AdminRoleArns"'));
+        assert.ok(!JSON.stringify(withoutList).includes('AdminRoleArns'));
+      }
+      assert.deepEqual(t.Conditions.HasAdminRoleArns['Fn::Not'][0]['Fn::Equals'][1], '');
+    });
+  }
 });
