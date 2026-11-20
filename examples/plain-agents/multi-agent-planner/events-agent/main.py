@@ -243,7 +243,7 @@ async def get_events(request: EventsRequest):
             tool_definitions=TOOL_DEFINITIONS,
             input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Find events in {request.destination}"}]}],
         )
-        logger.info("Looking up events in %s", request.destination, extra={"destination": request.destination})
+        logger.info("Looking up events in %s", request.destination, extra={"travel.destination": request.destination})
 
         destination = request.destination.lower()
         date = request.date or datetime.now().strftime("%Y-%m-%d")
@@ -321,7 +321,7 @@ async def get_events(request: EventsRequest):
                 span.set_attribute("fault.wrong_city", wrong)
                 # A bad answer: the events are for another city
                 logger.warning("Returning events for %s instead of %s", wrong, request.destination,
-                               extra={"fault.wrong_city": wrong, "destination": request.destination})
+                               extra={"fault.wrong_city": wrong, "travel.destination": request.destination})
                 events_data = SAMPLE_EVENTS.get(wrong, SAMPLE_EVENTS["paris"])
                 selected = random.sample(events_data, min(len(events_data), 2))
                 events = [Event(name=e["name"], type=e["type"], venue=e["venue"], date=date) for e in selected]

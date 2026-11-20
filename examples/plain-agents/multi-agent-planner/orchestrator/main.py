@@ -362,7 +362,7 @@ async def plan_trip(request: PlanRequest):
         )
         logger.info(
             "Planning trip to %s", request.destination,
-            extra={"gen_ai.conversation.id": session_id, "destination": request.destination, "origin": request.origin or "", **user_attrs},
+            extra={"gen_ai.conversation.id": session_id, "travel.destination": request.destination, "travel.origin": request.origin or "", **user_attrs},
         )
 
         fault = request.fault
