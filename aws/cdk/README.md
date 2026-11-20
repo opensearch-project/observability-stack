@@ -174,13 +174,23 @@ Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running t
 
 The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
 
-The instance runs in a private subnet of its own VPC, with outbound access through a NAT gateway. It has no public IP; connect with Session Manager. The NAT gateway is billed hourly and per GB while the demo runs.
+The instance runs in a private subnet of its own VPC, with outbound access through a NAT gateway. It has no public IP; connect with Session Manager. The NAT gateway is billed hourly and per GB while the demo runs. This works with VPC Block Public Access in ingress-only mode; bidirectional mode also blocks NAT gateway traffic unless the VPC has an exclusion.
 
-To run the instance in an existing VPC instead, pass its ID. The stack then creates no VPC or NAT gateway, and puts the instance in one of the VPC's private subnets that route through a NAT gateway (synth fails if there is none). The instance needs outbound access to Session Manager, GitHub, Docker Hub and the OSIS endpoint.
+The VPC uses the Region's first Availability Zone. If that zone doesn't offer `t3.xlarge`, the instance fails to launch and the deploy rolls back; pick another zone:
 
 ```bash
-cdk deploy --all -c demoVpcId=vpc-0123456789abcdef0
+cdk deploy --all -c demoAz=us-east-1b
 ```
+
+To run the instance in an existing VPC, pass its ID, and preferably the subnet. The stack then creates no VPC or NAT gateway. The instance needs outbound access to Session Manager, GitHub, Docker Hub and the OSIS endpoint, for example through a NAT gateway.
+
+```bash
+cdk deploy --all -c demoVpcId=vpc-0123456789abcdef0 -c demoSubnetId=subnet-0123456789abcdef0
+```
+
+Without `demoSubnetId`, the instance goes in a subnet the VPC lookup counts as private: one that routes to a NAT gateway or a transit gateway, or is tagged `aws-cdk:subnet-type=Private`. A transit gateway route doesn't guarantee internet access, so pass the subnet when the VPC has one. Synth fails if there's no such subnet.
+
+The lookup is cached in `cdk.context.json`. After changing the VPC (for example adding a NAT gateway), run `cdk context --reset <key>` with the `vpc-provider:...` key that `cdk context` lists, or delete `cdk.context.json`.
 
 ## Useful Commands
 

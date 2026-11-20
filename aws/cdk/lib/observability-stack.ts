@@ -7,7 +7,7 @@ import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 import { IngestionPipeline, EVALUATION_INDEX, EVALUATION_TEMPLATE_JSON, evaluationPolicyJson } from './ingestion-pipeline';
 import { OpenSearchAppConstruct } from './opensearch-app';
-import { DemoWorkload } from './demo-workload';
+import { DemoNetwork, DemoWorkload } from './demo-workload';
 import { InfraStack } from './infra-stack';
 
 export interface ObservabilityStackProps extends cdk.StackProps {
@@ -15,6 +15,8 @@ export interface ObservabilityStackProps extends cdk.StackProps {
   minOcu?: number;
   maxOcu?: number;
   enableDemo?: boolean;
+  /** Where the demo instance runs; see DemoNetwork. */
+  demoNetwork?: DemoNetwork;
   /** IAM role ARNs mapped to all_access and security_manager and made OpenSearch UI admins, e.g. the roles people use to open Dashboards. */
   adminRoleArns?: string[];
   /** Days before evaluation result indices are deleted on a managed domain (default 7; 0 keeps them). */
@@ -128,7 +130,7 @@ export class ObservabilityStack extends cdk.Stack {
     if (props.enableDemo ?? false) {
       const demo = new DemoWorkload(this, 'DemoWorkload', {
         pipeline,
-        vpcId: this.node.tryGetContext('demoVpcId'),
+        network: props.demoNetwork,
         opensearch: {
           serverless: isServerless,
           // Collection endpoints include the scheme; domain endpoints do not.
