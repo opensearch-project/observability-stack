@@ -21,6 +21,8 @@ export interface ObservabilityStackProps extends cdk.StackProps, InfraStackProps
   adminRoleArns?: string[];
   /** Days before evaluation result indices are deleted on a managed domain (default 7; 0 keeps them). */
   evaluationRetentionDays?: number;
+  /** Days serverless log, trace and service map indices keep data (default 30). */
+  logRetentionDays?: number;
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -41,6 +43,7 @@ export class ObservabilityStack extends cdk.Stack {
       aossMinOcu: props.aossMinOcu ?? 0,
       aossMaxOcu: props.aossMaxOcu ?? 16,
       metricsRetentionDays: props.metricsRetentionDays ?? 150,
+      logRetentionDays: props.logRetentionDays ?? 30,
     });
     const displayName = params.displayName;
 
@@ -159,6 +162,30 @@ export class ObservabilityStack extends cdk.Stack {
       pipeline.node.addDependency(evalIndex);
       // Runs as the FGAC admin role, whose es:ESHttp* policy is in the infra construct.
       evalIndex.node.addDependency(infra);
+    }
+
+    // Serverless collections have no ISM: retention is the index.data.retention setting on each index the pipeline creates.
+    if (isServerless && infra.retentionRole && params.logRetentionDays !== undefined) {
+      const retentionFn = new NodejsFunction(this, 'IndexRetentionFn', {
+        logGroup: functionLogGroup(this, 'IndexRetentionFn'),
+        runtime: Runtime.NODEJS_22_X,
+        handler: 'cfnHandler',
+        entry: path.join(__dirname, '..', 'custom-resources', 'index-retention', 'index.ts'),
+        timeout: cdk.Duration.minutes(10),
+        role: infra.retentionRole,
+        bundling: { externalModules: ['@aws-sdk/credential-provider-node'], minify: true },
+      });
+      const retention = new cdk.CustomResource(this, 'IndexRetention', {
+        serviceToken: retentionFn.functionArn,
+        resourceType: 'Custom::IndexRetention',
+        properties: {
+          CollectionEndpoint: infra.domainEndpoint,
+          Region: this.region,
+          IndexNames: ['logs-otel-v1', 'otel-v1-apm-span', 'otel-v2-apm-service-map'],
+          RetentionDays: cdk.Token.asString(params.logRetentionDays),
+        },
+      });
+      retention.node.addDependency(pipeline, infra);
     }
 
     // OpenSearch Application + UI init

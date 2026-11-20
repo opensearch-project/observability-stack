@@ -40,6 +40,7 @@ new ObservabilityStack(app, `ObsStack-${stackName}`, {
   minOcu: optionalNumber('minOcu'),
   maxOcu: optionalNumber('maxOcu'),
   metricsRetentionDays: optionalNumber('metricsRetentionDays'),
+  logRetentionDays: optionalNumber('logRetentionDays'),
   enableDemo,
   adminRoleArns,
   // -c evaluationRetentionDays=<days>: evaluation indices are deleted after this many days (default 7, 0 keeps them)

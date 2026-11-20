@@ -25,7 +25,7 @@ const TIMEOUT_MARGIN_MS = 10_000;
  * Wraps a handler so CloudFormation can invoke the function directly (ServiceToken is the function ARN)
  * and gets its response on the pre-signed ResponseURL. Templates can then inline the bundle as ZipFile.
  */
-export function withCfnResponse<E>(fn: (event: E) => Promise<HandlerResult | void>) {
+export function withCfnResponse<E>(fn: (event: E, context: LambdaContext) => Promise<HandlerResult | void>) {
   return async (event: E & CfnEvent, context: LambdaContext): Promise<void> => {
     let status: 'SUCCESS' | 'FAILED' = 'SUCCESS';
     let reason = `See CloudWatch log stream ${context.logStreamName}`;
@@ -36,7 +36,7 @@ export function withCfnResponse<E>(fn: (event: E) => Promise<HandlerResult | voi
         timer = setTimeout(() => reject(new Error('Timed out before the function finished')),
           Math.max(context.getRemainingTimeInMillis() - TIMEOUT_MARGIN_MS, 1000));
       });
-      result = await Promise.race([fn(event), timeout]);
+      result = await Promise.race([fn(event, context), timeout]);
     } catch (e) {
       console.error(e);
       status = 'FAILED';

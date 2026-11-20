@@ -54,6 +54,8 @@ for (const [opensearchType, backend, storageType, outputs] of [
       }
       if (opensearchType === 'managed') {
         for (const type of ['Custom::FgacMapping', 'Custom::EvaluationIndex']) assert.ok(t.has(type), `missing ${type}`);
+      } else {
+        assert.ok(t.has('Custom::IndexRetention'), 'missing Custom::IndexRetention');
       }
     });
 
@@ -69,7 +71,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
     it('has the parameters the console prefills, by name', () => {
       const expected = opensearchType === 'managed'
         ? ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'DomainInstanceType', 'DomainInstanceCount', 'DomainVolumeGB', 'MinOCU', 'MaxOCU', 'MetricsRetentionDays', 'LatestAl2023Ami']
-        : ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'MinOCU', 'MaxOCU', 'CollectionMinOCU', 'CollectionMaxOCU', 'MetricsRetentionDays', 'LatestAl2023Ami'];
+        : ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'MinOCU', 'MaxOCU', 'CollectionMinOCU', 'CollectionMaxOCU', 'MetricsRetentionDays', 'LogRetentionDays', 'LatestAl2023Ami'];
       assert.deepEqual(Object.keys(template.Parameters).filter((k) => k !== 'BootstrapVersion'), expected);
       assert.equal(template.Parameters.DeployDemoWorkload.Default, 'true');
       assert.equal(template.Parameters.StackDisplayName.Default, 'contract');
@@ -203,4 +205,24 @@ describe('conditions', () => {
       assert.deepEqual(t.Conditions.HasAdminRoleArns['Fn::Not'][0]['Fn::Equals'][1], '');
     });
   }
+});
+
+describe('serverless index retention', () => {
+  const { template: t } = synth('serverless');
+  const [id, r] = Object.entries<any>(t.Resources).find(([, x]) => x.Type === 'Custom::IndexRetention')!;
+
+  it('sets LogRetentionDays on the indices the pipeline writes, after the pipeline exists', () => {
+    assert.deepEqual(r.Properties.IndexNames, ['logs-otel-v1', 'otel-v1-apm-span', 'otel-v2-apm-service-map']);
+    assert.deepEqual(r.Properties.RetentionDays, { Ref: 'LogRetentionDays' });
+    const pipelineId = Object.keys(t.Resources).find((k) => t.Resources[k].Type === 'AWS::OSIS::Pipeline');
+    assert.ok(r.DependsOn.includes(pipelineId), `${id} does not wait for the pipeline`);
+  });
+
+  it('runs as a role the collection data access policy admits', () => {
+    const fn = t.Resources[r.Properties.ServiceToken['Fn::GetAtt'][0]];
+    const roleId = fn.Properties.Role['Fn::GetAtt'][0];
+    const policy = Object.values<any>(t.Resources).find((x) => x.Type === 'AWS::OpenSearchServerless::AccessPolicy' && x.Properties.Type === 'data'
+      && !JSON.stringify(x.Properties.Policy).includes('demo-read'));
+    assert.ok(JSON.stringify(policy.Properties.Policy).includes(`"Fn::GetAtt":["${roleId}","Arn"]`));
+  });
 });

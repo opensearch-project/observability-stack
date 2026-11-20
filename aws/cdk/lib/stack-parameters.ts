@@ -14,6 +14,7 @@ export interface StackParameterDefaults {
   aossMinOcu: number;
   aossMaxOcu: number;
   metricsRetentionDays: number;
+  logRetentionDays: number;
 }
 
 /**
@@ -35,6 +36,8 @@ export class StackParameters extends Construct {
   public readonly osVolumeSize?: number;
   public readonly aossMinOcu?: number;
   public readonly aossMaxOcu?: number;
+  /** Days serverless log, trace and service map indices keep data (serverless only). */
+  public readonly logRetentionDays?: number;
 
   constructor(scope: Construct, id: string, serverless: boolean, d: StackParameterDefaults) {
     super(scope, id);
@@ -91,6 +94,12 @@ export class StackParameters extends Construct {
     this.metricsRetentionDays = param('MetricsRetentionDays', {
       type: 'Number', default: d.metricsRetentionDays, minValue: 1, description: 'Retention for metrics in the Prometheus workspace.',
     }).valueAsNumber;
+    if (serverless) {
+      this.logRetentionDays = param('LogRetentionDays', {
+        type: 'Number', default: d.logRetentionDays, minValue: 1, maxValue: 3650,
+        description: 'Days to keep log, trace and service-map data (index.data.retention on each index).',
+      }).valueAsNumber;
+    }
     this.amiId = param('LatestAl2023Ami', {
       type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>',
       default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64',

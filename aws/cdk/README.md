@@ -42,6 +42,7 @@ Every choice is a CloudFormation parameter of the stack, with the same name as i
 | `minOcu` | `MinOCU` | `1` | both |
 | `maxOcu` | `MaxOCU` | `4` | both |
 | `metricsRetentionDays` | `MetricsRetentionDays` | `150` | both |
+| `logRetentionDays` | `LogRetentionDays` | `30` | serverless (sets `index.data.retention` on the log, span and service map indices) |
 | | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | both |
 
 `cdk deploy --parameters <Name>=<value>` overrides a parameter for one deploy.

@@ -35,6 +35,8 @@ export class InfraStack extends Construct {
   public readonly dqsDataSourceArn: string;
   public readonly dqsRoleArn: string;
   public readonly uiInitRoleArn: string;
+  /** Runs the index retention function on serverless; listed in the collection's data access policy. */
+  public readonly retentionRole?: iam.Role;
 
   public readonly pipelineRole: iam.Role;
 
@@ -65,10 +67,15 @@ export class InfraStack extends Construct {
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {
+      this.retentionRole = new iam.Role(this, 'IndexRetentionRole', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
+      });
+      this.retentionRole.addToPolicy(denyCreateLogGroup());
       const collectionName = `obs-${props.displayName}`;
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
-        dataAccessRoleArns: [uiInitRole.roleArn],
+        dataAccessRoleArns: [uiInitRole.roleArn, this.retentionRole.roleArn],
         dataAccessRoleList: props.adminRoleList,
         dataAccessRoleListNotEmpty: props.adminRoleListNotEmpty,
         minOcu: props.aossMinOcu,
@@ -77,6 +84,7 @@ export class InfraStack extends Construct {
 
       this.domainEndpoint = serverless.collectionEndpoint;
       this.domainArn = serverless.collectionArn;
+      this.retentionRole.addToPolicy(new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [serverless.collectionArn] }));
       this.collectionName = collectionName;
       this.fgacAdminRoleArn = '';
       this.pipelineRole = serverless.pipelineRole;
