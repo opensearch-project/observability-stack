@@ -1,6 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
@@ -54,20 +53,20 @@ export class ObservabilityStack extends cdk.Stack {
 
     // FGAC role mapping (managed domains only — serverless uses IAM)
     let fgacMapping: cdk.CustomResource | undefined;
-    let fgacProvider: cr.Provider | undefined;
+    let fgacServiceToken: string | undefined;
     if (!isServerless) {
       const fgacFn = new NodejsFunction(this, 'FgacMappingFn', {
         runtime: Runtime.NODEJS_22_X,
-        handler: 'handler',
+        handler: 'cfnHandler',
         entry: path.join(__dirname, '..', 'custom-resources', 'fgac-mapping', 'index.ts'),
         timeout: cdk.Duration.minutes(5),
         role: iam.Role.fromRoleArn(this, 'FgacAdminRole', infra.fgacAdminRoleArn, { mutable: false }),
-        bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
+        bundling: { externalModules: ['@aws-sdk/credential-provider-node'], minify: true },
       });
 
-      fgacProvider = new cr.Provider(this, 'FgacProvider', { onEventHandler: fgacFn });
+      fgacServiceToken = fgacFn.functionArn;
       fgacMapping = new cdk.CustomResource(this, 'FgacMapping', {
-        serviceToken: fgacProvider.serviceToken,
+        serviceToken: fgacFn.functionArn,
         resourceType: 'Custom::FgacMapping',
         properties: {
           OpenSearchEndpoint: infra.domainEndpoint,
@@ -83,15 +82,14 @@ export class ObservabilityStack extends cdk.Stack {
     if (!isServerless) {
       const evalIndexFn = new NodejsFunction(this, 'EvalIndexFn', {
         runtime: Runtime.NODEJS_22_X,
-        handler: 'handler',
+        handler: 'cfnHandler',
         entry: path.join(__dirname, '..', 'custom-resources', 'eval-index', 'index.ts'),
         timeout: cdk.Duration.minutes(10),
         role: iam.Role.fromRoleArn(this, 'EvalIndexAdminRole', infra.fgacAdminRoleArn, { mutable: false }),
-        bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
+        bundling: { externalModules: ['@aws-sdk/credential-provider-node'], minify: true },
       });
-      const evalIndexProvider = new cr.Provider(this, 'EvalIndexProvider', { onEventHandler: evalIndexFn });
       evalIndex = new cdk.CustomResource(this, 'EvalIndex', {
-        serviceToken: evalIndexProvider.serviceToken,
+        serviceToken: evalIndexFn.functionArn,
         resourceType: 'Custom::EvaluationIndex',
         properties: {
           OpenSearchEndpoint: infra.domainEndpoint,
@@ -168,9 +166,9 @@ export class ObservabilityStack extends cdk.Stack {
         },
       });
       // The eval canary reads agent spans. Managed domains map the demo role to readall.
-      if (fgacProvider) {
+      if (fgacServiceToken) {
         const demoFgac = new cdk.CustomResource(this, 'DemoFgacMapping', {
-          serviceToken: fgacProvider.serviceToken,
+          serviceToken: fgacServiceToken,
           resourceType: 'Custom::FgacMapping',
           properties: {
             OpenSearchEndpoint: infra.domainEndpoint,

@@ -1,7 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as aps from 'aws-cdk-lib/aws-aps';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
@@ -77,10 +76,10 @@ export class PrometheusConstruct extends Construct {
 
     const dqsFn = new NodejsFunction(this, 'DqsFn', {
       runtime: Runtime.NODEJS_22_X,
-      handler: 'handler',
+      handler: 'cfnHandler',
       entry: path.join(__dirname, '..', 'custom-resources', 'dqs-datasource', 'index.ts'),
       timeout: cdk.Duration.minutes(5),
-      bundling: { externalModules: ['@aws-sdk/*'] },
+      bundling: { externalModules: ['@aws-sdk/*'], minify: true },
     });
     dqsFn.addToRolePolicy(new iam.PolicyStatement({
       actions: [
@@ -94,12 +93,8 @@ export class PrometheusConstruct extends Construct {
       resources: [this.dqsRole.roleArn],
     }));
 
-    const dqsProvider = new cr.Provider(this, 'DqsProvider', {
-      onEventHandler: dqsFn,
-    });
-
     const dataSource = new cdk.CustomResource(this, 'DqsDataSource', {
-      serviceToken: dqsProvider.serviceToken,
+      serviceToken: dqsFn.functionArn,
       resourceType: 'Custom::PrometheusDataSource',
       properties: {
         DataSourceName: dqsDataSourceName,

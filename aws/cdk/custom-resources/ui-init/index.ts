@@ -11,6 +11,7 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
+import { withCfnResponse } from '../shared/cfn-response';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
@@ -408,3 +409,6 @@ ${archImg}
     references: [{ name: 'panel_0', type: 'visualization', id: 'overview-markdown' }],
   }, region);
 }
+
+/** Entry point when CloudFormation invokes the function directly. */
+export const cfnHandler = withCfnResponse(handler);

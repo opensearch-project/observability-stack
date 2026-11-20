@@ -1,5 +1,4 @@
 import * as cdk from 'aws-cdk-lib';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as path from 'path';
@@ -57,17 +56,16 @@ export class OpenSearchAppConstruct extends Construct {
     // UI init Lambda
     const uiInitFn = new NodejsFunction(this, 'UiInitFn', {
       runtime: Runtime.NODEJS_22_X,
-      handler: 'handler',
+      handler: 'cfnHandler',
       entry: path.join(__dirname, '..', 'custom-resources', 'ui-init', 'index.ts'),
       timeout: cdk.Duration.minutes(10),
       memorySize: 256,
       role: props.uiInitRole,
-      bundling: { externalModules: ['@aws-sdk/credential-provider-node'] },
+      bundling: { externalModules: ['@aws-sdk/credential-provider-node'], minify: true },
     });
-    const uiInitProvider = new cr.Provider(this, 'UiInitProvider', { onEventHandler: uiInitFn });
 
     const uiInit = new cdk.CustomResource(this, 'UiInit', {
-      serviceToken: uiInitProvider.serviceToken,
+      serviceToken: uiInitFn.functionArn,
       resourceType: 'Custom::WorkspaceSeeder',
       properties: {
         AppEndpoint: this.appEndpoint,
