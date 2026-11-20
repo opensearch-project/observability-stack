@@ -149,24 +149,16 @@ async def handle_mcp(request: Request, body: ToolCallRequest):
             "network.protocol.name": "http",
         },
     ) as mcp_span:
-        with tracer.start_as_current_span(
-            f"tool_call {tool_name}",
-            kind=SpanKind.INTERNAL,
-            attributes={
-                "gen_ai.operation.name": "execute_tool",
-                "gen_ai.tool.name": tool_name,
-                "gen_ai.tool.call.id": f"call_{uuid4().hex[:8]}",
-            },
-        ) as tool_span:
-            try:
-                logger.info("tools/call %s", tool_name, extra={"gen_ai.tool.name": tool_name, "mcp.session.id": session_id})
-                result = await execute_tool(tool_name, arguments, tool_span)
-                return {"jsonrpc": "2.0", "id": request_id, "result": result}
-            except Exception as e:
-                logger.error("Tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
-                tool_span.set_status(Status(StatusCode.ERROR, str(e)))
-                mcp_span.set_status(Status(StatusCode.ERROR, str(e)))
-                return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(e)}}
+        # One span per tool call: the server span carries the tool attributes and result too
+        mcp_span.set_attribute("gen_ai.tool.call.id", f"call_{uuid4().hex[:8]}")
+        try:
+            logger.info("tools/call %s", tool_name, extra={"gen_ai.tool.name": tool_name, "mcp.session.id": session_id})
+            result = await execute_tool(tool_name, arguments, mcp_span)
+            return {"jsonrpc": "2.0", "id": request_id, "result": result}
+        except Exception as e:
+            logger.error("Tool %s failed: %s", tool_name, e, extra={"gen_ai.tool.name": tool_name, "error.type": type(e).__name__})
+            mcp_span.set_status(Status(StatusCode.ERROR, str(e)))
+            return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32000, "message": str(e)}}
 
 
 async def geocode_city(city: str) -> tuple[float, float, str]:
@@ -260,7 +252,7 @@ async def fetch_attractions(destination: str) -> dict:
                     "action": "query",
                     "list": "search",
                     "srsearch": f"{destination} tourist attractions landmarks",
-                    "srlimit": 5,
+                    "srlimit": 15,
                     "format": "json",
                 },
                 headers={"User-Agent": "ObservabilityStackDemo/1.0"},
@@ -271,6 +263,12 @@ async def fetch_attractions(destination: str) -> dict:
                 results = search_data.get("query", {}).get("search", [])
                 for r in results:
                     title = r.get("title", "")
+                    # Search also returns list and overview articles, and the city itself
+                    if (title.lower() == destination.lower() or "(disambiguation)" in title
+                            or title.startswith(NOT_ATTRACTION_PREFIXES)):
+                        continue
+                    if len(events) == 5:
+                        break
                     snippet = r.get("snippet", "").replace('<span class="searchmatch">', "").replace("</span>", "")
                     events.append({
                         "name": title,
@@ -287,22 +285,35 @@ async def fetch_attractions(destination: str) -> dict:
             }
 
 
+NOT_ATTRACTION_PREFIXES = ("List of", "Lists of", "Tourism in", "Outline of", "History of", "Culture of",
+                           "Geography of", "Economy of", "Transport in", "Timeline of")
+US_CITIES = {"portland", "seattle", "san francisco", "new york", "chicago", "denver", "austin", "boston",
+             "los angeles", "atlanta", "dallas", "miami"}
+NEARBY = {frozenset(p) for p in (("seattle", "vancouver"), ("seattle", "toronto"), ("new york", "toronto"))}
+
+
 async def fetch_flights(origin: str, destination: str, date: str = None) -> dict:
-    """Generate realistic mock flight data (no free flight API exists)."""
-    num_flights = random.randint(2, 4)
+    """Generate realistic mock flight data (no free flight API exists): domestic and
+    international routes get matching durations and fares."""
+    o, d = (origin or "").lower(), (destination or "").lower()
+    domestic = (o in US_CITIES and d in US_CITIES) or frozenset((o, d)) in NEARBY
+    duration_range, price_range = ((70, 360), (110, 480)) if domestic else ((480, 1080), (520, 1650))
+    # Same route, same fares: evaluation verdicts that depend on price stay stable between runs
+    rng = random.Random(f"{o}|{d}")
+    num_flights = rng.randint(2, 4)
     flights = []
     for i in range(num_flights):
-        dep_hour = random.randint(6, 20)
-        duration_min = random.randint(45, 320)
+        dep_hour = rng.randint(6, 20)
+        duration_min = rng.randint(*duration_range)
         arr_hour = dep_hour + duration_min // 60
-        price = random.randint(89, 650)
+        price = rng.randint(*price_range)
         flights.append({
-            "airline": random.choice(AIRLINES),
-            "departure": f"{dep_hour:02d}:{random.randint(0,59):02d}",
-            "arrival": f"{arr_hour % 24:02d}:{random.randint(0,59):02d}",
+            "airline": rng.choice(AIRLINES),
+            "departure": f"{dep_hour:02d}:{rng.randint(0,59):02d}",
+            "arrival": f"{arr_hour % 24:02d}:{rng.randint(0,59):02d}",
             "duration_minutes": duration_min,
             "price_usd": price,
-            "stops": random.choice([0, 0, 0, 1, 1, 2]),
+            "stops": rng.choice([0, 0, 0, 1, 1, 2]),
         })
     flights.sort(key=lambda f: f["price_usd"])
 
@@ -369,7 +380,9 @@ def _fallback_attractions(destination: str) -> dict:
 
 def _fallback_currency(amount: float, from_currency: str, to_currency: str) -> dict:
     """Fallback with approximate rates when Frankfurter is unreachable."""
-    approx_rates = {"EUR": 0.92, "GBP": 0.79, "JPY": 155.0, "CAD": 1.36, "AUD": 1.53, "INR": 83.5}
+    approx_rates = {"EUR": 0.92, "GBP": 0.79, "JPY": 155.0, "CAD": 1.36, "AUD": 1.53, "INR": 83.5,
+                    "THB": 36.0, "MXN": 17.2, "ISK": 138.0, "ZAR": 18.3, "SGD": 1.35, "KRW": 1380.0,
+                    "TRY": 34.0, "ARS": 950.0, "AED": 3.67, "CZK": 23.0, "DKK": 6.9}
     rate = approx_rates.get(to_currency.upper(), 1.0)
     if from_currency.upper() != "USD":
         from_rate = approx_rates.get(from_currency.upper(), 1.0)
@@ -436,7 +449,9 @@ async def execute_tool(name: str, args: dict, span) -> dict:
         raise ValueError(f"Unknown tool: {name}")
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn

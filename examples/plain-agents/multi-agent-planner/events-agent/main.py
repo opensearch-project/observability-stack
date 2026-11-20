@@ -68,6 +68,7 @@ _bedrock_client = get_bedrock_client()
 
 AGENT_ID = "events-agent-001"
 AGENT_NAME = "Events Agent"
+AGENT_VERSION = os.getenv("AGENT_VERSION", "1.2.0")
 
 # Tool definitions for this agent
 TOOL_DEFINITIONS = [
@@ -238,6 +239,7 @@ async def get_events(request: EventsRequest):
             provider=provider,
             agent_id=AGENT_ID,
             session_id=request.session_id,
+            **{"gen_ai.agent.version": AGENT_VERSION},
             tool_definitions=TOOL_DEFINITIONS,
             input_messages=[{"role": "user", "parts": [{"type": "text", "content": f"Find events in {request.destination}"}]}],
         )
@@ -382,7 +384,9 @@ async def get_events(request: EventsRequest):
     return EventsResponse(destination=request.destination, events=events, agent_id=AGENT_ID)
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn

@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import random
+import re
 import threading
 import time
 from typing import Optional
@@ -46,7 +47,17 @@ from bedrock_client import (
 
 AGENT_ID = "travel-planner-001"
 AGENT_NAME = "Travel Planner"
-AGENT_VERSION = os.getenv("AGENT_VERSION", "1.1.0")
+AGENT_VERSION = os.getenv("AGENT_VERSION", "1.3.0")
+
+
+def _version_tuple(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3]) or (0,)
+
+
+# 1.4.0 is the candidate release: it calls the weather and events agents in parallel and adds a
+# trip cost estimate when the user gives a budget. It also has a regression a release review
+# should catch: without travel dates it skips the weather forecast.
+CANDIDATE_BEHAVIOR = _version_tuple(AGENT_VERSION) >= (1, 4)
 
 WEATHER_AGENT_URL = os.getenv("WEATHER_AGENT_URL", "http://weather-agent:8000")
 EVENTS_AGENT_URL = os.getenv("EVENTS_AGENT_URL", "http://events-agent:8002")
@@ -145,7 +156,44 @@ DESTINATION_CURRENCIES = {
     "sydney": "AUD", "mumbai": "INR", "toronto": "CAD", "seattle": "USD",
     "new york": "USD", "portland": "USD", "vancouver": "CAD", "rome": "EUR",
     "barcelona": "EUR", "amsterdam": "EUR", "bangkok": "THB",
+    "lisbon": "EUR", "kyoto": "JPY", "mexico city": "MXN", "reykjavik": "ISK",
+    "cape town": "ZAR", "singapore": "SGD", "seoul": "KRW", "istanbul": "TRY",
+    "buenos aires": "ARS", "dubai": "AED", "prague": "CZK", "copenhagen": "DKK",
 }
+
+# Typical daily spend per traveler (lodging, food, local transport), USD. Used by the 1.4.0
+# trip cost estimate.
+DAILY_COST_USD = {
+    "paris": 260, "london": 290, "tokyo": 230, "berlin": 190, "sydney": 240, "mumbai": 90,
+    "toronto": 210, "seattle": 250, "new york": 330, "portland": 200, "vancouver": 220,
+    "rome": 210, "barcelona": 190, "amsterdam": 240, "bangkok": 90, "lisbon": 160,
+    "kyoto": 200, "mexico city": 110, "reykjavik": 300, "cape town": 130, "singapore": 230,
+    "seoul": 170, "istanbul": 120, "buenos aires": 110, "dubai": 280, "prague": 140,
+    "copenhagen": 280,
+}
+
+MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august",
+          "september", "october", "november", "december"]
+
+
+def parse_trip(message: str) -> dict:
+    """Trip length, travel month and budget the user gave in their request, if any."""
+    text = (message or "").lower()
+    days = re.search(r"(\d+)[- ]?(?:day|days)\b", text)
+    nights = re.search(r"(\d+)[- ]?nights?\b", text)
+    weekend = "weekend" in text
+    week = re.search(r"\b(?:a|one) week\b", text)
+    month = next((m for m in MONTHS if re.search(rf"\b{m}\b", text)), None)
+    has_date = bool(month or re.search(r"\b\d{4}-\d{2}-\d{2}\b|next week|this weekend|tomorrow", text))
+    budget = re.search(r"(?:under|budget of|max(?:imum)?|less than|up to)?\s*\$\s?([\d,]+)", text)
+    n_days = (int(days.group(1)) if days else int(nights.group(1)) + 1 if nights
+              else 7 if week else 3 if weekend else None)
+    return {
+        "days": n_days,
+        "month": month.capitalize() if month else None,
+        "has_dates": has_date,
+        "budget_usd": int(budget.group(1).replace(",", "")) if budget else None,
+    }
 
 MCP_PROTOCOL_VERSION = "2025-06-18"
 
@@ -184,6 +232,8 @@ class PlanResponse(BaseModel):
     events: list = []
     flights: Optional[dict] = None
     currency: Optional[dict] = None
+    estimate: Optional[dict] = None
+    agent_version: str = AGENT_VERSION
     recommendation: str
     partial: bool = False
     errors: list = []
@@ -224,7 +274,7 @@ inner_app = FastAPI(title="Travel Planner", version="1.0.0", telemetry={"tracing
 
 @inner_app.get("/health")
 async def health():
-    return {"status": "healthy", "agent_id": AGENT_ID, "agent_name": AGENT_NAME}
+    return {"status": "healthy", "agent_id": AGENT_ID, "agent_name": AGENT_NAME, "agent_version": AGENT_VERSION}
 
 
 async def call_mcp_tool(tool_name: str, arguments: dict) -> dict:
@@ -346,10 +396,10 @@ async def plan_trip(request: PlanRequest):
                     planning_span.set_attribute("gen_ai.bedrock.fallback.reason", str(e)[:200])
                     logger.warning("Bedrock unavailable for planning, using the simulated model: %s", str(e)[:200])
                     enrich(model=model, provider=provider, input_tokens=random.randint(500, 2000), output_tokens=random.randint(100, 500), finish_reason="tool_calls")
-                    time.sleep(random.uniform(0.1, 0.3))
+                    await asyncio.sleep(random.uniform(0.8, 1.8))
             else:
                 enrich(model=model, provider=provider, input_tokens=random.randint(500, 2000), output_tokens=random.randint(100, 500), finish_reason="tool_calls")
-                time.sleep(random.uniform(0.1, 0.3))
+                await asyncio.sleep(random.uniform(0.8, 1.8))
 
         # Build sub-agent payloads with fault pass-through
         weather_payload = {"message": f"What's the weather in {request.destination}?", "conversation_id": session_id}
@@ -369,8 +419,13 @@ async def plan_trip(request: PlanRequest):
         else:
             timeout = 30.0
 
-        # Fan out to sub-agents (weather + events in parallel)
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        # 1.3.0 asks the weather agent, then the events agent. 1.4.0 asks both in parallel, but
+        # skips the forecast when the user gave no travel dates (the regression it ships with).
+        trip = parse_trip(user_message)
+        skip_weather = CANDIDATE_BEHAVIOR and not trip["has_dates"]
+
+        async def ask_weather(client):
+            nonlocal weather_data
             with observe("weather-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
                 try:
                     if fault and fault.orchestrator == "partial_failure" and random.random() < 0.5:
@@ -389,6 +444,8 @@ async def plan_trip(request: PlanRequest):
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
                     logger.error("weather-agent call failed, continuing without weather: %s", e, extra={"error.type": type(e).__name__})
 
+        async def ask_events(client):
+            nonlocal events_data
             with observe("events-agent", op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT) as agent_span:
                 try:
                     if fault and fault.orchestrator == "partial_failure" and random.random() < 0.5:
@@ -417,6 +474,15 @@ async def plan_trip(request: PlanRequest):
                     agent_span.set_status(Status(StatusCode.ERROR, str(e)))
                     logger.error("events-agent call failed, continuing without events: %s", e, extra={"error.type": type(e).__name__})
 
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if CANDIDATE_BEHAVIOR:
+                await asyncio.gather(ask_events(client), *([] if skip_weather else [ask_weather(client)]))
+            else:
+                await ask_weather(client)
+                await ask_events(client)
+        if skip_weather:
+            logger.info("No travel dates in the request, skipping the weather forecast")
+
         # Sequential MCP calls for flights and currency (produces deeper trace waterfall)
         origin = request.origin or "Portland"
         try:
@@ -442,9 +508,27 @@ async def plan_trip(request: PlanRequest):
             except Exception as e:
                 errors.append({"agent": "currency", "error": str(e)})
 
+        # 1.4.0: estimate the trip cost against the user's budget (a local tool)
+        estimate = None
+        if CANDIDATE_BEHAVIOR and trip["budget_usd"]:
+            with observe("estimate_trip_cost", op=Op.EXECUTE_TOOL):
+                days = trip["days"] or 4
+                flight = (flights_data or {}).get("flights") or [{}]
+                flight_usd = min((f.get("price_usd") or 0 for f in flight), default=0) or 650
+                daily = DAILY_COST_USD.get(dest_lower, 200)
+                total = int(flight_usd + days * daily)
+                estimate = {"days": days, "flight_usd": flight_usd, "daily_usd": daily,
+                            "total_usd": total, "budget_usd": trip["budget_usd"],
+                            "within_budget": total <= trip["budget_usd"]}
+                enrich(input_messages=[{"role": "tool_call", "parts": [{"type": "text", "content": json.dumps(
+                           {"destination": request.destination, "days": days, "budget_usd": trip["budget_usd"]})}]}],
+                       output_messages=[{"role": "tool_result", "parts": [{"type": "text", "content": json.dumps(estimate)}]}])
+                await asyncio.sleep(random.uniform(0.05, 0.2))
+
         # Final response "chat" span — summarize gathered data
         with observe("summarize", op=Op.CHAT) as summarize_span:
-            gathered = {"destination": request.destination, "weather": weather_data, "events": events_data, "flights": flights_data, "currency": currency_data}
+            gathered = {"destination": request.destination, "request": user_message, "weather": weather_data, "events": events_data,
+                        "flights": flights_data, "currency": currency_data, "cost_estimate": estimate}
             if _config_cache["use_real_llm"] and _bedrock_client:
                 try:
                     summary_messages = [{"role": "user", "content": [{"text": f"Summarize this trip data into a brief recommendation (2-3 sentences):\n{json.dumps(gathered, default=str)}"}]}]
@@ -469,11 +553,11 @@ async def plan_trip(request: PlanRequest):
                     logger.warning("Bedrock unavailable for the summary, using the template answer: %s", str(e)[:200])
                     recommendation = None
                     enrich(model=model, provider=provider, input_tokens=random.randint(200, 800), output_tokens=random.randint(50, 200), finish_reason="stop")
-                    time.sleep(random.uniform(0.05, 0.15))
+                    await asyncio.sleep(random.uniform(0.9, 2.2))
             else:
                 recommendation = None
                 enrich(model=model, provider=provider, input_tokens=random.randint(200, 800), output_tokens=random.randint(50, 200), finish_reason="stop")
-                time.sleep(random.uniform(0.05, 0.15))
+                await asyncio.sleep(random.uniform(0.9, 2.2))
 
         partial = len(errors) > 0
         if partial:
@@ -485,7 +569,8 @@ async def plan_trip(request: PlanRequest):
             span.set_status(Status(StatusCode.ERROR, f"Partial failure: {len(errors)} sub-agent(s) failed"))
 
         if not recommendation:
-            recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data, currency_data, partial)
+            recommendation = build_recommendation(request.destination, weather_data, events_data, flights_data,
+                                                  currency_data, partial, trip=trip, origin=origin, estimate=estimate)
 
         enrich(
             output_messages=[{"role": "assistant", "parts": [{"type": "text", "content": recommendation}]}],
@@ -507,6 +592,7 @@ async def plan_trip(request: PlanRequest):
         events=events_data,
         flights=flights_data,
         currency=currency_data,
+        estimate=estimate,
         recommendation=recommendation,
         partial=partial,
         errors=errors,
@@ -514,34 +600,44 @@ async def plan_trip(request: PlanRequest):
 
 
 def build_recommendation(destination: str, weather: Optional[dict], events: list,
-                         flights: Optional[dict], currency: Optional[dict], partial: bool) -> str:
-    parts = [f"Great choice! {destination} looks wonderful."]
+                         flights: Optional[dict], currency: Optional[dict], partial: bool,
+                         trip: Optional[dict] = None, origin: Optional[str] = None,
+                         estimate: Optional[dict] = None) -> str:
+    """The template answer used when no LLM is configured."""
+    trip = trip or {}
+    length = f"{trip['days']}-day " if trip.get("days") else ""
+    when = f" in {trip['month']}" if trip.get("month") else ""
+    parts = [f"Here is a {length}plan for {destination}{when}."]
 
     if weather and "response" in weather:
-        parts.append(weather["response"])
-    elif weather and "temperature" in str(weather):
-        parts.append(f"Current weather: expect conditions around there.")
+        parts.append(f"Weather: {weather['response']}")
     elif partial:
-        parts.append("Weather info temporarily unavailable.")
+        parts.append("The weather forecast is unavailable right now.")
 
     if events:
         event_names = [e["name"] if isinstance(e, dict) else str(e) for e in events[:3]]
-        parts.append(f"Don't miss: {', '.join(event_names)}.")
+        parts.append(f"Top picks: {', '.join(event_names)}.")
     elif partial:
-        parts.append("Attractions info temporarily unavailable.")
+        parts.append("Attraction suggestions are unavailable right now.")
 
-    if flights and "flights" in flights:
-        cheapest = flights["flights"][0] if flights["flights"] else None
-        if cheapest:
-            parts.append(f"Flights from ${cheapest['price_usd']} ({cheapest['airline']}).")
+    if flights and flights.get("flights"):
+        cheapest = min(flights["flights"], key=lambda f: f.get("price_usd") or 1e9)
+        parts.append(f"Flights from {origin or 'your city'} start at ${cheapest['price_usd']} ({cheapest['airline']}).")
+
+    if estimate:
+        verdict = "within" if estimate["within_budget"] else "over"
+        parts.append(f"Estimated cost: about ${estimate['total_usd']:,} for {estimate['days']} days, "
+                     f"{verdict} your ${estimate['budget_usd']:,} budget.")
 
     if currency:
-        parts.append(f"$100 USD ≈ {currency['converted']} {currency['to_currency']}.")
+        parts.append(f"$100 is about {currency['converted']} {currency['to_currency']}.")
 
     return " ".join(parts)
 
 
-app = OpenTelemetryMiddleware(inner_app)
+# One server span per request: the per-message "http receive" / "http send" spans add nothing
+# to a trace but sit between the agent spans in every view.
+app = OpenTelemetryMiddleware(inner_app, exclude_spans=["receive", "send"])
 
 if __name__ == "__main__":
     import uvicorn

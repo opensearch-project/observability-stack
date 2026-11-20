@@ -93,16 +93,13 @@ Each canary skips only the traces its own evaluators already graded (`find_evalu
 
 ### Agent eval canary (deterministic)
 
-[`docker-compose/agent-eval-canary`](https://github.com/opensearch-project/observability-stack/tree/main/docker-compose/agent-eval-canary) grades the example agents with code checks. No LLM, no AWS credentials, no cost.
+[`docker-compose/agent-eval-canary`](https://github.com/opensearch-project/observability-stack/tree/main/docker-compose/agent-eval-canary) grades the example agents with code checks. No LLM and no cost.
 
-- **Online, span level**, every `EVAL_CANARY_INTERVAL` seconds (120): `list_root_spans()` finds recent agent roots of the three agents. Each gets four results from the `trace_health_check` evaluator: `span_coverage`, `error_free`, `tool_call_success_rate` and `tool_diversity`.
-- **Online, session level**: once a travel planner session has been idle for `EVAL_CANARY_SESSION_IDLE_SECONDS` (90), it gets `session_success_rate` from `session_health_check`, with `score(conversation_id=...)` at level `session`.
-- **Offline test suite**, every `EVAL_CANARY_SUITE_INTERVAL_MINUTES` (30; `0` turns it off): `evaluate()` runs the `travel_planner_smoke` suite against the running planner, with a run name and a description. The cases `paris-ok` and `tokyo-ok` should pass. `london-weather-tool-error`, `berlin-wrong-city-events` and `sydney-events-rate-limited` inject faults and fail on purpose.
+The demo runs two releases of the Travel Planner: 1.3.0 (released) and 1.4.0 (a candidate serving about 20% of conversations). 1.4.0 calls its sub-agents in parallel and estimates the trip cost against the user's budget, but skips the weather forecast when the request has no travel dates. The evaluations show both.
 
-The suite shows two evaluation features:
-
-- **Scorer ownership.** Each `@scorer` declares its evaluator, type, pass rule and description. The `keyword_overlap` scorer returns a library-style `EvalScore` that names its own evaluator (`lib.keyword_overlap`) and rule, so the scorer's declaration does not apply to it.
-- **Result keys.** `keyword_overlap` shares the evaluation name `answer_relevance` with another scorer. Its local result key is `answer_relevance (lib.keyword_overlap)`, so neither result hides the other.
+- **Production checks**, every `EVAL_CANARY_INTERVAL` seconds (120): `list_root_spans()` finds recent agent traces of the three agents. Each gets results from the **Production checks** evaluator: Task completion and Stays on destination (Travel Planner), Tool call success, No repeated tool calls and Response time. Each result explains itself from the trace, for example "The plan for Berlin is missing: weather forecast."
+- **Conversation checks**: once a Travel Planner conversation has been idle for `EVAL_CANARY_SESSION_IDLE_SECONDS` (90), it gets Goal achieved and Turns answered fully, with `score(conversation_id=...)` at level `session`.
+- **Trip planning regression**, every `EVAL_CANARY_SUITE_INTERVAL_MINUTES` (30; `0` turns it off): `evaluate()` runs 24 trip requests (single city, budgets, no dates, families, unknown cities, sub-agent outages) against each release, as runs named "1.3.0 release" and "1.4.0 candidate". Scorers: Plan is complete, Stays on destination, Respects budget, Correct local currency and Response time.
 
 ### LLM eval canary
 
@@ -123,11 +120,11 @@ curl -sk -u "admin:$OPENSEARCH_PASSWORD" 'https://localhost:9200/otel-v1-genai-e
   -d '{"aggs":{"evaluators":{"terms":{"field":"attributes.opensearch.gen_ai.evaluation.evaluator.name"}}}}'
 ```
 
-Verdicts of the smoke suite, per run and evaluation:
+Verdicts of the regression suite, per run and evaluation:
 
 ```
 source = otel-v1-genai-evaluation*
-| where `attributes.test.suite.name` = 'travel_planner_smoke'
+| where `attributes.test.suite.name` = 'Trip planning regression'
 | stats count() by `attributes.test.suite.run.id`, `attributes.gen_ai.evaluation.name`, `attributes.gen_ai.evaluation.score.label`
 ```
 

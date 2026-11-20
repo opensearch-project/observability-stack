@@ -7,7 +7,7 @@ import { OpenSearchClient, ListApplicationsCommand, DeleteApplicationCommand, De
 import { OpenSearchServerlessClient, ListCollectionsCommand, DeleteCollectionCommand, DeleteSecurityPolicyCommand, DeleteAccessPolicyCommand, BatchGetCollectionCommand, BatchGetCollectionGroupCommand, DeleteCollectionGroupCommand } from '@aws-sdk/client-opensearchserverless';
 import { IAMClient, DeleteRolePolicyCommand, DeleteRoleCommand, ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand } from '@aws-sdk/client-iam';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
-import { teardownDemoInstance } from './ec2-demo.mjs';
+import { DEMO_FGAC_ROLES, demoReadPolicyName, teardownDemoInstance } from './ec2-demo.mjs';
 import { FGAC_ROLES, defaultCollectionGroupName, sigv4Fetch } from './aws.mjs';
 
 async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
@@ -53,7 +53,7 @@ async function cleanupFgacRoles(region, pipelineName, opensearchPassword, os) {
       : sigv4Fetch(region, 'es');
 
     let cleaned = false;
-    for (const role of FGAC_ROLES) {
+    for (const role of [...FGAC_ROLES, ...DEMO_FGAC_ROLES]) {
       const url = `${endpoint}/_plugins/_security/api/rolesmapping/${role}`;
       const getResp = await domainFetch(url, 'GET');
       if (!getResp.ok) continue;
@@ -106,7 +106,7 @@ async function cleanupFgacRolesViaUi(appEndpoint, pipelineName) {
   if (!dsId) return;
 
   let cleaned = false;
-  for (const role of FGAC_ROLES) {
+  for (const role of [...FGAC_ROLES, ...DEMO_FGAC_ROLES]) {
     const base = `${appEndpoint}/api/v1/configuration/rolesmapping/${role}?dataSourceId=${dsId}`;
     const cur = await req('GET', base);
     if (cur.status !== 200 || typeof cur.data !== 'object') continue;
@@ -280,8 +280,10 @@ export async function destroy(cfg) {
       try { await aoss.send(new DeleteSecurityPolicyCommand({ name, type })); printSuccess(`${type} policy '${name}' deleted`); }
       catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`${type} policy: ${e.message}`); }
     }
-    try { await aoss.send(new DeleteAccessPolicyCommand({ name: `${collectionName}-access`, type: 'data' })); printSuccess(`Data access policy deleted`); }
-    catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
+    for (const name of [`${collectionName}-access`, demoReadPolicyName(collectionName)]) {
+      try { await aoss.send(new DeleteAccessPolicyCommand({ name, type: 'data' })); printSuccess(`Data access policy '${name}' deleted`); }
+      catch (e) { if (!/not found|ResourceNotFoundException/i.test(e.message)) printWarning(`Access policy: ${e.message}`); }
+    }
   } catch (e) {
     if (!/ResourceNotFoundException/i.test(e.message)) printWarning(`AOSS cleanup: ${e.message}`);
   }

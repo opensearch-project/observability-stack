@@ -38,6 +38,8 @@ from opentelemetry._logs import get_logger_provider
 from opentelemetry.sdk._logs import LoggingHandler
 
 from opensearch_genai_observability_sdk_py import Op, enrich, mark_agent_root, observe, register
+
+AGENT_VERSION = os.getenv("AGENT_VERSION", "2.1.0")
 from bedrock_client import (
     get_bedrock_client, converse, extract_text, extract_tool_use, get_usage,
     openai_tools_to_bedrock, BedrockUnavailableError, BEDROCK_MODEL_ID,
@@ -363,6 +365,7 @@ class WeatherAgent:
                     provider=provider,
                     agent_id=self.agent_id,
                     agent_description=self.agent_description,
+                    **{"gen_ai.agent.version": AGENT_VERSION},
                     session_id=conversation_id,
                     temperature=0.7,
                     max_tokens=1024,

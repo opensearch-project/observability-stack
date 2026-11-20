@@ -1,6 +1,8 @@
 /**
  * FGAC role mapping custom resource handler.
- * Maps IAM roles to OpenSearch all_access and security_manager via the Security API.
+ * Maps IAM roles to OpenSearch security roles via the Security API: all_access and
+ * security_manager by default, or the roles in FgacRoles (for example ["readall"] for a
+ * read-only caller).
  * Runs as the domain's IAM master user and signs requests with SigV4.
  */
 import { SignatureV4 } from '@aws-sdk/signature-v4';
@@ -12,6 +14,7 @@ interface Props {
   OpenSearchEndpoint: string;
   RoleArns: string; // JSON array of ARNs to map
   Region: string;
+  FgacRoles?: string; // JSON array of security role names; default all_access + security_manager
 }
 
 interface Event {
@@ -38,6 +41,27 @@ export function parseRoleArns(raw: string | undefined): string[] {
   return valid;
 }
 
+const DEFAULT_FGAC_ROLES = ['all_access', 'security_manager'];
+const SECURITY_ROLE_NAME = /^[A-Za-z0-9_.-]+$/;
+
+/**
+ * The security roles to map: all_access and security_manager when FgacRoles is absent, else the
+ * role names it lists. A set but unusable FgacRoles throws, so a typo never grants admin.
+ */
+export function parseFgacRoles(raw: string | undefined): string[] {
+  if (raw === undefined || raw === '') return DEFAULT_FGAC_ROLES;
+  let names: unknown;
+  try { names = JSON.parse(raw); } catch { names = undefined; }
+  const valid = Array.isArray(names) && names.length > 0
+    && names.every((n) => typeof n === 'string' && SECURITY_ROLE_NAME.test(n));
+  if (!valid) throw new Error(`FgacRoles must be a JSON array of security role names: ${raw}`);
+  return [...new Set(names as string[])];
+}
+
+function oldFgacRoles(raw: string | undefined): string[] {
+  try { return parseFgacRoles(raw); } catch { return []; }
+}
+
 /** Backend roles after an update: existing entries minus revoked ones and '*', plus the new set. */
 export function mergeBackendRoles(existing: string[], add: string[], revoke: string[]): string[] {
   const kept = existing.filter((r) => r !== '*' && !revoke.includes(r));
@@ -45,15 +69,16 @@ export function mergeBackendRoles(existing: string[], add: string[], revoke: str
 }
 
 export async function handler(event: Event) {
-  const { OpenSearchEndpoint, RoleArns, Region } = event.ResourceProperties;
+  const { OpenSearchEndpoint, RoleArns, Region, FgacRoles } = event.ResourceProperties;
   const roleArns = parseRoleArns(RoleArns);
+  const fgacRoles = parseFgacRoles(FgacRoles);
   const base = `https://${OpenSearchEndpoint}`;
   const sign = signerFor(Region);
 
   if (event.RequestType === 'Delete') {
     // Best-effort: remove role mappings
     try {
-      for (const role of FGAC_ROLES) {
+      for (const role of fgacRoles) {
         await removeMappings(sign, base, role, roleArns);
       }
     } catch { /* best effort */ }
@@ -64,7 +89,14 @@ export async function handler(event: Event) {
   const revoked = event.RequestType === 'Update'
     ? parseRoleArns(event.OldResourceProperties?.RoleArns).filter((r) => !roleArns.includes(r))
     : [];
-  for (const role of FGAC_ROLES) {
+  // Security roles this resource mapped before but no longer lists lose all of its ARNs.
+  const droppedRoles = event.RequestType === 'Update'
+    ? oldFgacRoles(event.OldResourceProperties?.FgacRoles).filter((r) => !fgacRoles.includes(r))
+    : [];
+  for (const role of droppedRoles) {
+    await removeMappings(sign, base, role, [...roleArns, ...revoked]);
+  }
+  for (const role of fgacRoles) {
     const existing = await getBackendRoles(sign, base, role);
     await putBackendRoles(sign, base, role, mergeBackendRoles(existing, roleArns, revoked));
   }
@@ -72,8 +104,7 @@ export async function handler(event: Event) {
   return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
 }
 
-const FGAC_ROLES = ['all_access', 'security_manager'];
-type Signer = (url: string, method: 'GET' | 'PATCH', body?: string) => Promise<Response>;
+type Signer = (url: string, method: 'GET' | 'PATCH' | 'PUT', body?: string) => Promise<Response>;
 
 function signerFor(region: string): Signer {
   const signer = new SignatureV4({ credentials: defaultProvider(), region, service: 'es', sha256: Sha256 });
@@ -100,9 +131,11 @@ async function getBackendRoles(sign: Signer, base: string, role: string): Promis
   return (data as any)?.[role]?.backend_roles || [];
 }
 
-async function putBackendRoles(sign: Signer, base: string, role: string, roles: string[]) {
-  const resp = await sign(`${base}/_plugins/_security/api/rolesmapping/${role}`, 'PATCH',
-    JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+export async function putBackendRoles(sign: Signer, base: string, role: string, roles: string[]) {
+  const url = `${base}/_plugins/_security/api/rolesmapping/${role}`;
+  let resp = await sign(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+  // A role with no mapping yet (readall on a new domain) cannot be patched: create the mapping.
+  if (resp.status === 404) resp = await sign(url, 'PUT', JSON.stringify({ backend_roles: roles }));
   if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
 }
 

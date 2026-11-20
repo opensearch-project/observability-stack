@@ -95,7 +95,7 @@ describe('caller role ARN extraction', () => {
 
 // ── EC2 demo unit tests ──────────────────────────────────────────────────────
 
-import { _tags, _tagSpec, _buildUserData, _getVpcSubnetForInstance } from '../src/ec2-demo.mjs';
+import { _tags, _tagSpec, _buildUserData, _getVpcSubnetForInstance, _canaryTarget, demoReadPolicyName, domainNameFromEndpoint } from '../src/ec2-demo.mjs';
 
 describe('EC2 demo tags', () => {
   it('includes pipeline tag and Name tag', () => {
@@ -1579,5 +1579,46 @@ describe('index pattern data source references', () => {
     assert.equal(repairDataSourceRefs([{ id: 'ds1', name: 'dataSource', type: 'data-source' }]), null);
     assert.equal(repairDataSourceRefs([]), null);
     assert.equal(repairDataSourceRefs(undefined), null);
+  });
+});
+
+describe('EC2 demo eval canary', () => {
+  const base = { pipelineName: 'p', region: 'eu-west-3', accountId: '123456789012', ingestEndpoints: ['x.osis.amazonaws.com'] };
+  const decode = (cfg) => Buffer.from(_buildUserData(cfg), 'base64').toString();
+
+  it('reads a collection with SigV4 service aoss', () => {
+    const cfg = { ...base, opensearchType: 'serverless', opensearchEndpoint: 'https://abc.aoss.eu-west-3.on.aws', collectionId: 'abc', aossCollectionName: 'p' };
+    const t = _canaryTarget(cfg);
+    assert.equal(t.service, 'aoss');
+    assert.deepEqual(t.resources, ['arn:aws:aoss:eu-west-3:123456789012:collection/abc']);
+    const ud = decode(cfg);
+    assert.ok(ud.includes('export COMPOSE_PROFILES=aws-evals'));
+    assert.ok(ud.includes('EVAL_CANARY_OPENSEARCH_URL=https://abc.aoss.eu-west-3.on.aws'));
+    assert.ok(ud.includes('OPENSEARCH_AWS_SERVICE=aoss'));
+  });
+
+  it('reads a managed domain with SigV4 service es', () => {
+    const cfg = { ...base, opensearchType: 'managed', opensearchEndpoint: 'search-d.eu-west-3.es.amazonaws.com', osDomainName: 'd' };
+    const t = _canaryTarget(cfg);
+    assert.equal(t.url, 'https://search-d.eu-west-3.es.amazonaws.com');
+    assert.deepEqual(t.actions, ['es:ESHttpGet', 'es:ESHttpPost']);
+    assert.deepEqual(t.resources, [
+      'arn:aws:es:eu-west-3:123456789012:domain/d/otel-v1-apm-span*',
+      'arn:aws:es:eu-west-3:123456789012:domain/d/otel-v1-genai-evaluation*',
+    ]);
+    assert.ok(decode(cfg).includes('OPENSEARCH_AWS_SERVICE=es'));
+  });
+
+  it('scopes a reused domain by the name in its endpoint', () => {
+    assert.equal(domainNameFromEndpoint('https://search-prod-logs-abc123xyz.eu-west-3.es.amazonaws.com'), 'prod-logs');
+    assert.equal(domainNameFromEndpoint('vpc-my-dom-q1w2e3.us-east-1.es.amazonaws.com'), 'my-dom');
+    assert.equal(domainNameFromEndpoint('https://abc.aoss.eu-west-3.on.aws'), null);
+    const t = _canaryTarget({ ...base, opensearchType: 'managed', osDomainName: 'p1',
+      opensearchEndpoint: 'https://search-prod-logs-abc123xyz.eu-west-3.es.amazonaws.com' });
+    assert.ok(t.resources.every((r) => r.includes(':domain/prod-logs/')));
+  });
+
+  it('keeps the demo read policy name within the 32 character limit', () => {
+    assert.ok(demoReadPolicyName('a'.repeat(32)).length <= 32);
   });
 });
