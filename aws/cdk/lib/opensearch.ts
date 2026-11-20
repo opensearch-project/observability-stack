@@ -4,6 +4,7 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export interface OpenSearchConstructProps {
+  domainName: string;
   instanceType: string;
   instanceCount: number;
   volumeSize: number;
@@ -26,6 +27,7 @@ export class OpenSearchConstruct extends Construct {
     });
 
     this.domain = new opensearch.Domain(this, 'Domain', {
+      domainName: props.domainName,
       version: opensearch.EngineVersion.openSearch('3.7'),
       capacity: {
         dataNodeInstanceType: props.instanceType,

@@ -269,6 +269,10 @@ export class DemoWorkload extends Construct {
     });
 
     new cdk.CfnOutput(stack, 'DemoInstanceId', { value: this.instance.ref, condition: props.condition });
+    new cdk.CfnOutput(stack, 'DemoAccessHint', {
+      value: `aws ssm start-session --target ${this.instance.ref} --document-name AWS-StartPortForwardingSession --parameters portNumber=8080,localPortNumber=8080`,
+      condition: props.condition,
+    });
     cdk.Aspects.of(this).add({
       visit: (node) => { if (node instanceof cdk.CfnResource) node.cfnOptions.condition = props.condition; },
     });

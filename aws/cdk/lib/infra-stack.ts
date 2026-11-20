@@ -81,6 +81,7 @@ export class InfraStack extends Construct {
       this.pipelineRoleArn = serverless.pipelineRole.roleArn;
     } else {
       const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
+        domainName: `obs-${props.displayName}`,
         instanceType: props.osInstanceType ?? 'r7g.large.search',
         instanceCount: props.osInstanceCount ?? 1,
         volumeSize: props.osVolumeSize ?? 100,

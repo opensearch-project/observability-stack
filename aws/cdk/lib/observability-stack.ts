@@ -235,6 +235,8 @@ export class ObservabilityStack extends cdk.Stack {
     out('AppId', app.appId);
     out('WorkspaceId', app.workspaceId);
     out('WorkspaceUrl', app.workspaceUrl);
+    out('PipelineRoleArn', infra.pipelineRoleArn);
+    out('TemplateVersion', gitRef ? String(gitRef) : 'unreleased');
 
     // Stack tags can't hold intrinsics, so they carry the -c values. Resource tags take the parameters,
     // which is what a template the console fills in needs.
