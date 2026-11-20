@@ -1296,6 +1296,75 @@ def set_default_dashboard(workspace_id, dashboard_id):
         print(f"⚠️  Error setting default dashboard: {e}")
 
 
+def upsert_explore_panel(workspace_id, panel_id, attributes, references):
+    """Create or update an explore saved object. Returns "created", "updated" or an error string.
+
+    Request errors are returned, not raised, so one slow or unreachable call (for example
+    while Dashboards is still starting) cannot abort the rest of the init run.
+    """
+    import json
+
+    base = f"{BASE_URL}/w/{workspace_id}" if workspace_id and workspace_id != "default" else BASE_URL
+    url = f"{base}/api/saved_objects/explore/{panel_id}"
+    headers = {"Content-Type": "application/json", "osd-xsrf": "true"}
+    payload = {"attributes": attributes, "references": references}
+    if workspace_id and workspace_id != "default":
+        payload["workspaces"] = [workspace_id]
+    try:
+        response = requests.post(url, auth=(USERNAME, PASSWORD), headers=headers, json=payload, verify=False, timeout=10)
+        if response.status_code == 200:
+            return "created"
+        if response.status_code == 409:
+            response = requests.put(
+                url, auth=(USERNAME, PASSWORD), headers=headers,
+                json={"attributes": attributes, "references": references}, verify=False, timeout=10,
+            )
+            return "updated" if response.status_code == 200 else f"{response.status_code} {response.text[:100]}"
+        return f"{response.status_code} {response.text[:100]}"
+    except requests.exceptions.RequestException as e:
+        return str(e)
+
+
+def remove_legacy_visualization(workspace_id, vis_id):
+    """Delete the aggregation visualization an earlier version created under this id, if any.
+
+    Upgraded deployments would otherwise list the old panel (which errors on an incomplete field
+    list) next to the new explore panel under the same title in the Visualize library.
+    """
+    base = f"{BASE_URL}/w/{workspace_id}" if workspace_id and workspace_id != "default" else BASE_URL
+    try:
+        requests.delete(
+            f"{base}/api/saved_objects/visualization/{vis_id}",
+            auth=(USERNAME, PASSWORD), headers={"osd-xsrf": "true"}, verify=False, timeout=10,
+        )
+    except requests.exceptions.RequestException:
+        pass  # Best effort: a leftover legacy panel is cosmetic.
+
+
+def agent_panel_query(vis, source="otel-v1-apm-span*"):
+    """Return (PPL query, chart type, axes mapping) for one Agent Observability panel.
+
+    Mirrors the old aggregation panels: documents missing a field are dropped, results are ranked by
+    value descending and capped (10 categories, as the old terms aggs were).
+    """
+    f = vis["field"]
+    if vis.get("metric_field"):
+        m = vis["metric_field"]
+        query = (f"source = {source} | where isnotnull(`{f}`) | stats sum(`{m}`) as value by `{f}`"
+                 " | sort - value | head 10")
+        mapping = {"x": "value", "y": f}  # category on y: a horizontal bar chart
+    elif vis.get("split_field"):
+        sp = vis["split_field"]
+        query = (f"source = {source} | where isnotnull(`{f}`) and isnotnull(`{sp}`)"
+                 f" | stats count() as value by `{f}`, `{sp}` | sort - value | head 50")
+        mapping = {"x": "value", "y": f, "color": sp}
+    else:
+        query = (f"source = {source} | where isnotnull(`{f}`) | stats count() as value by `{f}`"
+                 " | sort - value | head 10")
+        mapping = {"size": "value", "color": f}
+    return query, ("pie" if vis["type"] == "pie" else "bar"), mapping
+
+
 def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
     """Create or update Agent Observability dashboard with visualizations"""
     import json
@@ -1356,46 +1425,26 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
         "language": "PPL", "timeFieldName": "endTime", "signalType": "traces",
     }
     for vis in visualizations:
-        f = vis["field"]
-        if vis.get("metric_field"):
-            m = vis["metric_field"]
-            query = f"source = otel-v1-apm-span* | where isnotnull(`{f}`) | stats sum(`{m}`) as value by `{f}`"
-            mapping = {"x": f, "y": "value"}
-        elif vis.get("split_field"):
-            sp = vis["split_field"]
-            query = f"source = otel-v1-apm-span* | where isnotnull(`{sp}`) | stats count() as value by `{f}`, `{sp}`"
-            mapping = {"x": f, "y": "value", "color": sp}
-        else:
-            query = f"source = otel-v1-apm-span* | where isnotnull(`{f}`) | stats count() as value by `{f}`"
-            mapping = {"size": "value", "color": f}
-        chart = "pie" if vis["type"] == "pie" else "bar"
+        query, chart, mapping = agent_panel_query(vis)
         viz = json.dumps({"title": "", "chartType": chart, "params": {"addLegend": True, "addTooltip": True}, "axesMapping": mapping})
         search_source = json.dumps({
             "query": {"query": query, "language": "PPL", "dataset": dataset},
             "filter": [], "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
         })
-        payload = {
-            "attributes": {
-                "title": vis["title"], "description": "", "hits": 0, "columns": ["_source"], "sort": [],
-                "version": 1, "type": "traces", "visualization": viz,
-                "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
-                "kibanaSavedObjectMeta": {"searchSourceJSON": search_source},
-            },
-            "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": traces_pattern_id}],
+        attributes = {
+            "title": vis["title"], "description": "", "hits": 0, "columns": ["_source"], "sort": [],
+            "version": 1, "type": "traces", "visualization": viz,
+            "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
+            "kibanaSavedObjectMeta": {"searchSourceJSON": search_source},
         }
-        base = f"{BASE_URL}/w/{workspace_id}" if workspace_id and workspace_id != "default" else BASE_URL
-        if workspace_id and workspace_id != "default":
-            payload["workspaces"] = [workspace_id]
-        hdr = {"Content-Type": "application/json", "osd-xsrf": "true"}
-        url = f"{base}/api/saved_objects/explore/{vis['id']}"
-        r = requests.post(url, auth=(USERNAME, PASSWORD), headers=hdr, json=payload, verify=False, timeout=10)
-        if r.status_code == 409:
-            r = requests.put(url, auth=(USERNAME, PASSWORD), headers=hdr, json={"attributes": payload["attributes"], "references": payload["references"]}, verify=False, timeout=10)
-        if r.status_code == 200:
+        references = [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": traces_pattern_id}]
+        result = upsert_explore_panel(workspace_id, vis["id"], attributes, references)
+        if result in ("created", "updated"):
             created_vis_ids.append(vis["id"])
-            print(f"  ✅ Created explore panel: {vis['title']}")
+            remove_legacy_visualization(workspace_id, vis["id"])
+            print(f"  ✅ {'Created' if result == 'created' else 'Updated'} explore panel: {vis['title']}")
         else:
-            print(f"  ⚠️  {vis['title']}: {r.status_code} {r.text[:120]}")
+            print(f"  ⚠️  {vis['title']}: {result}")
 
     if not created_vis_ids:
         print("⚠️  No visualizations created, skipping dashboard")
@@ -1477,78 +1526,6 @@ def create_agent_observability_dashboard(workspace_id, traces_pattern_id):
         return None
 
 
-def create_chart_visualization(workspace_id, vis_id, title, vis_type, field, index_pattern_id,
-                                metric_field=None, split_field=None):
-    """Create a chart visualization (pie, bar, etc.)"""
-    import json
-
-    if workspace_id and workspace_id != "default":
-        url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/visualization/{vis_id}"
-    else:
-        url = f"{BASE_URL}/api/saved_objects/visualization/{vis_id}"
-
-    # Build aggregations
-    aggs = []
-    if metric_field:
-        aggs.append({"id": "1", "type": "sum", "schema": "metric", "params": {"field": metric_field}})
-    else:
-        aggs.append({"id": "1", "type": "count", "schema": "metric"})
-
-    aggs.append({"id": "2", "type": "terms", "schema": "segment", "params": {"field": field, "size": 10}})
-
-    if split_field:
-        aggs.append({"id": "3", "type": "terms", "schema": "group", "params": {"field": split_field, "size": 5}})
-
-    vis_state = {
-        "title": title,
-        "type": vis_type,
-        "params": {"type": vis_type, "addTooltip": True, "addLegend": True},
-        "aggs": aggs
-    }
-
-    payload = {
-        "attributes": {
-            "title": title,
-            "visState": json.dumps(vis_state),
-            "uiStateJSON": "{}",
-            "kibanaSavedObjectMeta": {
-                "searchSourceJSON": json.dumps({
-                    "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index",
-                    "query": {"query": "", "language": "kuery"},
-                    "filter": []
-                })
-            }
-        },
-        "references": [
-            {
-                "name": "kibanaSavedObjectMeta.searchSourceJSON.index",
-                "type": "index-pattern",
-                "id": index_pattern_id
-            }
-        ]
-    }
-
-    if workspace_id and workspace_id != "default":
-        payload["workspaces"] = [workspace_id]
-
-    try:
-        response = requests.post(
-            url,
-            auth=(USERNAME, PASSWORD),
-            headers={"Content-Type": "application/json", "osd-xsrf": "true"},
-            json=payload,
-            verify=False,
-            timeout=10,
-        )
-
-        if response.status_code in (200, 409):
-            return vis_id
-        return None
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️  Error creating visualization {title}: {e}")
-        return None
-
-
 def create_promql_dashboard_from_yaml(workspace_id, config_path, prometheus_datasource_title="ObservabilityStack_Prometheus"):
     """Create a dashboard with PromQL explore panels from a YAML config file"""
     import json
@@ -1592,34 +1569,20 @@ def create_promql_dashboard_from_yaml(workspace_id, config_path, prometheus_data
             "query": {"query": panel_def["query"], "language": "PROMQL", "dataset": dataset},
             "filter": [], "indexRefName": "kibanaSavedObjectMeta.searchSourceJSON.index"
         })
-        payload = {
-            "attributes": {
-                "title": panel_def["title"], "description": "", "hits": 0,
-                "columns": ["_source"], "sort": [], "version": 1, "type": "metrics",
-                "visualization": viz_template,
-                "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
-                "kibanaSavedObjectMeta": {"searchSourceJSON": search_source}
-            },
-            "references": [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": prometheus_datasource_title}]
+        attributes = {
+            "title": panel_def["title"], "description": "", "hits": 0,
+            "columns": ["_source"], "sort": [], "version": 1, "type": "metrics",
+            "visualization": viz_template,
+            "uiState": json.dumps({"activeTab": "explore_visualization_tab"}),
+            "kibanaSavedObjectMeta": {"searchSourceJSON": search_source}
         }
-        if workspace_id and workspace_id != "default":
-            payload["workspaces"] = [workspace_id]
-            url = f"{BASE_URL}/w/{workspace_id}/api/saved_objects/explore/{panel_id}"
+        references = [{"name": "kibanaSavedObjectMeta.searchSourceJSON.index", "type": "index-pattern", "id": prometheus_datasource_title}]
+        result = upsert_explore_panel(workspace_id, panel_id, attributes, references)
+        if result in ("created", "updated"):
+            created_ids.append(panel_id)
+            print(f"  ✅ {panel_def['title']}" if result == "created" else f"  🔄 {panel_def['title']} (updated)")
         else:
-            url = f"{BASE_URL}/api/saved_objects/explore/{panel_id}"
-        try:
-            response = requests.post(url, auth=(USERNAME, PASSWORD), headers={"Content-Type": "application/json", "osd-xsrf": "true"}, json=payload, verify=False, timeout=10)
-            if response.status_code == 200:
-                created_ids.append(panel_id)
-                print(f"  ✅ {panel_def['title']}")
-            elif response.status_code == 409:
-                requests.put(url, auth=(USERNAME, PASSWORD), headers={"Content-Type": "application/json", "osd-xsrf": "true"}, json={"attributes": payload["attributes"], "references": payload["references"]}, verify=False, timeout=10)
-                created_ids.append(panel_id)
-                print(f"  🔄 {panel_def['title']} (updated)")
-            else:
-                print(f"  ⚠️  {panel_def['title']}: {response.status_code} {response.text[:100]}")
-        except requests.exceptions.RequestException as e:
-            print(f"  ⚠️  {panel_def['title']}: {e}")
+            print(f"  ⚠️  {panel_def['title']}: {result}")
 
     if not created_ids:
         print("⚠️  No panels created, skipping dashboard")

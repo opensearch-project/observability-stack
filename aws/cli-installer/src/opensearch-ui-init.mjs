@@ -12,6 +12,7 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { printStep, printSuccess, printWarning, printInfo, createSpinner } from './ui.mjs';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals-ui.mjs';
+import { AGENT_PANELS, agentPanelObject } from './agent-panels.mjs';
 
 // ── SigV4 HTTP helper ─────────────────────────────────────────────────────────
 
@@ -410,44 +411,34 @@ export async function setupAgentEvaluations(base, wsId, dsId, tracesId, region) 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
 
 async function createAgentDashboard(base, wsId, tracesId, region) {
-  const vizs = [
-    { id: 'llm-requests-by-model', title: 'LLM Requests by Model', type: 'pie', field: 'attributes.gen_ai.request.model' },
-    { id: 'tool-usage-stats', title: 'Tool Usage Statistics', type: 'pie', field: 'attributes.gen_ai.tool.name' },
-    { id: 'token-usage-by-agent', title: 'Token Usage by Agent', type: 'horizontal_bar', field: 'attributes.gen_ai.agent.name', metric: 'attributes.gen_ai.usage.input_tokens' },
-    { id: 'token-usage-by-model', title: 'Token Usage by Model', type: 'horizontal_bar', field: 'attributes.gen_ai.request.model', metric: 'attributes.gen_ai.usage.input_tokens' },
-    { id: 'agent-ops-by-service', title: 'Agent Operations by Service', type: 'horizontal_bar', field: 'serviceName', split: 'attributes.gen_ai.operation.name' },
-  ];
-
+  // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
+  // agent-panels.mjs. A failed request skips that panel instead of failing the whole install.
   const vizIds = [];
-  for (const v of vizs) {
-    const aggs = [
-      v.metric
-        ? { id: '1', type: 'sum', schema: 'metric', params: { field: v.metric } }
-        : { id: '1', type: 'count', schema: 'metric' },
-      { id: '2', type: 'terms', schema: 'segment', params: { field: v.field, size: 10 } },
-    ];
-    if (v.split) aggs.push({ id: '3', type: 'terms', schema: 'group', params: { field: v.split, size: 5 } });
-
-    await osuiPost(base, `/w/${wsId}/api/saved_objects/visualization/${v.id}`, {
-      attributes: {
-        title: v.title,
-        visState: JSON.stringify({ title: v.title, type: v.type, params: { type: v.type, addTooltip: true, addLegend: true }, aggs }),
-        uiStateJSON: '{}',
-        kibanaSavedObjectMeta: {
-          searchSourceJSON: JSON.stringify({ indexRefName: 'kibanaSavedObjectMeta.searchSourceJSON.index', query: { query: '', language: 'kuery' }, filter: [] }),
-        },
-      },
-      references: [{ name: 'kibanaSavedObjectMeta.searchSourceJSON.index', type: 'index-pattern', id: tracesId }],
-    }, region);
-    vizIds.push(v.id);
+  for (const p of AGENT_PANELS) {
+    try {
+      const obj = agentPanelObject(p, tracesId);
+      const path = `/w/${wsId}/api/saved_objects/explore/${p.id}`;
+      let resp = await osuiPost(base, path, obj, region);
+      if (resp.status === 409) resp = await osuiPut(base, path, obj, region);
+      if (resp.status !== 200) {
+        printWarning(`Agent panel ${p.title} not saved: HTTP ${resp.status}`);
+        continue;
+      }
+      vizIds.push(p.id);
+      // Upgrades: drop the aggregation visualization an earlier version saved under this id.
+      await osuiDelete(base, `/w/${wsId}/api/saved_objects/visualization/${p.id}`, region);
+    } catch (err) {
+      printWarning(`Agent panel ${p.title} failed: ${err.message}`);
+    }
   }
+  if (!vizIds.length) return;
 
   const panels = vizIds.map((id, i) => ({
     version: '3.6.0',
     gridData: { x: (i % 2) * 24, y: Math.floor(i / 2) * 15, w: 24, h: 15, i: String(i) },
     panelIndex: String(i), embeddableConfig: {}, panelRefName: `panel_${i}`,
   }));
-  const refs = vizIds.map((id, i) => ({ name: `panel_${i}`, type: 'visualization', id }));
+  const refs = vizIds.map((id, i) => ({ name: `panel_${i}`, type: 'explore', id }));
 
   await osuiPost(base, `/w/${wsId}/api/saved_objects/dashboard/agent-observability-dashboard`, {
     attributes: {

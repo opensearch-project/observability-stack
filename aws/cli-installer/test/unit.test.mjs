@@ -1626,3 +1626,38 @@ describe('EC2 demo eval canary', () => {
     assert.ok(demoReadPolicyName('a'.repeat(32)).length <= 32);
   });
 });
+
+// ── Agent Observability explore panels ───────────────────────────────────────
+import { AGENT_PANELS, agentPanelQuery, agentPanelObject } from '../src/agent-panels.mjs';
+
+describe('agent panels', () => {
+  const byId = (id) => AGENT_PANELS.find((p) => p.id === id);
+
+  it('counts documents for a pie, dropping those without the field and capping at 10', () => {
+    const q = agentPanelQuery(byId('llm-requests-by-model'));
+    assert.equal(q.chartType, 'pie');
+    assert.equal(q.query, 'source = otel-v1-apm-span* | where isnotnull(`attributes.gen_ai.request.model`) | stats count() as value by `attributes.gen_ai.request.model` | sort - value | head 10');
+    assert.deepEqual(q.axesMapping, { size: 'value', color: 'attributes.gen_ai.request.model' });
+  });
+
+  it('sums a metric into a horizontal bar (category on y, value on x), ranked and capped', () => {
+    const q = agentPanelQuery(byId('token-usage-by-agent'));
+    assert.equal(q.chartType, 'bar');
+    assert.match(q.query, /stats sum\(`attributes\.gen_ai\.usage\.input_tokens`\) as value by `attributes\.gen_ai\.agent\.name` \| sort - value \| head 10$/);
+    assert.deepEqual(q.axesMapping, { x: 'value', y: 'attributes.gen_ai.agent.name' });
+  });
+
+  it('null-checks both the category and the split field, and splits by colour', () => {
+    const q = agentPanelQuery(byId('agent-ops-by-service'));
+    assert.match(q.query, /where isnotnull\(`serviceName`\) and isnotnull\(`attributes\.gen_ai\.operation\.name`\)/);
+    assert.deepEqual(q.axesMapping, { x: 'value', y: 'serviceName', color: 'attributes.gen_ai.operation.name' });
+  });
+
+  it('builds a PPL explore object over the traces pattern', () => {
+    const o = agentPanelObject(byId('tool-usage-stats'), 'traces-id');
+    const search = JSON.parse(o.attributes.kibanaSavedObjectMeta.searchSourceJSON);
+    assert.equal(search.query.language, 'PPL');
+    assert.equal(search.query.dataset.id, 'traces-id');
+    assert.deepEqual(o.references, [{ name: 'kibanaSavedObjectMeta.searchSourceJSON.index', type: 'index-pattern', id: 'traces-id' }]);
+  });
+});
