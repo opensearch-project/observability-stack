@@ -352,6 +352,8 @@ def _case(case_id, request, destination, origin, currency, *, budget=None, fault
 
 
 SUITE_NAME = "Trip planning regression"
+# One evaluator for the suite's code checks (without it each scorer is named after its function)
+SUITE_EVALUATOR = "Trip planning checks"
 SUITE = [
     # Single city, dates given
     _case("lisbon-march", "Plan a 4-day trip to Lisbon from Chicago in March.", "Lisbon", "Chicago", "EUR", category="Single city"),
@@ -416,7 +418,7 @@ def plan_trip(case_input: dict) -> dict:
     return data
 
 
-@scorer(name="Plan is complete", evaluator_type="code",
+@scorer(name="Plan is complete", evaluator=SUITE_EVALUATOR, evaluator_type="code",
         description="The plan covers the weather forecast, attractions and flights for the destination")
 def plan_is_complete(input, output, expected):
     missing = [name for key, name in (("weather", "weather forecast"), ("events", "attractions"), ("flights", "flights"))
@@ -425,7 +427,7 @@ def plan_is_complete(input, output, expected):
                      explanation=f"Missing: {', '.join(missing)}." if missing else "Weather, attractions and flights are all included.")
 
 
-@scorer(name="Stays on destination", evaluator_type="code",
+@scorer(name="Stays on destination", evaluator=SUITE_EVALUATOR, evaluator_type="code",
         description="Every recommended attraction is in the requested city")
 def stays_on_destination(input, output, expected):
     text = output.get("recommendation", "") + " " + " ".join(e.get("name", "") for e in output.get("events", []))
@@ -435,7 +437,7 @@ def stays_on_destination(input, output, expected):
                                   else f"Every recommendation is in {input['destination']}."))
 
 
-@scorer(name="Respects budget", evaluator_type="code",
+@scorer(name="Respects budget", evaluator=SUITE_EVALUATOR, evaluator_type="code",
         description="When the request has a budget, the plan estimates the cost and stays within it")
 def respects_budget(input, output, expected):
     budget = expected.get("budget_usd")
@@ -450,7 +452,7 @@ def respects_budget(input, output, expected):
                      explanation=f"Estimated ${est['total_usd']:,} against a ${budget:,} budget.")
 
 
-@scorer(name="Correct local currency", evaluator_type="code",
+@scorer(name="Correct local currency", evaluator=SUITE_EVALUATOR, evaluator_type="code",
         description="Prices are converted to the destination's currency")
 def correct_local_currency(input, output, expected):
     want = expected.get("currency")
@@ -466,7 +468,7 @@ def correct_local_currency(input, output, expected):
 
 
 @scorer(name="Response time", threshold=RESPONSE_TIME_BUDGET_S, direction="minimize", score_min=0,
-        evaluator_type="code", description=f"End-to-end answer time in seconds, budget {RESPONSE_TIME_BUDGET_S} s")
+        evaluator=SUITE_EVALUATOR, evaluator_type="code", description=f"End-to-end answer time in seconds, budget {RESPONSE_TIME_BUDGET_S} s")
 def response_time(input, output, expected):
     took = output["elapsed_s"]
     return EvalScore(name="Response time", value=took, explanation=f"Answered in {took:.1f} s.")
