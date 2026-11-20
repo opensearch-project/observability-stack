@@ -172,7 +172,7 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a full e-commerce microservices app (~20 services) that generates realistic traces, logs, and metrics. Data flows through the OTel Collector → OSIS pipeline → OpenSearch + AMP.
 
-The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: an `aoss:APIAccessAll` policy and a read-only data access policy on serverless, or `es:ESHttpGet`/`es:ESHttpPost` and the `readall` FGAC role on a managed domain.
+The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
 
 ## Useful Commands
 

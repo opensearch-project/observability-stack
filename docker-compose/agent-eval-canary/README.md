@@ -20,9 +20,16 @@ instance. To run it yourself:
 | `AWS_REGION` | the domain or collection region |
 | `OPENSEARCH_SPAN_INDEX` | optional, default `otel-v1-apm-span*` |
 
-The credentials need read access to the span index: `es:ESHttpGet` and `es:ESHttpPost` plus the
-`readall` security role on a domain with fine-grained access control, or `aoss:APIAccessAll` plus
-a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on a collection. Results
+The credentials need read access to two index patterns only: `otel-v1-apm-span*` (the spans it
+scores) and `otel-v1-genai-evaluation*` (to skip traces it already graded).
+
+- Domain: `es:ESHttpGet` and `es:ESHttpPost` (`_search` is a POST) on
+  `<domain ARN>/otel-v1-apm-span*` and `<domain ARN>/otel-v1-genai-evaluation*`, plus a mapping
+  to the `readall` security role when fine-grained access control is on. A request needs both,
+  so the IAM resources keep it to those indices.
+- Collection: `aoss:APIAccessAll` on the collection ARN (the only IAM data-plane action for API
+  calls) plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on
+  `index/<collection>/otel-v1-apm-span*` and `index/<collection>/otel-v1-genai-evaluation*`. Results
 go through the collector, so the pipeline writes them, not the canary.
 
 Every result is a `gen_ai.evaluation.result` OTel log event. Data Prepper routes it to the

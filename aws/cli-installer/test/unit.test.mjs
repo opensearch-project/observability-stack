@@ -1602,6 +1602,10 @@ describe('EC2 demo eval canary', () => {
     const t = _canaryTarget(cfg);
     assert.equal(t.url, 'https://search-d.eu-west-3.es.amazonaws.com');
     assert.deepEqual(t.actions, ['es:ESHttpGet', 'es:ESHttpPost']);
+    assert.deepEqual(t.resources, [
+      'arn:aws:es:eu-west-3:123456789012:domain/d/otel-v1-apm-span*',
+      'arn:aws:es:eu-west-3:123456789012:domain/d/otel-v1-genai-evaluation*',
+    ]);
     assert.ok(decode(cfg).includes('OPENSEARCH_AWS_SERVICE=es'));
   });
 

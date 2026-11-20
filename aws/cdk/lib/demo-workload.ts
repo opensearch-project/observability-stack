@@ -5,6 +5,9 @@ import * as aoss from 'aws-cdk-lib/aws-opensearchserverless';
 import { Construct } from 'constructs';
 import { IngestionPipeline } from './ingestion-pipeline';
 
+/** The only indices the eval canary reads: agent spans, and results (to skip graded traces). */
+export const CANARY_READ_INDICES = ['otel-v1-apm-span*', 'otel-v1-genai-evaluation*'];
+
 export interface DemoOpenSearchTarget {
   serverless: boolean;
   /** Domain or collection URL, with https://. */
@@ -54,7 +57,7 @@ export class DemoWorkload extends Construct {
         type: 'data',
         policy: cdk.Fn.toJsonString([{
           Rules: [
-            { ResourceType: 'index', Resource: [`index/${target.collectionName}/*`], Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] },
+            { ResourceType: 'index', Resource: CANARY_READ_INDICES.map((i) => `index/${target.collectionName}/${i}`), Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] },
           ],
           Principal: [role.roleArn],
         }]),
@@ -62,7 +65,7 @@ export class DemoWorkload extends Construct {
     } else if (target) {
       role.addToPolicy(new iam.PolicyStatement({
         actions: ['es:ESHttpGet', 'es:ESHttpPost'],
-        resources: [target.arn, `${target.arn}/*`],
+        resources: CANARY_READ_INDICES.map((i) => `${target.arn}/${i}`),
       }));
     }
     const canaryEnv = target ? [

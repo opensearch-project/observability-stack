@@ -101,6 +101,9 @@ async function getVpcSubnetForInstance(ec2, subnetIds, instanceType) {
  * Where the eval canary reads agent spans: the domain or collection endpoint, the SigV4
  * service and the resources the demo role needs to read. Null when the endpoint is unknown.
  */
+/** The only indices the eval canary reads: agent spans, and results (to skip graded traces). */
+export const CANARY_READ_INDICES = ['otel-v1-apm-span*', 'otel-v1-genai-evaluation*'];
+
 function canaryTarget(cfg) {
   if (!cfg.opensearchEndpoint) return null;
   const url = /^https?:\/\//.test(cfg.opensearchEndpoint) ? cfg.opensearchEndpoint : `https://${cfg.opensearchEndpoint}`;
@@ -112,7 +115,7 @@ function canaryTarget(cfg) {
     };
   }
   const domain = `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName || '*'}`;
-  return { url, service: 'es', actions: ['es:ESHttpGet', 'es:ESHttpPost'], resources: [domain, `${domain}/*`] };
+  return { url, service: 'es', actions: ['es:ESHttpGet', 'es:ESHttpPost'], resources: CANARY_READ_INDICES.map((i) => `${domain}/${i}`) };
 }
 
 /** Data access policy that lets the demo role read the collection (name <= 32 chars). */
@@ -385,7 +388,7 @@ async function putDemoReadAccessPolicy(cfg, roleArn) {
   const client = new OpenSearchServerlessClient({ region: cfg.region });
   const name = demoReadPolicyName(cfg.aossCollectionName);
   const policy = JSON.stringify([{
-    Rules: [{ ResourceType: 'index', Resource: [`index/${cfg.aossCollectionName}/*`], Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] }],
+    Rules: [{ ResourceType: 'index', Resource: CANARY_READ_INDICES.map((i) => `index/${cfg.aossCollectionName}/${i}`), Permission: ['aoss:DescribeIndex', 'aoss:ReadDocument'] }],
     Principal: [roleArn],
   }]);
   try {
