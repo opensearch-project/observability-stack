@@ -240,6 +240,8 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_GRPC}
       - EVAL_CANARY_INTERVAL=${EVAL_CANARY_INTERVAL}
       - EVAL_CANARY_LOOKBACK_MINUTES=${EVAL_CANARY_LOOKBACK_MINUTES}
+      # false: offline suite only, no reads (for backends without the _search API)
+      - EVAL_CANARY_ONLINE=${EVAL_CANARY_ONLINE:-true}
       # Offline test suite (evaluate()) against the travel planner; 0 turns it off
       - EVAL_CANARY_SUITE_INTERVAL_MINUTES=${EVAL_CANARY_SUITE_INTERVAL_MINUTES:-30}
       - TRAVEL_PLANNER_URL=http://travel-planner:8000

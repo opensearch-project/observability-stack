@@ -110,6 +110,7 @@ and the unknown city (the planner falls back to EUR for Cusco).
 | `EVAL_CANARY_SUITE_INTERVAL_MINUTES` | `30` | Minutes between suite runs; `0` turns the suite off |
 | `EVAL_CANARY_SESSION_IDLE_SECONDS` | `90` | Grade a session once its newest turn is this old |
 | `TRAVEL_PLANNER_URL` | `http://travel-planner:8000` | Released planner the suite calls |
+| `EVAL_CANARY_ONLINE` | `true` | `false` runs only the offline suite, with no reads: for backends without the `_search` API (OpenSearch Optimized Engine domains) |
 | `TRAVEL_PLANNER_CANDIDATE_URL` | (none) | Candidate release; when set, the suite also runs against it |
 
 ## Running with the LLM canary

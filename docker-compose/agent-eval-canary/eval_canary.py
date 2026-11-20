@@ -57,6 +57,9 @@ AWS_REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION"
 SPAN_INDEX = os.environ.get("OPENSEARCH_SPAN_INDEX", "otel-v1-apm-span*")
 OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "otel-collector:4317")
 INTERVAL = int(os.environ.get("EVAL_CANARY_INTERVAL", "120"))
+# Online checks read spans with _search. Off where that API is missing (OpenSearch Optimized
+# Engine domains); the offline suite only writes results and still runs.
+ONLINE = os.environ.get("EVAL_CANARY_ONLINE", "true").strip().lower() not in ("false", "0", "no")
 LOOKBACK_MINUTES = int(os.environ.get("EVAL_CANARY_LOOKBACK_MINUTES", "15"))
 SUITE_INTERVAL_MINUTES = int(os.environ.get("EVAL_CANARY_SUITE_INTERVAL_MINUTES", "30"))
 # A session is graded once its newest turn is this old (the conversation is over)
@@ -574,19 +577,42 @@ def make_retriever() -> OpenSearchTraceRetriever:
     )
 
 
-def run() -> None:
-    retriever = make_retriever()
-    log.info("Agent eval canary started: every %ds, lookback %dm, suite every %dm",
-             INTERVAL, LOOKBACK_MINUTES, SUITE_INTERVAL_MINUTES)
-
-    for attempt in range(30):
+def grade_online(retriever: OpenSearchTraceRetriever, recently_scored: dict[str, float], graded_sessions: set[str]) -> None:
+    """One online pass: production checks on new agent traces, then finished conversations."""
+    cutoff = time.time() - LOOKBACK_MINUTES * 60
+    for k in [k for k, v in recently_scored.items() if v <= cutoff]:
+        del recently_scored[k]
+    roots = retriever.list_root_spans(
+        services=TARGET_SERVICES,
+        since=datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES),
+    )
+    if not roots:
+        return
+    done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots], evaluator=PRODUCTION_EVALUATOR)
+    pending = [r for r in roots if r.trace_id not in done and r.trace_id not in recently_scored]
+    log.info("Online: %d recent agent traces, %d to evaluate", len(roots), len(pending))
+    for root in pending:
         try:
-            retriever.list_root_spans(max_results=1)
-            log.info("OpenSearch is ready")
-            break
-        except Exception as e:  # noqa: BLE001
-            log.info("Waiting for OpenSearch... (%d/30): %s", attempt + 1, e)
-            time.sleep(10)
+            production_checks(retriever, root)
+            recently_scored[root.trace_id] = time.time()
+        except Exception:  # noqa: BLE001
+            log.exception("Failed to evaluate trace %s", root.trace_id[:12])
+    grade_sessions(retriever, roots, graded_sessions)
+
+
+def run() -> None:
+    log.info("Agent eval canary started: every %ds, lookback %dm, suite every %dm, online %s",
+             INTERVAL, LOOKBACK_MINUTES, SUITE_INTERVAL_MINUTES, "on" if ONLINE else "off")
+    retriever = make_retriever() if ONLINE else None
+    if retriever:
+        for attempt in range(30):
+            try:
+                retriever.list_root_spans(max_results=1)
+                log.info("OpenSearch is ready")
+                break
+            except Exception as e:  # noqa: BLE001
+                log.info("Waiting for OpenSearch... (%d/30): %s", attempt + 1, e)
+                time.sleep(10)
 
     recently_scored: dict[str, float] = {}  # results take a few seconds to be searchable
     graded_sessions: set[str] = set()
@@ -595,25 +621,13 @@ def run() -> None:
     provider = trace.get_tracer_provider()
 
     while True:
+        # Online and offline are independent: a failed read does not hold up the suite
+        if retriever:
+            try:
+                grade_online(retriever, recently_scored, graded_sessions)
+            except Exception:  # noqa: BLE001
+                log.exception("Online cycle failed")
         try:
-            cutoff = time.time() - LOOKBACK_MINUTES * 60
-            recently_scored = {k: v for k, v in recently_scored.items() if v > cutoff}
-            roots = retriever.list_root_spans(
-                services=TARGET_SERVICES,
-                since=datetime.now(timezone.utc) - timedelta(minutes=LOOKBACK_MINUTES),
-            )
-            if roots:
-                done = retriever.find_evaluated_trace_ids([r.trace_id for r in roots], evaluator=PRODUCTION_EVALUATOR)
-                pending = [r for r in roots if r.trace_id not in done and r.trace_id not in recently_scored]
-                log.info("Online: %d recent agent traces, %d to evaluate", len(roots), len(pending))
-                for root in pending:
-                    try:
-                        production_checks(retriever, root)
-                        recently_scored[root.trace_id] = time.time()
-                    except Exception:  # noqa: BLE001
-                        log.exception("Failed to evaluate trace %s", root.trace_id[:12])
-                grade_sessions(retriever, roots, graded_sessions)
-
             # The suite takes minutes (24 cases per release), so it runs beside the online checks
             if SUITE_INTERVAL_MINUTES > 0 and time.time() >= next_suite and not (suite and suite.is_alive()):
                 if planner_ready():
