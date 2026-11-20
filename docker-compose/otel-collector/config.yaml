@@ -140,6 +140,10 @@ processors:
           # Flatten nested structures first, then convert to key=value string format
           - flatten(body) where IsMap(body)
           - set(body, ToKeyValueString(body)) where IsMap(body)
+          # Rename flat-string attributes that conflict with dotted-key object mappings. The .NET
+          # host's startup log sets http to the bound ports, which collides with http.* attributes.
+          - set(attributes["http_string"], attributes["http"]) where attributes["http"] != nil and not IsMap(attributes["http"])
+          - delete_key(attributes, "http") where attributes["http_string"] != nil
 
 exporters:
   # Debug exporter for troubleshooting - outputs to collector logs
