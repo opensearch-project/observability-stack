@@ -109,6 +109,10 @@ describe('create ordering in one stack (managed)', () => {
   const fgacPolicy = Object.keys(template.Resources).find(
     (k) => template.Resources[k].Type === 'AWS::IAM::Policy' && k.includes('FgacAdminRole'));
 
+  it('writes the demo FGAC mapping after the stack FGAC mapping, not at the same time', () => {
+    assert.ok((template.Resources.DemoFgacMapping.DependsOn ?? []).includes('FgacMapping'));
+  });
+
   it('creates the OSIS pipeline, application and custom resources after the FGAC admin role policy', () => {
     assert.ok(fgacPolicy, 'no FGAC admin role policy');
     for (const [id, r] of Object.entries<any>(template.Resources)) {
