@@ -298,20 +298,22 @@ async def fetch_flights(origin: str, destination: str, date: str = None) -> dict
     o, d = (origin or "").lower(), (destination or "").lower()
     domestic = (o in US_CITIES and d in US_CITIES) or frozenset((o, d)) in NEARBY
     duration_range, price_range = ((70, 360), (110, 480)) if domestic else ((480, 1080), (520, 1650))
-    num_flights = random.randint(2, 4)
+    # Same route, same fares: evaluation verdicts that depend on price stay stable between runs
+    rng = random.Random(f"{o}|{d}")
+    num_flights = rng.randint(2, 4)
     flights = []
     for i in range(num_flights):
-        dep_hour = random.randint(6, 20)
-        duration_min = random.randint(*duration_range)
+        dep_hour = rng.randint(6, 20)
+        duration_min = rng.randint(*duration_range)
         arr_hour = dep_hour + duration_min // 60
-        price = random.randint(*price_range)
+        price = rng.randint(*price_range)
         flights.append({
-            "airline": random.choice(AIRLINES),
-            "departure": f"{dep_hour:02d}:{random.randint(0,59):02d}",
-            "arrival": f"{arr_hour % 24:02d}:{random.randint(0,59):02d}",
+            "airline": rng.choice(AIRLINES),
+            "departure": f"{dep_hour:02d}:{rng.randint(0,59):02d}",
+            "arrival": f"{arr_hour % 24:02d}:{rng.randint(0,59):02d}",
             "duration_minutes": duration_min,
             "price_usd": price,
-            "stops": random.choice([0, 0, 0, 1, 1, 2]),
+            "stops": rng.choice([0, 0, 0, 1, 1, 2]),
         })
     flights.sort(key=lambda f: f["price_usd"])
 
@@ -378,7 +380,9 @@ def _fallback_attractions(destination: str) -> dict:
 
 def _fallback_currency(amount: float, from_currency: str, to_currency: str) -> dict:
     """Fallback with approximate rates when Frankfurter is unreachable."""
-    approx_rates = {"EUR": 0.92, "GBP": 0.79, "JPY": 155.0, "CAD": 1.36, "AUD": 1.53, "INR": 83.5}
+    approx_rates = {"EUR": 0.92, "GBP": 0.79, "JPY": 155.0, "CAD": 1.36, "AUD": 1.53, "INR": 83.5,
+                    "THB": 36.0, "MXN": 17.2, "ISK": 138.0, "ZAR": 18.3, "SGD": 1.35, "KRW": 1380.0,
+                    "TRY": 34.0, "ARS": 950.0, "AED": 3.67, "CZK": 23.0, "DKK": 6.9}
     rate = approx_rates.get(to_currency.upper(), 1.0)
     if from_currency.upper() != "USD":
         from_rate = approx_rates.get(from_currency.upper(), 1.0)

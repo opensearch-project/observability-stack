@@ -67,7 +67,7 @@ JUDGE_MODEL = os.environ.get("EVAL_JUDGE_MODEL", "global.anthropic.claude-haiku-
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 TRAVEL_PLANNER_URL = os.environ.get("TRAVEL_PLANNER_URL", "http://travel-planner:8000")
 PLANNER_AGENT_NAME = "Travel Planner"
-PLANNER_AGENT_VERSION = os.environ.get("PLANNER_AGENT_VERSION", "1.1.0")
+PLANNER_AGENT_VERSION = os.environ.get("PLANNER_AGENT_VERSION", "1.3.0")
 
 JUDGE_EVALUATOR = "answer_quality_judge"
 JUDGE_PROMPT_NAME = "answer-quality"

@@ -21,6 +21,7 @@ next to the agent's own WARN / ERROR logs on that trace.
 import json
 import logging
 import os
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -150,6 +151,24 @@ def _text(messages) -> str:
     return " ".join(m.content or "" for m in messages)
 
 
+def _has_output(span) -> bool:
+    out = (span.tool_call_result or "").strip() or _text(span.output_messages).strip()
+    return not _status_is_error(span) and out not in ("", "[]", "{}", "null")
+
+
+def plan_gaps(spans) -> list[str]:
+    """What a Travel Planner answer is missing, from its trace: the weather and events agents'
+    own answers (an empty events list counts as missing) and the flight search result."""
+    missing = []
+    if not any(s.agent_name == "Weather Assistant" and s.operation_name == "invoke_agent" and _has_output(s) for s in spans):
+        missing.append("weather forecast")
+    if not any(s.agent_name == "Events Agent" and s.operation_name == "invoke_agent" and _has_output(s) for s in spans):
+        missing.append("attractions")
+    if not any(s.tool_name == "fetch_flights_api" and s.operation_name == "execute_tool" and _has_output(s) for s in spans):
+        missing.append("flights")
+    return missing
+
+
 # ---------------------------------------------------------------------------
 # Online: production checks on each agent trace (no ground truth)
 # ---------------------------------------------------------------------------
@@ -196,13 +215,7 @@ def production_checks(retriever: OpenSearchTraceRetriever, root) -> None:
 
     results = []
     if planner:
-        missing = []
-        if not any(s.name.endswith("weather-agent") and s.operation_name == "invoke_agent" and returned_data(s) for s in spans):
-            missing.append("weather forecast")
-        if not any(s.name.endswith("events-agent") and s.operation_name == "invoke_agent" and returned_data(s) for s in spans):
-            missing.append("attractions")
-        if not any(label(s) == "fetch_flights_api" and returned_data(s) for s in spans):
-            missing.append("flights")
+        missing = plan_gaps(spans)
         results.append(("Task completion", dict(
             value=0.0 if missing else 1.0, label="fail" if missing else "pass",
             explanation=(f"The plan for {destination} is missing: {', '.join(missing)}." if missing
@@ -316,14 +329,16 @@ def grade_sessions(retriever: OpenSearchTraceRetriever, roots, graded_locally: s
         if not turns:
             continue
         degraded = [t for t in turns if _status_is_error(t)]
+        last_trace = [s for tr in session.traces if tr.trace_id == turns[-1].trace_id for s in tr.spans]
+        gaps = plan_gaps(last_trace)
         agent_name, agent_version = agents[sid]
         common = dict(conversation_id=sid, evaluator=SESSION_EVALUATOR, evaluator_type="code",
                       evaluator_description=SESSION_DESCRIPTION,
                       agent_name=agent_name, agent_version=agent_version or None)
-        last_ok = not _status_is_error(turns[-1])
+        last_ok = not gaps and not _status_is_error(turns[-1])
         score("Goal achieved", 1.0 if last_ok else 0.0, label="pass" if last_ok else "fail",
               explanation=(f"The last of {len(turns)} turns returned a complete plan." if last_ok
-                           else f"The conversation ended on a degraded answer (turn {len(turns)} of {len(turns)})."),
+                           else f"The conversation ended on an incomplete plan (missing: {', '.join(gaps) or 'a full answer'})."),
               **common)
         rate = round(1 - len(degraded) / len(turns), 2)
         score("Turns answered fully", rate, threshold=0.8, score_min=0, score_max=1,
@@ -392,22 +407,27 @@ SUITE = [
           fault={"events": {"type": "wrong_city", "wrong_city": "tokyo"}}, category="Resilience"),
 ]
 
-_planner_url = {"value": TRAVEL_PLANNER_URL}
+def plan_trip_task(planner_url: str):
+    """The task for one release: send the case's request to that planner over HTTP.
 
-
-@observe(name=PLANNER_AGENT_NAME, op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT)
-def plan_trip(case_input: dict) -> dict:
-    """The task: send the case's request to the running travel planner over HTTP.
-
-    This invoke_agent CLIENT span is the trace's agent root: evaluate() stamps the test.* ids on it
+    Its invoke_agent CLIENT span is the trace's agent root: evaluate() stamps the test.* ids on it
     and parents the results to it. The planner continues the trace (traceparent header), so its
     spans and its WARN / ERROR logs are in the same trace.
     """
+
+    @observe(name=PLANNER_AGENT_NAME, op=Op.INVOKE_AGENT, kind=SpanKind.CLIENT)
+    def plan_trip(case_input: dict) -> dict:
+        return _plan_trip(planner_url, case_input)
+
+    return plan_trip
+
+
+def _plan_trip(planner_url: str, case_input: dict) -> dict:
     enrich(input_messages=[{"role": "user", "parts": [{"type": "text", "content": case_input["message"]}]}])
     headers: dict[str, str] = {}
     inject(headers)
     started = time.time()
-    resp = requests.post(f"{_planner_url['value']}/plan", json=case_input, headers=headers, timeout=120)
+    resp = requests.post(f"{planner_url}/plan", json=case_input, headers=headers, timeout=120)
     resp.raise_for_status()
     data = resp.json()
     data["elapsed_s"] = round(time.time() - started, 2)
@@ -492,7 +512,6 @@ def run_suite() -> None:
         targets.append(("candidate", TRAVEL_PLANNER_CANDIDATE_URL))
     for role, url in targets:
         version = _planner_version(url) or PLANNER_AGENT_VERSION
-        _planner_url["value"] = url
         if role == "candidate":
             description = (f"Release check of the {version} candidate on {len(SUITE)} trip requests "
                            "(single city, budgets, no dates, families, unknown cities, sub-agent outages) "
@@ -501,7 +520,7 @@ def run_suite() -> None:
             description = f"Baseline: the released {version} planner on the same {len(SUITE)} trip requests."
         result = evaluate(
             name=SUITE_NAME,
-            task=plan_trip,
+            task=plan_trip_task(url),
             data=SUITE,
             scores=SUITE_SCORERS,
             agent_name=PLANNER_AGENT_NAME,
@@ -520,6 +539,13 @@ def run_suite() -> None:
         summary = result.summary
         log.info("Suite run %s (%s %s): %d pass, %d fail, %d error", summary.run_id, role, version,
                  summary.pass_count, summary.fail_count, summary.error_count)
+
+
+def _run_suite_logged() -> None:
+    try:
+        run_suite()
+    except Exception:  # noqa: BLE001
+        log.exception("Suite run failed")
 
 
 def planner_ready() -> bool:
@@ -565,6 +591,7 @@ def run() -> None:
     recently_scored: dict[str, float] = {}  # results take a few seconds to be searchable
     graded_sessions: set[str] = set()
     next_suite = time.time() + 60  # first run once the agents are up
+    suite = None
     provider = trace.get_tracer_provider()
 
     while True:
@@ -587,9 +614,11 @@ def run() -> None:
                         log.exception("Failed to evaluate trace %s", root.trace_id[:12])
                 grade_sessions(retriever, roots, graded_sessions)
 
-            if SUITE_INTERVAL_MINUTES > 0 and time.time() >= next_suite:
+            # The suite takes minutes (24 cases per release), so it runs beside the online checks
+            if SUITE_INTERVAL_MINUTES > 0 and time.time() >= next_suite and not (suite and suite.is_alive()):
                 if planner_ready():
-                    run_suite()
+                    suite = threading.Thread(target=_run_suite_logged, name="suite", daemon=True)
+                    suite.start()
                     next_suite = time.time() + SUITE_INTERVAL_MINUTES * 60
                 else:
                     log.info("Travel planner not reachable, suite postponed")

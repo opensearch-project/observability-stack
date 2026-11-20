@@ -182,10 +182,12 @@ def parse_trip(message: str) -> dict:
     days = re.search(r"(\d+)[- ]?(?:day|days)\b", text)
     nights = re.search(r"(\d+)[- ]?nights?\b", text)
     weekend = "weekend" in text
+    week = re.search(r"\b(?:a|one) week\b", text)
     month = next((m for m in MONTHS if re.search(rf"\b{m}\b", text)), None)
     has_date = bool(month or re.search(r"\b\d{4}-\d{2}-\d{2}\b|next week|this weekend|tomorrow", text))
     budget = re.search(r"(?:under|budget of|max(?:imum)?|less than|up to)?\s*\$\s?([\d,]+)", text)
-    n_days = int(days.group(1)) if days else int(nights.group(1)) + 1 if nights else 3 if weekend else None
+    n_days = (int(days.group(1)) if days else int(nights.group(1)) + 1 if nights
+              else 7 if week else 3 if weekend else None)
     return {
         "days": n_days,
         "month": month.capitalize() if month else None,
@@ -509,8 +511,7 @@ async def plan_trip(request: PlanRequest):
         # 1.4.0: estimate the trip cost against the user's budget (a local tool)
         estimate = None
         if CANDIDATE_BEHAVIOR and trip["budget_usd"]:
-            with observe("execute_tool estimate_trip_cost", op=Op.EXECUTE_TOOL) as tool_span:
-                tool_span.set_attribute("gen_ai.tool.name", "estimate_trip_cost")
+            with observe("estimate_trip_cost", op=Op.EXECUTE_TOOL):
                 days = trip["days"] or 4
                 flight = (flights_data or {}).get("flights") or [{}]
                 flight_usd = min((f.get("price_usd") or 0 for f in flight), default=0) or 650
