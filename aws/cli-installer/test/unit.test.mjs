@@ -95,7 +95,7 @@ describe('caller role ARN extraction', () => {
 
 // ── EC2 demo unit tests ──────────────────────────────────────────────────────
 
-import { _tags, _tagSpec, _buildUserData, _getVpcSubnetForInstance, _canaryTarget, demoReadPolicyName } from '../src/ec2-demo.mjs';
+import { _tags, _tagSpec, _buildUserData, _getVpcSubnetForInstance, _canaryTarget, demoReadPolicyName, domainNameFromEndpoint } from '../src/ec2-demo.mjs';
 
 describe('EC2 demo tags', () => {
   it('includes pipeline tag and Name tag', () => {
@@ -1607,6 +1607,15 @@ describe('EC2 demo eval canary', () => {
       'arn:aws:es:eu-west-3:123456789012:domain/d/otel-v1-genai-evaluation*',
     ]);
     assert.ok(decode(cfg).includes('OPENSEARCH_AWS_SERVICE=es'));
+  });
+
+  it('scopes a reused domain by the name in its endpoint', () => {
+    assert.equal(domainNameFromEndpoint('https://search-prod-logs-abc123xyz.eu-west-3.es.amazonaws.com'), 'prod-logs');
+    assert.equal(domainNameFromEndpoint('vpc-my-dom-q1w2e3.us-east-1.es.amazonaws.com'), 'my-dom');
+    assert.equal(domainNameFromEndpoint('https://abc.aoss.eu-west-3.on.aws'), null);
+    const t = _canaryTarget({ ...base, opensearchType: 'managed', osDomainName: 'p1',
+      opensearchEndpoint: 'https://search-prod-logs-abc123xyz.eu-west-3.es.amazonaws.com' });
+    assert.ok(t.resources.every((r) => r.includes(':domain/prod-logs/')));
   });
 
   it('keeps the demo read policy name within the 32 character limit', () => {

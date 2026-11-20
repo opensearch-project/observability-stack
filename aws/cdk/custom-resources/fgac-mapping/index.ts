@@ -45,16 +45,21 @@ const DEFAULT_FGAC_ROLES = ['all_access', 'security_manager'];
 const SECURITY_ROLE_NAME = /^[A-Za-z0-9_.-]+$/;
 
 /**
- * The security roles to map: FgacRoles when it is a non-empty JSON array of role names,
- * else all_access and security_manager. Never throws, like parseRoleArns.
+ * The security roles to map: all_access and security_manager when FgacRoles is absent, else the
+ * role names it lists. A set but unusable FgacRoles throws, so a typo never grants admin.
  */
 export function parseFgacRoles(raw: string | undefined): string[] {
-  if (!raw) return DEFAULT_FGAC_ROLES;
+  if (raw === undefined || raw === '') return DEFAULT_FGAC_ROLES;
   let names: unknown;
   try { names = JSON.parse(raw); } catch { names = undefined; }
-  if (!Array.isArray(names)) return DEFAULT_FGAC_ROLES;
-  const valid = names.filter((n): n is string => typeof n === 'string' && SECURITY_ROLE_NAME.test(n));
-  return valid.length ? [...new Set(valid)] : DEFAULT_FGAC_ROLES;
+  const valid = Array.isArray(names) && names.length > 0
+    && names.every((n) => typeof n === 'string' && SECURITY_ROLE_NAME.test(n));
+  if (!valid) throw new Error(`FgacRoles must be a JSON array of security role names: ${raw}`);
+  return [...new Set(names as string[])];
+}
+
+function oldFgacRoles(raw: string | undefined): string[] {
+  try { return parseFgacRoles(raw); } catch { return []; }
 }
 
 /** Backend roles after an update: existing entries minus revoked ones and '*', plus the new set. */
@@ -86,7 +91,7 @@ export async function handler(event: Event) {
     : [];
   // Security roles this resource mapped before but no longer lists lose all of its ARNs.
   const droppedRoles = event.RequestType === 'Update'
-    ? parseFgacRoles(event.OldResourceProperties?.FgacRoles).filter((r) => !fgacRoles.includes(r))
+    ? oldFgacRoles(event.OldResourceProperties?.FgacRoles).filter((r) => !fgacRoles.includes(r))
     : [];
   for (const role of droppedRoles) {
     await removeMappings(sign, base, role, [...roleArns, ...revoked]);

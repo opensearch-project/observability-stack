@@ -96,11 +96,9 @@ export class DemoWorkload extends Construct {
         deviceName: '/dev/xvda',
         volume: ec2.BlockDeviceVolume.ebs(30, { volumeType: ec2.EbsDeviceVolumeType.GP3 }),
       }],
-    });
-    // IMDSv2 with hop limit 2, so containers (collector, eval canary) reach instance credentials.
-    this.instance.instance.addPropertyOverride('MetadataOptions', {
-      HttpTokens: 'required',
-      HttpPutResponseHopLimit: 2,
+      // IMDSv2 with hop limit 2, so containers (collector, eval canary) reach the instance credentials
+      httpTokens: ec2.HttpTokens.REQUIRED,
+      httpPutResponseHopLimit: 2,
     });
 
     const pipelineName = props.pipeline.pipelineName;

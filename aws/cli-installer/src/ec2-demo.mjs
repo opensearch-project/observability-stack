@@ -97,13 +97,23 @@ async function getVpcSubnetForInstance(ec2, subnetIds, instanceType) {
   return match.SubnetId;
 }
 
+/** The only indices the eval canary reads: agent spans, and results (to skip graded traces). */
+export const CANARY_READ_INDICES = ['otel-v1-apm-span*', 'otel-v1-genai-evaluation*'];
+
+/**
+ * The domain name in a domain endpoint (search-<name>-<id>.<region>.es.amazonaws.com, or vpc-...),
+ * so a reused domain gets its own ARN. Null when the host is not a domain endpoint.
+ */
+export function domainNameFromEndpoint(endpoint) {
+  const host = String(endpoint || '').replace(/^https?:\/\//, '').split(/[/:]/)[0];
+  const m = /^(?:search|vpc)-(.+)-[a-z0-9]+\.[a-z0-9-]+\.es\.amazonaws\.com$/.exec(host);
+  return m ? m[1] : null;
+}
+
 /**
  * Where the eval canary reads agent spans: the domain or collection endpoint, the SigV4
  * service and the resources the demo role needs to read. Null when the endpoint is unknown.
  */
-/** The only indices the eval canary reads: agent spans, and results (to skip graded traces). */
-export const CANARY_READ_INDICES = ['otel-v1-apm-span*', 'otel-v1-genai-evaluation*'];
-
 function canaryTarget(cfg) {
   if (!cfg.opensearchEndpoint) return null;
   const url = /^https?:\/\//.test(cfg.opensearchEndpoint) ? cfg.opensearchEndpoint : `https://${cfg.opensearchEndpoint}`;
@@ -114,7 +124,8 @@ function canaryTarget(cfg) {
       resources: [`arn:aws:aoss:${cfg.region}:${cfg.accountId}:collection/${cfg.collectionId || '*'}`],
     };
   }
-  const domain = `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${cfg.osDomainName || '*'}`;
+  const name = domainNameFromEndpoint(cfg.opensearchEndpoint) || cfg.osDomainName || '*';
+  const domain = `arn:aws:es:${cfg.region}:${cfg.accountId}:domain/${name}`;
   return { url, service: 'es', actions: ['es:ESHttpGet', 'es:ESHttpPost'], resources: CANARY_READ_INDICES.map((i) => `${domain}/${i}`) };
 }
 
@@ -401,17 +412,23 @@ async function putDemoReadAccessPolicy(cfg, roleArn) {
 }
 
 async function mapDemoRoleReadall(cfg, roleArn) {
-  const { domainFetchFor } = await import('./aws.mjs');
+  const { domainFetchFor, _withRetry: withRetry } = await import('./aws.mjs');
   const { domainFetch } = await domainFetchFor(cfg);
   for (const role of DEMO_FGAC_ROLES) {
     const url = `${canaryTarget(cfg).url}/_plugins/_security/api/rolesmapping/${role}`;
-    const cur = await domainFetch(url, 'GET');
-    const existing = cur.ok ? ((await cur.json())?.[role]?.backend_roles || []) : [];
-    const roles = [...new Set([...existing, roleArn])];
-    let resp = await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
-    // readall has no mapping on a new domain, and a missing mapping cannot be patched
-    if (resp.status === 404) resp = await domainFetch(url, 'PUT', JSON.stringify({ backend_roles: roles }));
-    if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
+    // Retry transient failures, and never write without the current mapping: a failed read
+    // followed by a PATCH would drop everyone else mapped to the role.
+    await withRetry(async () => {
+      const cur = await domainFetch(url, 'GET');
+      if (!cur.ok && cur.status !== 404) throw new Error(`GET rolesmapping/${role} returned ${cur.status}`);
+      const existing = cur.ok ? ((await cur.json())?.[role]?.backend_roles || []) : [];
+      if (existing.includes(roleArn)) return;
+      const roles = [...existing, roleArn];
+      let resp = await domainFetch(url, 'PATCH', JSON.stringify([{ op: 'add', path: '/backend_roles', value: roles }]));
+      // readall has no mapping on a new domain, and a missing mapping cannot be patched
+      if (resp.status === 404) resp = await domainFetch(url, 'PUT', JSON.stringify({ backend_roles: roles }));
+      if (!resp.ok) throw new Error(`PATCH rolesmapping/${role} returned ${resp.status}: ${await resp.text()}`);
+    }, { attempts: 5, shouldRetry: (e) => /returned (401|403|429|5\d\d)/.test(e.message) || /fetch failed|ECONN|ETIMEDOUT/.test(e.message) });
   }
 }
 

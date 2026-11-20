@@ -3,15 +3,21 @@ import * as assert from 'node:assert/strict';
 import { mergeBackendRoles, parseFgacRoles, parseRoleArns, putBackendRoles } from '../custom-resources/fgac-mapping';
 
 describe('CDK FGAC mapping', () => {
-  it('maps all_access and security_manager by default', () => {
-    for (const raw of [undefined, '', 'not json', '{}', '[]', '[1, "bad role!"]']) {
-      assert.deepEqual(parseFgacRoles(raw), ['all_access', 'security_manager'], String(raw));
+  it('maps all_access and security_manager when FgacRoles is absent', () => {
+    for (const raw of [undefined, '']) {
+      assert.deepEqual(parseFgacRoles(raw), ['all_access', 'security_manager']);
     }
   });
 
   it('maps only the listed security roles', () => {
     assert.deepEqual(parseFgacRoles('["readall"]'), ['readall']);
-    assert.deepEqual(parseFgacRoles('["readall", "readall", 7]'), ['readall']);
+    assert.deepEqual(parseFgacRoles('["readall", "readall"]'), ['readall']);
+  });
+
+  it('rejects an unusable FgacRoles instead of granting admin', () => {
+    for (const raw of ['not json', '{}', '[]', '["readall "]', '[1]', '["readall", 7]']) {
+      assert.throws(() => parseFgacRoles(raw), /FgacRoles/, raw);
+    }
   });
 
   it('keeps only IAM role ARNs', () => {
