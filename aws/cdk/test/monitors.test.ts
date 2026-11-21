@@ -26,11 +26,11 @@ describe('ensureMonitors', () => {
         : { status: 200, data: { ok: true } };
     };
     const monitors = monitorDefinitions({ demo: true, exactIndexNames: true }).slice(0, 3);
-    const result = await ensureMonitors(request, 'ds-1', monitors);
+    const result = await ensureMonitors(request, 'ws-1', 'ds-1', monitors);
     assert.equal(result, 'Observability Stack - Cluster Health Red: skipped (not supported); OTel Demo - Checkout Errors: exists; OTel Demo - Payment Failures: created');
     assert.deepEqual(posted, [
-      '/api/alerting/monitors?dataSourceId=ds-1 Observability Stack - Cluster Health Red',
-      '/api/alerting/monitors?dataSourceId=ds-1 OTel Demo - Payment Failures',
+      '/w/ws-1/api/alerting/monitors?dataSourceId=ds-1 Observability Stack - Cluster Health Red',
+      '/w/ws-1/api/alerting/monitors?dataSourceId=ds-1 OTel Demo - Payment Failures',
     ]);
   });
 });

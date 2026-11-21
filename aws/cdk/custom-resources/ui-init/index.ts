@@ -339,6 +339,7 @@ export async function handler(event: Event) {
 
   const monitors = await ensureMonitors(
     (method, path, body) => osuiRequest(method, `${base}${path}`, body ?? null, Region),
+    wsId!,
     dsId,
     monitorDefinitions({ demo: DemoMonitors === 'true', exactIndexNames: ExactIndexNames === 'true', spanIndexPattern: spans }),
   );

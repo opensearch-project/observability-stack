@@ -79,20 +79,22 @@ export function monitorDefinitions(opts: { demo: boolean; exactIndexNames: boole
 
 /**
  * Creates each monitor that doesn't exist yet. A monitor the backend rejects (for example cluster health on
- * serverless) is skipped. Returns one line per monitor for the AlertMonitors output.
+ * serverless) is skipped. Returns one line per monitor for the AlertMonitors output. The calls go through the
+ * workspace: a serverless data source answers "Missing workspace ID" outside it.
  */
-export async function ensureMonitors(request: Request, dataSourceId: string | undefined, monitors: Record<string, unknown>[]) {
+export async function ensureMonitors(request: Request, wsId: string, dataSourceId: string | undefined, monitors: Record<string, unknown>[]) {
   const ds = dataSourceId ? `&dataSourceId=${dataSourceId}` : '';
+  const base = `/w/${wsId}/api/alerting/monitors`;
   const results: string[] = [];
   for (const monitor of monitors) {
     const name = String(monitor.name);
-    const list = await request('GET', `/api/alerting/monitors?from=0&size=50&search=${encodeURIComponent(name)}&sortField=name&sortDirection=asc&state=all${ds}`);
+    const list = await request('GET', `${base}?from=0&size=50&search=${encodeURIComponent(name)}&sortField=name&sortDirection=asc&state=all${ds}`);
     if ((list.data?.monitors ?? []).some((m: any) => m.name === name)) {
       results.push(`${name}: exists`);
       continue;
     }
     // The route answers 200 with ok:false when the backend rejects the monitor.
-    const created = await request('POST', `/api/alerting/monitors?${ds.slice(1)}`, monitor);
+    const created = await request('POST', `${base}?${ds.slice(1)}`, monitor);
     if (created.status === 200 && created.data?.ok) {
       results.push(`${name}: created`);
     } else {
