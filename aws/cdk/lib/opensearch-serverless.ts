@@ -115,6 +115,8 @@ export class OpenSearchServerlessConstruct extends Construct {
             Permission: [
               'aoss:CreateIndex', 'aoss:UpdateIndex', 'aoss:DescribeIndex',
               'aoss:ReadDocument', 'aoss:WriteDocument',
+              // Alerting monitors on a collection need it to read the indices they query.
+              'aoss:DelegateAccess',
             ],
           },
           {

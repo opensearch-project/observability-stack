@@ -24,6 +24,10 @@ export interface OpenSearchAppConstructProps {
    * when it starts, and UI init stores each index pattern's fields from them.
    */
   uiInitDependsOn?: Construct[];
+  /** 'true' or 'false' (or an Fn::If on the demo condition): create the demo's alerting monitors too. */
+  demoMonitors: string;
+  /** Serverless collections: monitors use exact index names. */
+  exactIndexNames: boolean;
 }
 
 export class OpenSearchAppConstruct extends Construct {
@@ -32,6 +36,10 @@ export class OpenSearchAppConstruct extends Construct {
   public readonly appEndpoint: string;
   public readonly workspaceId: string;
   public readonly workspaceUrl: string;
+  /** Alerting monitors ui-init created or skipped, one line each. */
+  public readonly alertMonitors: string;
+  /** Whether the index patterns got their field lists at create time. */
+  public readonly fieldsReady: string;
 
   constructor(scope: Construct, id: string, props: OpenSearchAppConstructProps) {
     super(scope, id);
@@ -75,12 +83,16 @@ export class OpenSearchAppConstruct extends Construct {
       properties: {
         AppEndpoint: this.appEndpoint,
         Region: stack.region,
+        DemoMonitors: props.demoMonitors,
+        ExactIndexNames: String(props.exactIndexNames),
       },
     });
     uiInit.node.addDependency(this.application);
     for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
 
     this.workspaceId = uiInit.getAttString('WorkspaceId');
+    this.alertMonitors = uiInit.getAttString('Monitors');
+    this.fieldsReady = uiInit.getAttString('FieldsReady');
     this.workspaceUrl = `${this.appEndpoint}/w/${this.workspaceId}/app/home`;
 
     new cdk.CfnOutput(stack, 'OpenSearchAppEndpoint', { value: this.appEndpoint });

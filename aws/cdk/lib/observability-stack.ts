@@ -203,6 +203,8 @@ export class ObservabilityStack extends cdk.Stack {
       adminRoleArns: params.adminRoleArns,
       adminRoleArnsNotEmpty: params.hasAdminRoleArns,
       uiInitDependsOn: [pipeline],
+      demoMonitors: params.deployDemo ? cdk.Fn.conditionIf(params.deployDemo.logicalId, 'true', 'false').toString() : 'true',
+      exactIndexNames: isServerless,
     });
     if (!props.adminRoleArns?.length) {
       cdk.Annotations.of(this).addWarning(
@@ -270,6 +272,14 @@ export class ObservabilityStack extends cdk.Stack {
     out('AppId', app.appId);
     out('WorkspaceId', app.workspaceId);
     out('WorkspaceUrl', app.workspaceUrl);
+    new cdk.CfnOutput(this, 'FieldsReady', {
+      value: app.fieldsReady,
+      description: 'Whether index patterns got their field lists at create time (else refresh them once data arrives).',
+    });
+    new cdk.CfnOutput(this, 'AlertMonitors', {
+      value: app.alertMonitors,
+      description: 'Alerting monitors created in OpenSearch UI (the stack health monitor, plus the demo monitors when the demo workload is deployed).',
+    });
     out('PipelineRoleArn', infra.pipelineRoleArn);
     out('TemplateVersion', gitRef ? String(gitRef) : 'unreleased');
 

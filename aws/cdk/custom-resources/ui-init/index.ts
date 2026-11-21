@@ -12,12 +12,17 @@ import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 import { withCfnResponse } from '../shared/cfn-response';
+import { ensureMonitors, monitorDefinitions } from './monitors';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
   ResourceProperties: {
     AppEndpoint: string;
     Region: string;
+    /** 'true' to also create the OpenTelemetry Demo monitors. */
+    DemoMonitors?: string;
+    /** 'true' on serverless collections, where monitors need exact index names. */
+    ExactIndexNames?: string;
   };
 }
 
@@ -99,7 +104,7 @@ const FIELD_META_PARAMS = ['_source', '_id', '_type', '_index', '_score'].map((f
 async function storeIndexPatternFields(
   base: string, wsId: string, dsId: string | undefined,
   patterns: { title: string; timeFieldName: string }[], patternIds: Record<string, string>, region: string,
-) {
+): Promise<boolean> {
   const pending = patterns.filter((p) => patternIds[p.title]);
   for (let attempt = 1; pending.length && attempt <= 12; attempt++) {
     for (const p of [...pending]) {
@@ -115,12 +120,13 @@ async function storeIndexPatternFields(
     if (pending.length) await sleep(15000);
   }
   for (const p of pending) console.warn(`Fields for ${p.title} not stored; refresh its field list once data arrives`);
+  return pending.length === 0;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function handler(event: Event) {
-  const { AppEndpoint, Region } = event.ResourceProperties;
+  const { AppEndpoint, Region, DemoMonitors, ExactIndexNames } = event.ResourceProperties;
 
   if (event.RequestType === 'Delete') {
     return { PhysicalResourceId: 'ui-init' };
@@ -234,7 +240,7 @@ export async function handler(event: Event) {
     console.warn(`Agent Evaluations setup failed: ${e.message}`);
   }
 
-  await storeIndexPatternFields(base, wsId!, dsId,
+  const fieldsReady = await storeIndexPatternFields(base, wsId!, dsId,
     [...patterns, { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD }], patternIds, Region);
 
   const logsId = patternIds['logs-otel-v1*'];
@@ -328,7 +334,13 @@ export async function handler(event: Event) {
     changes: { defaultWorkspace: wsId },
   }, Region);
 
-  return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId } };
+  const monitors = await ensureMonitors(
+    (method, path, body) => osuiRequest(method, `${base}${path}`, body ?? null, Region),
+    dsId,
+    monitorDefinitions({ demo: DemoMonitors === 'true', exactIndexNames: ExactIndexNames === 'true' }),
+  );
+
+  return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId, FieldsReady: String(fieldsReady), Monitors: monitors } };
 }
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────

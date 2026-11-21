@@ -66,6 +66,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
         assert.ok(template.Outputs?.[key], `missing output ${key}`);
       }
       assert.equal(template.Outputs.ObsStackGeneration.Value, 'V2');
+      for (const key of ['AlertMonitors', 'FieldsReady']) assert.ok(template.Outputs[key], `missing output ${key}`);
     });
 
     it('has the parameters the console prefills, by name', () => {
@@ -248,5 +249,19 @@ describe('minimal parameters (the serverless-easy template)', () => {
     assert.match(r('AWS::EC2::Instance').Properties.ImageId, /^\{\{resolve:ssm:/);
     assert.equal(r('AWS::EC2::Instance').Condition, undefined);
     assert.equal(t.Conditions.DeployDemo, undefined);
+  });
+});
+
+describe('alerting monitors in the workspace seeder', () => {
+  it('creates the demo monitors only with the demo, and uses exact index names on serverless', () => {
+    const seeder = (t: any) => Object.values<any>(t.Resources).find((r) => r.Type === 'Custom::WorkspaceSeeder').Properties;
+    const managed = synth('managed').template;
+    assert.deepEqual(seeder(managed).DemoMonitors, { 'Fn::If': ['DeployDemo', 'true', 'false'] });
+    assert.equal(seeder(managed).ExactIndexNames, 'false');
+    const serverless = synth('serverless').template;
+    assert.equal(seeder(serverless).ExactIndexNames, 'true');
+    const policy = Object.values<any>(serverless.Resources).find((r) => r.Type === 'AWS::OpenSearchServerless::AccessPolicy'
+      && JSON.stringify(r.Properties.Policy).includes('aoss:WriteDocument'));
+    assert.ok(JSON.stringify(policy.Properties.Policy).includes('aoss:DelegateAccess'));
   });
 });
