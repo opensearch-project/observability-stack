@@ -10,7 +10,10 @@ const env = {
   region: process.env.CDK_DEFAULT_REGION,
 };
 
-const opensearchType = (app.node.tryGetContext('opensearchType') as 'managed' | 'serverless') || 'managed';
+const opensearchType = (app.node.tryGetContext('opensearchType') as 'managed' | 'serverless' | 'optimized') || 'managed';
+if (!['managed', 'serverless', 'optimized'].includes(opensearchType)) {
+  throw new Error(`opensearchType must be managed, serverless or optimized: ${opensearchType}`);
+}
 const enableDemo = String(app.node.tryGetContext('enableDemo') ?? true) !== 'false';
 const adminRoleArns = String(app.node.tryGetContext('adminRoleArns') ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);

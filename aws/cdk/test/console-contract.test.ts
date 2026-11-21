@@ -7,7 +7,7 @@ import { ObservabilityStack } from '../lib/observability-stack';
 // The Observability stack page of the Amazon OpenSearch Service console lists stacks named ObsStack-<name> and reads
 // their Description marker, tags, resource types, outputs and parameters. These tests pin that contract, plus the
 // names, conditions and ordering a template generated from this stack (scripts/export-templates.ts) relies on.
-function synth(opensearchType: 'managed' | 'serverless') {
+function synth(opensearchType: 'managed' | 'serverless' | 'optimized') {
   const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } });
   const stack = new ObservabilityStack(app, 'ObsStack-contract', {
     env: { account: '123456789012', region: 'us-east-1' },
@@ -22,6 +22,7 @@ const types = (t: any) => new Set(Object.values<any>(t.Resources).map((r) => r.T
 
 for (const [opensearchType, backend, storageType, outputs] of [
   ['managed', 'aos-domain', 'AWS::OpenSearchService::Domain', ['DomainEndpoint', 'DomainArn']],
+  ['optimized', 'aos-optimized', 'AWS::OpenSearchService::Domain', ['DomainEndpoint', 'DomainArn']],
   ['serverless', 'aossv2', 'AWS::OpenSearchServerless::Collection', ['AOSSEndpoint', 'CollectionArn']],
 ] as const) {
   describe(`Amazon OpenSearch Service console's Observability stack page (${opensearchType})`, () => {
@@ -52,7 +53,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
         'Custom::PrometheusDataSource', 'Custom::WorkspaceSeeder', 'AWS::EC2::Instance']) {
         assert.ok(t.has(type), `missing ${type}`);
       }
-      if (opensearchType === 'managed') {
+      if (opensearchType !== 'serverless') {
         for (const type of ['Custom::FgacMapping', 'Custom::EvaluationIndex']) assert.ok(t.has(type), `missing ${type}`);
       } else {
         assert.ok(t.has('Custom::IndexRetention'), 'missing Custom::IndexRetention');
@@ -70,7 +71,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
     });
 
     it('has the parameters the console prefills, by name', () => {
-      const expected = opensearchType === 'managed'
+      const expected = opensearchType !== 'serverless'
         ? ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'DomainInstanceType', 'DomainInstanceCount', 'DomainVolumeGB', 'MinOCU', 'MaxOCU', 'MetricsRetentionDays', 'LatestAl2023Ami']
         : ['StackDisplayName', 'AdminRoleArns', 'DeployDemoWorkload', 'MinOCU', 'MaxOCU', 'CollectionMinOCU', 'CollectionMaxOCU', 'MetricsRetentionDays', 'LogRetentionDays', 'LatestAl2023Ami'];
       assert.deepEqual(Object.keys(template.Parameters).filter((k) => k !== 'BootstrapVersion'), expected);
@@ -93,6 +94,7 @@ for (const [opensearchType, backend, storageType, outputs] of [
       for (const [id, r] of demo) assert.equal(r.Condition, 'DeployDemo', id);
       assert.equal(template.Outputs.DemoInstanceId.Condition, 'DeployDemo');
       if (opensearchType === 'managed') assert.equal(template.Resources.DemoFgacMapping?.Condition, 'DeployDemo');
+      if (opensearchType === 'optimized') assert.equal(template.Resources.DemoFgacMapping, undefined);
     });
   });
 }
@@ -263,5 +265,35 @@ describe('alerting monitors in the workspace seeder', () => {
     const policy = Object.values<any>(serverless.Resources).find((r) => r.Type === 'AWS::OpenSearchServerless::AccessPolicy'
       && JSON.stringify(r.Properties.Policy).includes('aoss:WriteDocument'));
     assert.ok(JSON.stringify(policy.Properties.Policy).includes('aoss:DelegateAccess'));
+  });
+});
+
+describe('Optimized engine (the console\'s optimized template)', () => {
+  const { template: t } = synth('optimized');
+  const r = (type: string) => Object.values<any>(t.Resources).find((x) => x.Type === type);
+
+  it('creates the domain with EngineMode OPTIMIZED and UseCase OBSERVABILITY', () => {
+    assert.equal(r('AWS::OpenSearchService::Domain').Properties.EngineMode, 'OPTIMIZED');
+    assert.equal(r('AWS::OpenSearchService::Domain').Properties.UseCase, 'OBSERVABILITY');
+  });
+
+  it('limits the instance type to the OpenSearch Optimized families, defaulting to om2.large.search', () => {
+    assert.equal(t.Parameters.DomainInstanceType.Default, 'om2.large.search');
+    assert.equal(t.Parameters.DomainInstanceType.AllowedPattern, '(or1|or2|om2|oi2)\\.[a-z0-9]+\\.search');
+  });
+
+  it('writes traces to a custom otel-v2-apm-span index without nested fields', () => {
+    const body = JSON.stringify(r('AWS::OSIS::Pipeline').Properties.PipelineConfigurationBody);
+    assert.ok(body.includes('index: otel-v2-apm-span'), 'traces sink is not the custom v2 index');
+    assert.ok(!body.includes('trace-analytics-plain-raw'));
+    assert.ok(!body.includes('nested'), 'the Optimized engine rejects nested fields');
+    assert.equal(r('Custom::WorkspaceSeeder').Properties.SpanIndexPattern, 'otel-v2-apm-span*');
+  });
+
+  it('runs the eval canary offline only, with no read access', () => {
+    const ud = JSON.stringify(r('AWS::EC2::Instance').Properties.UserData);
+    assert.ok(ud.includes('EVAL_CANARY_ONLINE=false') && !ud.includes('EVAL_CANARY_OPENSEARCH_URL'));
+    const demoPolicies = JSON.stringify(Object.entries<any>(t.Resources).filter(([id, x]) => id.startsWith('DemoWorkload') && x.Type === 'AWS::IAM::Policy'));
+    assert.ok(!demoPolicies.includes('es:ESHttpGet'));
   });
 });

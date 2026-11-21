@@ -44,7 +44,7 @@ export class StackParameters extends Construct {
    * `minimal` keeps only StackDisplayName and AdminRoleArns, as the console's serverless-easy template does: the other
    * choices take their defaults as constants, and the demo always runs.
    */
-  constructor(scope: Construct, id: string, serverless: boolean, d: StackParameterDefaults, minimal = false) {
+  constructor(scope: Construct, id: string, serverless: boolean, d: StackParameterDefaults, minimal = false, optimized = false) {
     super(scope, id);
     const stack = cdk.Stack.of(this);
     const param = (name: string, props: cdk.CfnParameterProps) => {
@@ -86,7 +86,13 @@ export class StackParameters extends Construct {
     }
 
     if (!serverless) {
-      this.osInstanceType = str('DomainInstanceType', {
+      this.osInstanceType = str('DomainInstanceType', optimized ? {
+        type: 'String',
+        default: d.osInstanceType,
+        allowedPattern: '(or1|or2|om2|oi2)\\.[a-z0-9]+\\.search',
+        constraintDescription: 'must be an OpenSearch Optimized instance type (or1.*, or2.*, om2.*, oi2.*).',
+        description: 'Data node instance type. Optimized-engine domains need an OpenSearch Optimized family.',
+      } : {
         type: 'String',
         default: d.osInstanceType,
         allowedPattern: '[a-z0-9]+\\.[a-z0-9]+\\.search',

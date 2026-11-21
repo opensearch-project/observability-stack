@@ -7,7 +7,7 @@ import { OpenSearchServerlessConstruct } from './opensearch-serverless';
 import { PrometheusConstruct } from './prometheus';
 
 export interface InfraStackProps {
-  opensearchType?: 'managed' | 'serverless';
+  opensearchType?: 'managed' | 'serverless' | 'optimized';
   /** Days of metrics the Prometheus workspace keeps (default 150). */
   metricsRetentionDays?: number;
   osInstanceType?: string;
@@ -92,7 +92,8 @@ export class InfraStack extends Construct {
     } else {
       const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
         domainName: `obs-${props.displayName}`,
-        instanceType: props.osInstanceType ?? 'r7g.large.search',
+        optimizedEngine: this.opensearchType === 'optimized',
+        instanceType: props.osInstanceType ?? (this.opensearchType === 'optimized' ? 'om2.large.search' : 'r7g.large.search'),
         instanceCount: props.osInstanceCount ?? 1,
         volumeSize: props.osVolumeSize ?? 100,
       });

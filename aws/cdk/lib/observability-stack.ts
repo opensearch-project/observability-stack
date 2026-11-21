@@ -35,12 +35,13 @@ export class ObservabilityStack extends cdk.Stack {
     super(scope, id, props);
 
     const isServerless = props.opensearchType === 'serverless';
+    const isOptimized = props.opensearchType === 'optimized';
     // User choices are template parameters with -c defaults, so the synthesized template is the one the console deploys.
     const params = new StackParameters(this, 'Parameters', isServerless, {
       displayName: props.displayName,
       adminRoleArns: props.adminRoleArns ?? [],
       enableDemo: props.enableDemo ?? false,
-      osInstanceType: props.osInstanceType ?? 'r7g.large.search',
+      osInstanceType: props.osInstanceType ?? (isOptimized ? 'om2.large.search' : 'r7g.large.search'),
       osInstanceCount: props.osInstanceCount ?? 1,
       osVolumeSize: props.osVolumeSize ?? 100,
       minOcu: props.minOcu ?? 1,
@@ -49,7 +50,7 @@ export class ObservabilityStack extends cdk.Stack {
       aossMaxOcu: props.aossMaxOcu ?? 16,
       metricsRetentionDays: props.metricsRetentionDays ?? 150,
       logRetentionDays: props.logRetentionDays ?? 30,
-    }, props.minimalParameters);
+    }, props.minimalParameters, isOptimized);
     const displayName = params.displayName;
 
     const infra = new InfraStack(this, 'Infra', {
@@ -71,7 +72,7 @@ export class ObservabilityStack extends cdk.Stack {
     });
     stackNameOk.overrideLogicalId('StackNameOk');
     (infra.pipelineRole.node.defaultChild as cdk.CfnResource).cfnOptions.condition = stackNameOk;
-    const backend = isServerless ? 'aossv2' : 'aos-domain';
+    const backend = isServerless ? 'aossv2' : isOptimized ? 'aos-optimized' : 'aos-domain';
 
     // Read by the console's Observability stacks page. The stack name and this Description
     // marker identify the stack without tags, which customers can remove.
@@ -160,6 +161,7 @@ export class ObservabilityStack extends cdk.Stack {
       minOcu: params.minOcu,
       maxOcu: params.maxOcu,
       serverless: isServerless,
+      optimizedEngine: isOptimized,
     });
 
     // The pipeline's sink would otherwise create a plain index with the alias name first.
@@ -205,6 +207,7 @@ export class ObservabilityStack extends cdk.Stack {
       uiInitDependsOn: [pipeline],
       demoMonitors: params.deployDemo ? cdk.Fn.conditionIf(params.deployDemo.logicalId, 'true', 'false').toString() : 'true',
       exactIndexNames: isServerless,
+      spanIndexPattern: isOptimized ? 'otel-v2-apm-span*' : undefined,
     });
     if (!props.adminRoleArns?.length) {
       cdk.Annotations.of(this).addWarning(
@@ -232,10 +235,12 @@ export class ObservabilityStack extends cdk.Stack {
         url: isServerless ? infra.domainEndpoint : `https://${infra.domainEndpoint}`,
         arn: infra.domainArn,
         collectionName: infra.collectionName,
+        onlineChecks: !isOptimized,
       },
     });
     // The eval canary reads agent spans. Managed domains map the demo role to readall.
-    if (fgacServiceToken) {
+    // With no online checks (Optimized engine) the canary reads nothing, so its role needs no mapping.
+    if (fgacServiceToken && !isOptimized) {
       const demoFgac = new cdk.CustomResource(this, 'DemoFgacMapping', {
         serviceToken: fgacServiceToken,
         resourceType: 'Custom::FgacMapping',

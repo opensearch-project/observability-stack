@@ -28,6 +28,8 @@ export interface OpenSearchAppConstructProps {
   demoMonitors: string;
   /** Serverless collections: monitors use exact index names. */
   exactIndexNames: boolean;
+  /** Traces index pattern, when it isn't otel-v1-apm-span*. */
+  spanIndexPattern?: string;
 }
 
 export class OpenSearchAppConstruct extends Construct {
@@ -85,6 +87,7 @@ export class OpenSearchAppConstruct extends Construct {
         Region: stack.region,
         DemoMonitors: props.demoMonitors,
         ExactIndexNames: String(props.exactIndexNames),
+        ...(props.spanIndexPattern && { SpanIndexPattern: props.spanIndexPattern }),
       },
     });
     uiInit.node.addDependency(this.application);

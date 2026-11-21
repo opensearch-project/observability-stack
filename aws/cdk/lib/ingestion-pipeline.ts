@@ -10,6 +10,10 @@ export const EVALUATION_INDEX = 'otel-v1-genai-evaluation';
 const EVALUATION_DIR = path.join(__dirname, 'genai-evaluation');
 export const EVALUATION_TEMPLATE_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-index-template.json'), 'utf8');
 export const EVALUATION_POLICY_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-policy.json'), 'utf8');
+// Traces on the Optimized engine: a custom index with Data Prepper's v2 span mappings; see optimized/README.md.
+export const OPTIMIZED_SPAN_INDEX = 'otel-v2-apm-span';
+const OPTIMIZED_SPAN_TEMPLATE = JSON.stringify(JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'optimized', 'otel-v2-apm-span-index-template.json'), 'utf8')));
 
 /** Days before evaluation indices are deleted on a managed domain; the local stack also defaults to 7. */
 export const DEFAULT_EVALUATION_RETENTION_DAYS = 7;
@@ -54,6 +58,8 @@ const LOG_ROUTES = `\
     - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'`;
 
 export interface IngestionPipelineProps {
+  /** The domain runs the OpenSearch Optimized engine; traces go to a custom otel-v2-apm-span index. */
+  optimizedEngine?: boolean;
   domainEndpoint: string;
   prometheusWorkspaceArn: string;
   prometheusWorkspaceId: string;
@@ -93,6 +99,7 @@ export class IngestionPipeline extends Construct {
         prometheusUrl,
         region: props.region,
         roleArn: props.pipelineRoleArn,
+        optimizedEngine: props.optimizedEngine,
       }),
       pipelineRoleArn: props.pipelineRoleArn,
     });
@@ -105,6 +112,8 @@ interface PipelineConfig {
   prometheusUrl: string;
   region: string;
   roleArn: string;
+  /** The domain runs the OpenSearch Optimized engine. */
+  optimizedEngine?: boolean;
 }
 
 // ── Managed (AOS) pipeline ──────────────────────────────────────────────────
@@ -205,7 +214,10 @@ traces-raw-pipeline:
     - opensearch:
         hosts:
           - '${cfg.opensearchEndpoint}'
-        index_type: trace-analytics-plain-raw
+${cfg.optimizedEngine ? `        index_type: custom
+        index: ${OPTIMIZED_SPAN_INDEX}
+        template_type: index-template
+        template_content: '${OPTIMIZED_SPAN_TEMPLATE}'` : '        index_type: trace-analytics-plain-raw'}
         aws:
           region: '${cfg.region}'
           sts_role_arn: "${cfg.roleArn}"

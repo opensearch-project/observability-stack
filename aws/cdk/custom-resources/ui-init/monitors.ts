@@ -71,8 +71,8 @@ function demoMonitors(spans: string, logs: string): Record<string, unknown>[] {
 /**
  * The monitors for a stack. Serverless collections need exact index names; patterns match nothing there.
  */
-export function monitorDefinitions(opts: { demo: boolean; exactIndexNames: boolean }): Record<string, unknown>[] {
-  const spans = opts.exactIndexNames ? 'otel-v1-apm-span' : 'otel-v1-apm-span*';
+export function monitorDefinitions(opts: { demo: boolean; exactIndexNames: boolean; spanIndexPattern?: string }): Record<string, unknown>[] {
+  const spans = opts.exactIndexNames ? 'otel-v1-apm-span' : opts.spanIndexPattern ?? 'otel-v1-apm-span*';
   const logs = opts.exactIndexNames ? 'logs-otel-v1' : 'logs-otel-v1*';
   return [...stackMonitors(), ...(opts.demo ? demoMonitors(spans, logs) : [])];
 }

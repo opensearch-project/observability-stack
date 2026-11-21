@@ -5,6 +5,8 @@ import { Construct } from 'constructs';
 import { denyCreateLogGroup } from './function-log-group';
 
 export interface OpenSearchConstructProps {
+  /** The OpenSearch Optimized engine for observability data. Fixed at creation. */
+  optimizedEngine?: boolean;
   domainName: string;
   instanceType: string;
   instanceCount: number;
@@ -50,6 +52,12 @@ export class OpenSearchConstruct extends Construct {
     // FGAC authorizes each caller; this policy limits callers to signed requests from this account.
     // Set inline on the domain: the L2 accessPolicies prop applies it with a post-create
     // UpdateDomainConfig, and the domain rejects new data source associations while that processes.
+    if (props.optimizedEngine) {
+      // Not in the L2 construct. Both are create-only; the engine needs an OpenSearch Optimized instance family.
+      const cfn = this.domain.node.defaultChild as opensearch.CfnDomain;
+      cfn.addPropertyOverride('EngineMode', 'OPTIMIZED');
+      cfn.addPropertyOverride('UseCase', 'OBSERVABILITY');
+    }
     (this.domain.node.defaultChild as opensearch.CfnDomain).accessPolicies = {
       Version: '2012-10-17',
       Statement: [{

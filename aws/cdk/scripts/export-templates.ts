@@ -17,6 +17,7 @@ import { ObservabilityStack } from '../lib/observability-stack';
 
 const VARIANTS = [
   { name: 'domain', opensearchType: 'managed' as const },
+  { name: 'optimized', opensearchType: 'optimized' as const },
   { name: 'serverless', opensearchType: 'serverless' as const },
   // Name and admin roles only; everything else at its default.
   { name: 'serverless-easy', opensearchType: 'serverless' as const, minimalParameters: true },

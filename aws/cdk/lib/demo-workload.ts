@@ -16,6 +16,8 @@ export interface DemoOpenSearchTarget {
   arn: string;
   /** Collection name (serverless only). */
   collectionName?: string;
+  /** False on the Optimized engine, which has no _search API: the canary runs only its offline suite, with no reads. */
+  onlineChecks?: boolean;
 }
 
 export interface DemoWorkloadProps {
@@ -53,7 +55,8 @@ export class DemoWorkload extends Construct {
     // Read access for the eval canary, which scores agent spans and sends the results back
     // through the collector. Managed domains also need an FGAC readall mapping (the stack adds it).
     const target = props.opensearch;
-    if (target?.serverless) {
+    const online = target?.onlineChecks ?? true;
+    if (target?.serverless && online) {
       if (!target.collectionName) throw new Error('DemoWorkload: serverless target needs collectionName');
       role.addToPolicy(new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [target.arn] }));
       new aoss.CfnAccessPolicy(this, 'CanaryReadAccess', {
@@ -67,13 +70,22 @@ export class DemoWorkload extends Construct {
           Principal: [role.roleArn],
         }]),
       });
-    } else if (target) {
+    } else if (target && online) {
       role.addToPolicy(new iam.PolicyStatement({
         actions: ['es:ESHttpGet', 'es:ESHttpPost'],
         resources: CANARY_READ_INDICES.map((i) => `${target.arn}/${i}`),
       }));
     }
-    const canaryEnv = target ? [
+    const canaryEnv = target && !online ? [
+      '',
+      '# Eval canary, offline suite only: an Optimized engine domain has no _search API, so the online checks',
+      '# cannot read spans. The suite only writes results, through the collector and the pipeline.',
+      'cat >> .env << \'CANARYEOF\'',
+      'COMPOSE_PROFILES=aws-evals',
+      'EVAL_CANARY_ONLINE=false',
+      'CANARYEOF',
+      'export COMPOSE_PROFILES=aws-evals',
+    ] : target ? [
       '',
       '# Eval canary: reads agent spans from the domain or collection with SigV4 (instance role)',
       '# and sends gen_ai.evaluation.result events through the collector to the pipeline.',
