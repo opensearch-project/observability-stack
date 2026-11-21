@@ -31,19 +31,19 @@ Every choice is a CloudFormation parameter of the stack, with the same name as i
 
 | Context (`-c`) | Parameter | Default | Backend |
 |---|---|---|---|
-| `stackName` (required) | `StackDisplayName` | | both |
-| `adminRoleArns` | `AdminRoleArns` | empty | both |
-| `enableDemo` | `DeployDemoWorkload` | `true` | both |
-| `osInstanceType` | `DomainInstanceType` | `r7g.large.search` | managed |
-| `osInstanceCount` | `DomainInstanceCount` | `1` | managed |
-| `osVolumeSize` | `DomainVolumeGB` | `100` | managed |
+| `stackName` (required) | `StackDisplayName` | | all |
+| `adminRoleArns` | `AdminRoleArns` | empty | all |
+| `enableDemo` | `DeployDemoWorkload` | `true` | all |
+| `osInstanceType` | `DomainInstanceType` | `r7g.large.search` (`om2.large.search` on optimized) | managed, optimized |
+| `osInstanceCount` | `DomainInstanceCount` | `1` | managed, optimized |
+| `osVolumeSize` | `DomainVolumeGB` | `100` | managed, optimized |
 | `aossMinOcu` | `CollectionMinOCU` | `0` | serverless |
 | `aossMaxOcu` | `CollectionMaxOCU` | `16` | serverless |
-| `minOcu` | `MinOCU` | `1` | both |
-| `maxOcu` | `MaxOCU` | `4` | both |
-| `metricsRetentionDays` | `MetricsRetentionDays` | `150` | both |
+| `minOcu` | `MinOCU` | `1` | all |
+| `maxOcu` | `MaxOCU` | `4` | all |
+| `metricsRetentionDays` | `MetricsRetentionDays` | `150` | all |
 | `logRetentionDays` | `LogRetentionDays` | `30` | serverless (sets `index.data.retention` on the log, span and service map indices) |
-| | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | both |
+| | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | all |
 
 `cdk deploy --parameters <Name>=<value>` overrides a parameter for one deploy.
 
@@ -93,13 +93,29 @@ cdk deploy -c stackName=mystack -c opensearchType=serverless -c aossMinOcu=1 -c 
 
 Earlier versions deployed two stacks, `ObsInfra` and `ObservabilityStack`. They can't be updated in place to `ObsStack-<name>`. Destroy them with the version that created them (`cdk destroy --all`), then deploy with `-c stackName=<name>`.
 
+### OpenSearch Optimized engine
+
+To store data in a domain on the OpenSearch Optimized engine (`EngineMode: OPTIMIZED`, `UseCase: OBSERVABILITY`):
+
+```bash
+cdk deploy -c stackName=mystack -c opensearchType=optimized
+```
+
+The domain needs an OpenSearch Optimized instance family (`or1`, `or2`, `om2`, `oi2`; default `om2.large.search`), and the engine mode can't change after creation. The engine rejects nested fields and custom document IDs, so traces go to a custom `otel-v2-apm-span` index (see [`lib/optimized/README.md`](lib/optimized/README.md)). It has no `_search` API, so the demo's eval canary runs only its offline suite, and alerting monitors that need `_search` are skipped (listed in the `AlertMonitors` output).
+
+### Alerting monitors
+
+The stack creates the cluster health monitor, and with the demo the OpenTelemetry Demo monitors, the same definitions docker-compose and Helm create. They're created through OpenSearch UI, so they work on every backend; one the backend rejects is skipped. The `AlertMonitors` output lists each as created, exists or skipped.
+
 ### Console templates
 
 ```bash
 npm run export-templates -- --version <git tag>
 ```
 
-writes `dist/templates/observability-stack-domain.json` and `observability-stack-serverless.json`, the templates the Amazon OpenSearch Service console deploys. Each is this stack with the Lambda bundles inlined, so it needs no CDK bootstrap or asset bucket. `--version` is the tag the demo instance clones and the template's `TemplateVersion`; it defaults to the current commit, which only works for a deploy if it's also a branch or tag name.
+writes `dist/templates/observability-stack-{domain,optimized,serverless,serverless-easy}.json`, the templates the Amazon OpenSearch Service console deploys. Each is this stack with the Lambda bundles inlined, so it needs no CDK bootstrap or asset bucket. `--version` is the tag the demo instance clones and the template's `TemplateVersion`; it defaults to the current commit, which only works for a deploy if it's also a branch or tag name.
+
+`serverless-easy` takes only `StackDisplayName` and `AdminRoleArns`; every other choice is fixed at its default and the demo always runs.
 
 ## Architecture
 
@@ -147,6 +163,10 @@ aws cloudformation describe-stacks --stack-name ObsStack-mystack \
 | `PrometheusDataSourceArn` | DQS Prometheus data source ARN |
 | `DemoInstanceId` | EC2 instance ID (when the demo workload is enabled) |
 | `ObsStackGeneration` | Template generation (`V2`), read by the console |
+| `AlertMonitors` | Alerting monitors created, existing or skipped |
+| `FieldsReady` | Whether the index patterns got their field lists at create time (else refresh them once data arrives) |
+| `PipelineRoleArn` | The OSIS pipeline's role |
+| `TemplateVersion` | The `observabilityStackVersion` the template was built from |
 
 The stack also keeps the output names from the two-stack layout: `DashboardUrl`, `OsisIngestEndpoint`, `OpenSearchAppEndpoint`, `OpenSearchEndpoint` and `PrometheusWorkspaceId`.
 
