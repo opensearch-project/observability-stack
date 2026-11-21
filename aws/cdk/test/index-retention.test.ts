@@ -18,10 +18,17 @@ describe('applyRetention', () => {
     const result = await applyRetention(sign, 'https://c', ['a', 'b'], '30', Date.now() + 60_000, noSleep);
     assert.deepEqual(result, { a: '30d', b: '30d' });
     assert.deepEqual(calls, [
-      'https://c/a/_settings {"index.data.retention":"30d"}',
-      'https://c/b/_settings {"index.data.retention":"30d"}',
-      'https://c/b/_settings {"index.data.retention":"30d"}',
+      'https://c/a/_settings {"index.data.retention":"30"}',
+      'https://c/b/_settings {"index.data.retention":"30"}',
+      'https://c/b/_settings {"index.data.retention":"30"}',
     ]);
+  });
+
+  it('fails at once on a request the collection rejects', async () => {
+    let calls = 0;
+    const bad = async () => { calls++; return { ok: false, status: 400, text: async () => 'illegal_argument_exception' } as Response; };
+    await assert.rejects(applyRetention(bad, 'https://c', ['a'], '30', Date.now() + 60_000, noSleep), /400 illegal_argument_exception/);
+    assert.equal(calls, 1);
   });
 
   it('fails with the last response once the deadline passes', async () => {

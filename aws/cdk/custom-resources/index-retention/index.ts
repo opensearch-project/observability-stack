@@ -36,12 +36,15 @@ export async function handler(event: Event, context?: { getRemainingTimeInMillis
   return { PhysicalResourceId: physicalId, Data: result };
 }
 
-/** Sets index.data.retention to `${days}d` on every index, retrying each until it exists or `deadline` passes. */
+/**
+ * Sets index.data.retention on every index, retrying each until it exists or `deadline` passes. The setting takes a
+ * whole number of days ("30"; "30d" is rejected) and reads back as "30d".
+ */
 export async function applyRetention(
   sign: Signer, endpoint: string, indexNames: string[], days: string, deadline: number,
   sleep = (ms: number) => new Promise((r) => setTimeout(r, ms)),
 ): Promise<Record<string, string>> {
-  const body = JSON.stringify({ 'index.data.retention': `${days}d` });
+  const body = JSON.stringify({ 'index.data.retention': String(days) });
   const result: Record<string, string> = {};
   for (const index of indexNames) {
     for (let last = '';;) {
@@ -51,7 +54,10 @@ export async function applyRetention(
         break;
       }
       last = resp instanceof Error ? resp.message : `${resp.status} ${(await resp.text()).slice(0, 200)}`;
-      if (Date.now() + RETRY_MS > deadline) throw new Error(`could not set retention on ${index}: ${last}`);
+      console.log(`retention on ${index} not set yet: ${last}`);
+      // Retry a missing index (404), data access still propagating (403), server errors and network errors only.
+      const retryable = resp instanceof Error || [403, 404, 429].includes(resp.status) || resp.status >= 500;
+      if (!retryable || Date.now() + RETRY_MS > deadline) throw new Error(`could not set retention on ${index}: ${last}`);
       await sleep(RETRY_MS);
     }
   }
