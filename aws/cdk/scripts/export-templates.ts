@@ -18,6 +18,8 @@ import { ObservabilityStack } from '../lib/observability-stack';
 const VARIANTS = [
   { name: 'domain', opensearchType: 'managed' as const },
   { name: 'serverless', opensearchType: 'serverless' as const },
+  // Name and admin roles only; everything else at its default.
+  { name: 'serverless-easy', opensearchType: 'serverless' as const, minimalParameters: true },
 ];
 // The console supplies these; a default would make them optional in the create form.
 const REQUIRED_PARAMETERS = ['StackDisplayName', 'AdminRoleArns'];
@@ -44,6 +46,7 @@ for (const variant of VARIANTS) {
     displayName: 'template',
     opensearchType: variant.opensearchType,
     enableDemo: true,
+    minimalParameters: variant.minimalParameters,
   });
   const assembly = app.synth();
   const template = assembly.getStackByName(stack.stackName).template;

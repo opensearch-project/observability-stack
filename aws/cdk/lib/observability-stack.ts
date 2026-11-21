@@ -23,6 +23,11 @@ export interface ObservabilityStackProps extends cdk.StackProps, InfraStackProps
   evaluationRetentionDays?: number;
   /** Days serverless log, trace and service map indices keep data (default 30). */
   logRetentionDays?: number;
+  /**
+   * Only StackDisplayName and AdminRoleArns as parameters, with the other choices fixed at their defaults and the demo
+   * always on: the console's serverless-easy template.
+   */
+  minimalParameters?: boolean;
 }
 
 export class ObservabilityStack extends cdk.Stack {
@@ -44,7 +49,7 @@ export class ObservabilityStack extends cdk.Stack {
       aossMaxOcu: props.aossMaxOcu ?? 16,
       metricsRetentionDays: props.metricsRetentionDays ?? 150,
       logRetentionDays: props.logRetentionDays ?? 30,
-    });
+    }, props.minimalParameters);
     const displayName = params.displayName;
 
     const infra = new InfraStack(this, 'Infra', {
@@ -71,7 +76,7 @@ export class ObservabilityStack extends cdk.Stack {
     // Read by the console's Observability stacks page. The stack name and this Description
     // marker identify the stack without tags, which customers can remove.
     this.templateOptions.description =
-      `OpenSearch Observability Stack - deployed with the observability-stack CDK. [obs-stack v2 ${backend}]`;
+      `OpenSearch Observability Stack - deployed with the observability-stack CDK. [obs-stack v2 ${backend}${props.minimalParameters ? ' easy' : ''}]`;
     // Tags.of a stack sets stack-level tags, which CloudFormation copies to every resource that supports tags.
     // Read by the CLI installer's list and destroy.
     cdk.Tags.of(this).add('observability-stack', this.stackName);
@@ -239,7 +244,7 @@ export class ObservabilityStack extends cdk.Stack {
           FgacRoles: JSON.stringify(['readall']),
         },
       });
-      (demoFgac.node.defaultChild as cdk.CfnResource).cfnOptions.condition = params.deployDemo;
+      if (params.deployDemo) (demoFgac.node.defaultChild as cdk.CfnResource).cfnOptions.condition = params.deployDemo;
       demoFgac.node.addDependency(infra);
       // Both mappings write the security index; concurrent writes fail with a 409 version conflict.
       if (fgacMapping) demoFgac.node.addDependency(fgacMapping);

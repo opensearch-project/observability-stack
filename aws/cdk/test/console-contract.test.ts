@@ -226,3 +226,27 @@ describe('serverless index retention', () => {
     assert.ok(JSON.stringify(policy.Properties.Policy).includes(`"Fn::GetAtt":["${roleId}","Arn"]`));
   });
 });
+
+describe('minimal parameters (the serverless-easy template)', () => {
+  const app = new cdk.App({ context: { 'aws:cdk:bundling-stacks': [] } });
+  const stack = new ObservabilityStack(app, 'ObsStack-easy', {
+    env: { account: '123456789012', region: 'us-east-1' },
+    displayName: 'easy', opensearchType: 'serverless', enableDemo: true, minimalParameters: true,
+  });
+  const t = Template.fromStack(stack).toJSON();
+
+  it('has only StackDisplayName and AdminRoleArns, and the easy marker', () => {
+    assert.deepEqual(Object.keys(t.Parameters).filter((k) => k !== 'BootstrapVersion'), ['StackDisplayName', 'AdminRoleArns']);
+    assert.match(t.Description, /\[obs-stack v2 aossv2 easy\]$/);
+  });
+
+  it('fixes the other choices at their defaults and always runs the demo', () => {
+    const r = (type: string) => Object.values<any>(t.Resources).find((x) => x.Type === type);
+    assert.deepEqual([r('AWS::OSIS::Pipeline').Properties.MinUnits, r('AWS::OSIS::Pipeline').Properties.MaxUnits], [1, 4]);
+    assert.equal(r('AWS::APS::Workspace').Properties.WorkspaceConfiguration.RetentionPeriodInDays, 150);
+    assert.equal(String(r('Custom::IndexRetention').Properties.RetentionDays), '30');
+    assert.match(r('AWS::EC2::Instance').Properties.ImageId, /^\{\{resolve:ssm:/);
+    assert.equal(r('AWS::EC2::Instance').Condition, undefined);
+    assert.equal(t.Conditions.DeployDemo, undefined);
+  });
+});

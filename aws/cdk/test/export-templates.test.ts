@@ -12,7 +12,7 @@ describe('export-templates', () => {
       { cwd: path.join(__dirname, '..'), stdio: 'pipe' });
   });
 
-  for (const variant of ['domain', 'serverless']) {
+  for (const variant of ['domain', 'serverless', 'serverless-easy']) {
     it(`writes a self-contained ${variant} template`, () => {
       const t = JSON.parse(fs.readFileSync(path.join(out, `observability-stack-${variant}.json`), 'utf8'));
       const text = JSON.stringify(t);

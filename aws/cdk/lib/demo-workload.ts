@@ -24,8 +24,8 @@ export interface DemoWorkloadProps {
   opensearch?: DemoOpenSearchTarget;
   /** AMI ID, from the LatestAl2023Ami parameter. */
   amiId: string;
-  /** Every demo resource, and the DemoInstanceId output, is created only when this is true. */
-  condition: cdk.CfnCondition;
+  /** Every demo resource, and the demo outputs, are created only when this is true. Unset: always. */
+  condition?: cdk.CfnCondition;
   /** Git ref the instance clones; main when unset. */
   gitRef?: string;
 }
@@ -273,8 +273,11 @@ export class DemoWorkload extends Construct {
       value: `aws ssm start-session --target ${this.instance.ref} --document-name AWS-StartPortForwardingSession --parameters portNumber=8080,localPortNumber=8080`,
       condition: props.condition,
     });
-    cdk.Aspects.of(this).add({
-      visit: (node) => { if (node instanceof cdk.CfnResource) node.cfnOptions.condition = props.condition; },
-    });
+    if (props.condition) {
+      const condition = props.condition;
+      cdk.Aspects.of(this).add({
+        visit: (node) => { if (node instanceof cdk.CfnResource) node.cfnOptions.condition = condition; },
+      });
+    }
   }
 }
