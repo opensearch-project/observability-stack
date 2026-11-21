@@ -80,20 +80,20 @@ Some loading time is cut from the video.
 
 ### CDK
 
-Infrastructure as code using AWS CDK. Deploys two stacks — one for the OpenSearch domain (or serverless collection) and Prometheus workspace (~17 min), one for the OSIS pipeline, dashboards, and optional demo workload (~6 min).
+Infrastructure as code using AWS CDK. Deploys one CloudFormation stack, `ObsStack-<stackName>`, with the OpenSearch domain (or serverless collection), Prometheus workspace, OSIS pipeline, dashboards and optional demo workload, in about 25 minutes. The stack is listed on the Observability stack page of the Amazon OpenSearch Service console.
 
 **Managed (default):**
 ```bash
 cd aws/cdk
 npm install
-cdk deploy --all
+cdk deploy -c stackName=mystack
 ```
 
 **Serverless:**
 ```bash
 cd aws/cdk
 npm install
-cdk deploy --all --context opensearchType=serverless
+cdk deploy -c stackName=mystack --context opensearchType=serverless
 ```
 
 **Without the demo workload:** add `--context enableDemo=false` to either command.
@@ -176,5 +176,5 @@ The destroy command automatically detects and cleans up both managed domains and
 **CDK:**
 ```bash
 cd aws/cdk
-cdk destroy --all
+cdk destroy -c stackName=mystack
 ```

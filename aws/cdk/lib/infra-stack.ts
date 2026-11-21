@@ -1,12 +1,15 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { denyCreateLogGroup } from './function-log-group';
 import { OpenSearchConstruct } from './opensearch';
 import { OpenSearchServerlessConstruct } from './opensearch-serverless';
 import { PrometheusConstruct } from './prometheus';
 
-export interface InfraStackProps extends cdk.StackProps {
-  opensearchType?: 'managed' | 'serverless';
+export interface InfraStackProps {
+  opensearchType?: 'managed' | 'serverless' | 'optimized';
+  /** Days of metrics the Prometheus workspace keeps (default 150). */
+  metricsRetentionDays?: number;
   osInstanceType?: string;
   osInstanceCount?: number;
   osVolumeSize?: number;
@@ -18,7 +21,7 @@ export interface InfraStackProps extends cdk.StackProps {
   aossMaxOcu?: number;
 }
 
-export class InfraStack extends cdk.Stack {
+export class InfraStack extends Construct {
   public readonly opensearchType: string;
   public readonly domainEndpoint: string;
   public readonly domainArn: string;
@@ -28,14 +31,25 @@ export class InfraStack extends cdk.Stack {
   public readonly pipelineRoleArn: string;
   public readonly ampWorkspaceArn: string;
   public readonly ampWorkspaceId: string;
+  public readonly ampEndpoint: string;
   public readonly dqsDataSourceArn: string;
   public readonly dqsRoleArn: string;
   public readonly uiInitRoleArn: string;
+  /** Runs the index retention function on serverless; listed in the collection's data access policy. */
+  public readonly retentionRole?: iam.Role;
 
-  constructor(scope: Construct, id: string, props: InfraStackProps) {
-    super(scope, id, props);
+  public readonly pipelineRole: iam.Role;
 
-    cdk.Tags.of(this).add('observability-stack', this.stackName);
+  constructor(scope: Construct, id: string, props: InfraStackProps & {
+    /** Resources are named obs-<displayName>-*. */
+    displayName: string;
+    /** The AdminRoleArns parameter, and whether it has entries. */
+    adminRoleList?: string[];
+    adminRoleListNotEmpty?: cdk.CfnCondition;
+  }) {
+    super(scope, id);
+
+    const stack = cdk.Stack.of(this);
 
     this.opensearchType = props.opensearchType ?? 'managed';
 
@@ -49,25 +63,37 @@ export class InfraStack extends cdk.Stack {
       actions: ['es:*', 'opensearch:*', 'aoss:*'],
       resources: ['*'],
     }));
+    uiInitRole.addToPolicy(denyCreateLogGroup());
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {
-      const collectionName = `obs-${this.stackName}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 32);
+      this.retentionRole = new iam.Role(this, 'IndexRetentionRole', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
+      });
+      this.retentionRole.addToPolicy(denyCreateLogGroup());
+      const collectionName = `obs-${props.displayName}`;
       const serverless = new OpenSearchServerlessConstruct(this, 'OpenSearchServerless', {
         collectionName,
-        dataAccessRoleArns: [uiInitRole.roleArn, ...(props.adminRoleArns ?? [])],
+        dataAccessRoleArns: [uiInitRole.roleArn, this.retentionRole.roleArn],
+        dataAccessRoleList: props.adminRoleList,
+        dataAccessRoleListNotEmpty: props.adminRoleListNotEmpty,
         minOcu: props.aossMinOcu,
         maxOcu: props.aossMaxOcu,
       });
 
       this.domainEndpoint = serverless.collectionEndpoint;
       this.domainArn = serverless.collectionArn;
+      this.retentionRole.addToPolicy(new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [serverless.collectionArn] }));
       this.collectionName = collectionName;
       this.fgacAdminRoleArn = '';
+      this.pipelineRole = serverless.pipelineRole;
       this.pipelineRoleArn = serverless.pipelineRole.roleArn;
     } else {
       const opensearch = new OpenSearchConstruct(this, 'OpenSearch', {
-        instanceType: props.osInstanceType ?? 'r6g.large.search',
+        domainName: `obs-${props.displayName}`,
+        optimizedEngine: this.opensearchType === 'optimized',
+        instanceType: props.osInstanceType ?? (this.opensearchType === 'optimized' ? 'om2.large.search' : 'r7g.large.search'),
         instanceCount: props.osInstanceCount ?? 1,
         volumeSize: props.osVolumeSize ?? 100,
       });
@@ -76,31 +102,20 @@ export class InfraStack extends cdk.Stack {
       this.domainArn = opensearch.domain.domainArn;
       this.collectionName = '';
       this.fgacAdminRoleArn = opensearch.fgacAdminRole.roleArn;
-      // Stacks deployed with basic-auth FGAC import this ARN; keep the export so they can update.
-      this.exportValue(opensearch.masterPasswordSecret.secretArn);
+      this.pipelineRole = opensearch.pipelineRole;
       this.pipelineRoleArn = opensearch.pipelineRole.roleArn;
     }
 
     const prometheus = new PrometheusConstruct(this, 'Prometheus', {
       domainArn: this.domainArn,
+      displayName: props.displayName,
+      metricsRetentionDays: props.metricsRetentionDays ?? 150,
     });
 
     this.ampWorkspaceArn = prometheus.workspace.attrArn;
     this.ampWorkspaceId = prometheus.workspace.attrWorkspaceId;
+    this.ampEndpoint = prometheus.workspace.attrPrometheusEndpoint;
     this.dqsDataSourceArn = prometheus.dataSourceArn;
     this.dqsRoleArn = prometheus.dqsRole.roleArn;
-
-    // Exports
-    const exp = (name: string, value: string) =>
-      new cdk.CfnOutput(this, name, { value, exportName: `${this.stackName}-${name}` });
-
-    exp('OpenSearchType', this.opensearchType);
-    exp('DomainEndpoint', this.domainEndpoint);
-    exp('DomainArn', this.domainArn);
-    exp('PipelineRoleArn', this.pipelineRoleArn);
-    exp('AmpWorkspaceArn', this.ampWorkspaceArn);
-    exp('AmpWorkspaceId', this.ampWorkspaceId);
-    exp('DqsDataSourceArn', this.dqsDataSourceArn);
-    exp('DqsRoleArn', this.dqsRoleArn);
   }
 }

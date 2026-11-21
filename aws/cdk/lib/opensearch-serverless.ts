@@ -2,23 +2,24 @@ import * as cdk from 'aws-cdk-lib';
 import * as aoss from 'aws-cdk-lib/aws-opensearchserverless';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
+import { jsonArray } from './stack-parameters';
 
 export interface OpenSearchServerlessConstructProps {
   collectionName: string;
   /** Role ARNs given data access in addition to the pipeline role. */
   dataAccessRoleArns?: string[];
+  /** A CommaDelimitedList parameter's value, also given data access when `dataAccessRoleListNotEmpty` holds. */
+  dataAccessRoleList?: string[];
+  dataAccessRoleListNotEmpty?: cdk.CfnCondition;
   /** Minimum indexing and search OCU for the collection group. 0 lets an idle stack scale to zero. */
   minOcu?: number;
   /** Maximum indexing and search OCU for the collection group. */
   maxOcu?: number;
 }
 
-const GROUP_NAME_MAX = 32;
-
-/** `<collection>-cg`, truncated to the 32 character collection group name limit. */
+/** `<collection>-cg`. Collection names are at most 21 characters, so it fits the 32 character limit. */
 export function collectionGroupName(collectionName: string): string {
-  const suffix = '-cg';
-  return `${collectionName.slice(0, GROUP_NAME_MAX - suffix.length)}${suffix}`;
+  return `${collectionName}-cg`;
 }
 
 export class OpenSearchServerlessConstruct extends Construct {
@@ -105,10 +106,8 @@ export class OpenSearchServerlessConstruct extends Construct {
     }));
 
     // Data access policy: the pipeline role plus dataAccessRoleArns.
-    new aoss.CfnAccessPolicy(this, 'DataAccessPolicy', {
-      name: `${name}-access`,
-      type: 'data',
-      policy: JSON.stringify([{
+    const principals = '"__PRINCIPALS__"';
+    const policy = JSON.stringify([{
         Rules: [
           {
             ResourceType: 'index',
@@ -116,6 +115,8 @@ export class OpenSearchServerlessConstruct extends Construct {
             Permission: [
               'aoss:CreateIndex', 'aoss:UpdateIndex', 'aoss:DescribeIndex',
               'aoss:ReadDocument', 'aoss:WriteDocument',
+              // Alerting monitors on a collection need it to read the indices they query.
+              'aoss:DelegateAccess',
             ],
           },
           {
@@ -127,8 +128,17 @@ export class OpenSearchServerlessConstruct extends Construct {
             ],
           },
         ],
-        Principal: [this.pipelineRole.roleArn, ...(props.dataAccessRoleArns ?? [])],
-      }]),
+        Principal: '__PRINCIPALS__',
+      }]);
+    const [before, after] = policy.split(principals);
+    new aoss.CfnAccessPolicy(this, 'DataAccessPolicy', {
+      name: `${name}-access`,
+      type: 'data',
+      policy: cdk.Fn.join('', [
+        before,
+        jsonArray([this.pipelineRole.roleArn, ...(props.dataAccessRoleArns ?? [])], props.dataAccessRoleList, props.dataAccessRoleListNotEmpty),
+        after,
+      ]),
     });
   }
 }

@@ -9,6 +9,7 @@ import { SignatureV4 } from '@aws-sdk/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
+import { withCfnResponse } from '../shared/cfn-response';
 
 interface Props {
   OpenSearchEndpoint: string;
@@ -144,3 +145,6 @@ async function removeMappings(sign: Signer, base: string, role: string, arns: st
   const filtered = existing.filter((r) => !arns.includes(r));
   if (filtered.length !== existing.length) await putBackendRoles(sign, base, role, filtered);
 }
+
+/** Entry point when CloudFormation invokes the function directly. */
+export const cfnHandler = withCfnResponse(handler);

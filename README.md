@@ -134,7 +134,7 @@ See [aws/cli-installer/README.md](aws/cli-installer/README.md) for details.
 ```bash
 cd aws/cdk
 npm install
-cdk deploy --all
+cdk deploy -c stackName=mystack
 ```
 See [aws/cdk/README.md](aws/cdk/README.md) for configuration options, architecture details, and sending telemetry via SigV4.
 

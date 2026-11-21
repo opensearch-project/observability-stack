@@ -1,11 +1,11 @@
 import * as cdk from 'aws-cdk-lib';
 import * as aps from 'aws-cdk-lib/aws-aps';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as cr from 'aws-cdk-lib/custom-resources';
 import * as path from 'path';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { Runtime } from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
+import { denyCreateLogGroup, functionLogGroup } from './function-log-group';
 
 // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/direct-query-prometheus-creating.html#direct-query-prometheus-manual-role-permissions
 export const DQS_APS_ACTIONS = [
@@ -32,6 +32,8 @@ export const DQS_APS_ACTIONS = [
 
 export interface PrometheusConstructProps {
   domainArn: string;
+  displayName: string;
+  metricsRetentionDays: number;
 }
 
 export class PrometheusConstruct extends Construct {
@@ -45,10 +47,12 @@ export class PrometheusConstruct extends Construct {
     const stack = cdk.Stack.of(this);
 
     this.workspace = new aps.CfnWorkspace(this, 'Workspace', {
-      alias: `observability-stack-${stack.stackName}`,
+      alias: `obs-${props.displayName}-metrics`,
+      workspaceConfiguration: { retentionPeriodInDays: props.metricsRetentionDays },
     });
 
-    const dqsDataSourceName = `prometheus_${stack.stackName}`.toLowerCase().replace(/[^a-z0-9_]/g, '_');
+    // Data source names allow [a-z0-9_] only, and stack names can have hyphens.
+    const dqsDataSourceName = cdk.Fn.join('_', [cdk.Fn.join('_', cdk.Fn.split('-', props.displayName)), 'prometheus']);
 
     this.dqsRole = new iam.Role(this, 'DqsRole', {
       assumedBy: new iam.ServicePrincipal('directquery.opensearchservice.amazonaws.com', {
@@ -76,11 +80,12 @@ export class PrometheusConstruct extends Construct {
     }));
 
     const dqsFn = new NodejsFunction(this, 'DqsFn', {
+      logGroup: functionLogGroup(this, 'DqsFn'),
       runtime: Runtime.NODEJS_22_X,
-      handler: 'handler',
+      handler: 'cfnHandler',
       entry: path.join(__dirname, '..', 'custom-resources', 'dqs-datasource', 'index.ts'),
       timeout: cdk.Duration.minutes(5),
-      bundling: { externalModules: ['@aws-sdk/*'] },
+      bundling: { externalModules: ['@aws-sdk/*'], minify: true },
     });
     dqsFn.addToRolePolicy(new iam.PolicyStatement({
       actions: [
@@ -89,17 +94,15 @@ export class PrometheusConstruct extends Construct {
       ],
       resources: ['*'],
     }));
+    dqsFn.addToRolePolicy(denyCreateLogGroup());
     dqsFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['iam:PassRole'],
       resources: [this.dqsRole.roleArn],
     }));
 
-    const dqsProvider = new cr.Provider(this, 'DqsProvider', {
-      onEventHandler: dqsFn,
-    });
-
     const dataSource = new cdk.CustomResource(this, 'DqsDataSource', {
-      serviceToken: dqsProvider.serviceToken,
+      serviceToken: dqsFn.functionArn,
+      resourceType: 'Custom::PrometheusDataSource',
       properties: {
         DataSourceName: dqsDataSourceName,
         DataSourceType: {

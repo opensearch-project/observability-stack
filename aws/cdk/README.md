@@ -14,37 +14,43 @@ Deploy the Observability Stack to AWS managed services using CDK. This creates t
 ```bash
 cd aws/cdk
 npm install
-cdk deploy --all
+cdk deploy -c stackName=mystack
 ```
 
-This deploys two stacks:
+This deploys one CloudFormation stack, `ObsStack-mystack`, with the OpenSearch domain, AMP workspace, DQS data source, FGAC mapping, OSIS pipeline, OpenSearch Application, UI init and demo workload. A deploy takes about 25 minutes, most of it the domain.
 
-| Stack | What it creates | Deploy time |
-|-------|----------------|-------------|
-| **ObsInfra** | OpenSearch domain, AMP workspace, DQS data source, pipeline IAM role | ~17 min |
-| **ObservabilityStack** | FGAC mapping, OSIS pipeline, OpenSearch Application, UI init, demo workload | ~6 min |
+`stackName` is required: 3 to 17 characters, lowercase letters, digits and hyphens, starting with a letter. It also names the resources derived from it (pipeline, collection, application, Prometheus workspace alias), so stacks with different names can share an account and Region.
 
-After deployment, the stack outputs include a **Dashboard URL** you can open directly in your browser.
+The stack is listed on the Observability stack page of the Amazon OpenSearch Service console, with its provisioning steps, components and endpoints. Deleting it there opens the CloudFormation console for the same stack.
+
+After deployment, the `WorkspaceUrl` output is a link you can open directly in your browser.
 
 ## Configuration
 
-Edit `bin/app.ts` to customize:
+Every choice is a CloudFormation parameter of the stack, with the same name as in the console's template. A `-c` value sets the parameter's default:
 
-```typescript
-// OpenSearch domain sizing
-osInstanceType: 'r6g.large.search',
-osInstanceCount: 1,
-osVolumeSize: 100,
+| Context (`-c`) | Parameter | Default | Backend |
+|---|---|---|---|
+| `stackName` (required) | `StackDisplayName` | | all |
+| `adminRoleArns` | `AdminRoleArns` | empty | all |
+| `enableDemo` | `DeployDemoWorkload` | `true` | all |
+| `osInstanceType` | `DomainInstanceType` | `r7g.large.search` (`om2.large.search` on optimized) | managed, optimized |
+| `osInstanceCount` | `DomainInstanceCount` | `1` | managed, optimized |
+| `osVolumeSize` | `DomainVolumeGB` | `100` | managed, optimized |
+| `aossMinOcu` | `CollectionMinOCU` | `0` | serverless |
+| `aossMaxOcu` | `CollectionMaxOCU` | `16` | serverless |
+| `minOcu` | `MinOCU` | `1` | all |
+| `maxOcu` | `MaxOCU` | `4` | all |
+| `metricsRetentionDays` | `MetricsRetentionDays` | `150` | all |
+| `logRetentionDays` | `LogRetentionDays` | `30` | serverless (sets `index.data.retention` on the log, span and service map indices) |
+| | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | all |
 
-// OSIS pipeline capacity (OpenSearch Compute Units)
-minOcu: 1,
-maxOcu: 4,
-```
+`cdk deploy --parameters <Name>=<value>` overrides a parameter for one deploy.
 
 The [demo workload](#demo-workload) is deployed by default. To skip it:
 
 ```bash
-cdk deploy --all -c enableDemo=false
+cdk deploy -c stackName=mystack -c enableDemo=false
 ```
 
 ### Dashboards access
@@ -52,7 +58,7 @@ cdk deploy --all -c enableDemo=false
 The stack maps the OSIS pipeline role and the UI init role to the FGAC `all_access` and `security_manager` roles, and makes the UI init role an OpenSearch UI application admin. To open Dashboards with your own IAM role, pass its ARN (comma-separate multiple roles). Each role is mapped in FGAC (managed domains) and added as an application admin:
 
 ```bash
-cdk deploy --all -c adminRoleArns=arn:aws:iam::123456789012:role/Admin
+cdk deploy -c stackName=mystack -c adminRoleArns=arn:aws:iam::123456789012:role/Admin
 ```
 
 `cdk synth` warns when `adminRoleArns` is empty.
@@ -65,17 +71,14 @@ On serverless, the collection's data access policy lists the OSIS pipeline role,
 
 On managed domains, the FGAC master user is an IAM role the stack creates (`FgacAdminRole`), and the domain access policy admits signed requests from the deploying account. Sign requests with SigV4; HTTP basic authentication isn't accepted.
 
-On upgrade:
-
-- The FGAC role mappings, application admins and serverless data access policy are set to the roles above. To keep access for other roles, list them in `adminRoleArns`. Explicit FGAC mappings and application admins you added yourself are kept.
-- The master user changes from the internal `admin` user to `FgacAdminRole`, which turns off basic authentication. Internal users aren't deleted. The `OpenSearchMasterPassword` secret is kept but no longer used.
+The FGAC role mappings, application admins and serverless data access policy are set to the roles above on every deploy. Explicit FGAC mappings you added yourself are kept; application admins are replaced by the list.
 
 ### OpenSearch Serverless
 
 To store data in an OpenSearch Serverless time series collection instead of a managed domain:
 
 ```bash
-cdk deploy --all -c opensearchType=serverless
+cdk deploy -c stackName=mystack -c opensearchType=serverless
 ```
 
 This creates a NextGen collection group (`<collection>-cg`, standby replicas enabled) and a `TIMESERIES` collection in it. The pipeline's index templates set `index.timestamp_field` to each signal's own time field (`time` for logs, `endTime` for spans, `timestamp` for the service map), which time series collections require on every document.
@@ -83,34 +86,48 @@ This creates a NextGen collection group (`<collection>-cg`, standby replicas ena
 The group's indexing and search capacity defaults to 0 to 16 OCU. The demo workloads settle at about 2 and 2. With a minimum of 0 the group scales to zero when idle, and the first queries after an idle period take longer while search capacity comes back. To change the limits:
 
 ```bash
-cdk deploy --all -c opensearchType=serverless -c aossMinOcu=1 -c aossMaxOcu=8
+cdk deploy -c stackName=mystack -c opensearchType=serverless -c aossMinOcu=1 -c aossMaxOcu=8
 ```
 
-### Stack names
+### Upgrading from the two-stack layout
 
-The stacks are named `ObsInfra` and `ObservabilityStack`. To deploy a second copy next to an existing one in the same account and region, prefix both names:
+Earlier versions deployed two stacks, `ObsInfra` and `ObservabilityStack`. They can't be updated in place to `ObsStack-<name>`. Destroy them with the version that created them (`cdk destroy --all`), then deploy with `-c stackName=<name>`.
+
+### OpenSearch Optimized engine
+
+To store data in a domain on the OpenSearch Optimized engine (`EngineMode: OPTIMIZED`, `UseCase: OBSERVABILITY`):
 
 ```bash
-cdk deploy --all -c stackNamePrefix=test-
+cdk deploy -c stackName=mystack -c opensearchType=optimized
 ```
 
-This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names derived from the stack name (pipeline, collection, application, Prometheus workspace alias) change with it. The OSIS pipeline is `obs-stack-<stack name>` lowercased when that fits in 28 characters; a longer name is cut and ends in a short hash of the full stack name, so different prefixes get different pipelines.
+The domain needs an OpenSearch Optimized instance family (`or1`, `or2`, `om2`, `oi2`; default `om2.large.search`), and the engine mode can't change after creation. The engine rejects nested fields and custom document IDs, so traces go to a custom `otel-v2-apm-span` index (see [`lib/optimized/README.md`](lib/optimized/README.md)). It has no `_search` API, so the demo's eval canary runs only its offline suite, and alerting monitors that need `_search` are skipped (listed in the `AlertMonitors` output).
+
+### Alerting monitors
+
+The stack creates the cluster health monitor, and with the demo the OpenTelemetry Demo monitors, the same definitions docker-compose and Helm create. They're created through OpenSearch UI, so they work on every backend; one the backend rejects is skipped. The `AlertMonitors` output lists each as created, exists or skipped.
+
+### Console templates
+
+```bash
+npm run export-templates -- --version <git tag>
+```
+
+writes `dist/templates/observability-stack-{domain,optimized,serverless,serverless-easy}.json`, the templates the Amazon OpenSearch Service console deploys. Each is this stack with the Lambda bundles inlined, so it needs no CDK bootstrap or asset bucket. `--version` is the tag the demo instance clones and the template's `TemplateVersion`; it defaults to the current commit, which only works for a deploy if it's also a branch or tag name.
+
+`serverless-easy` takes only `StackDisplayName` and `AdminRoleArns`; every other choice is fixed at its default and the demo always runs.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ ObsInfra Stack                                                  │
+│ ObsStack-<name>                                                 │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
-│  │  OpenSearch   │  │     AMP      │  │  DQS Data Source       │ │
-│  │   Domain      │  │  Workspace   │  │  (Prometheus → OS)     │ │
+│  │  OpenSearch  │  │     AMP      │  │  DQS Data Source       │ │
+│  │   Domain     │  │  Workspace   │  │  (Prometheus → OS)     │ │
 │  └──────────────┘  └──────────────┘  └────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────────┐
-│ ObservabilityStack                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
-│  │ OSIS Pipeline│  │  OpenSearch   │  │  FGAC Role Mapping     │ │
+│  │ OSIS Pipeline│  │  OpenSearch  │  │  FGAC Role Mapping     │ │
 │  │ (OTLP ingest)│  │  Application │  │                        │ │
 │  └──────────────┘  └──────┬───────┘  └────────────────────────┘ │
 │                           │                                     │
@@ -121,25 +138,37 @@ This deploys `test-ObsInfra` and `test-ObservabilityStack`. Resource names deriv
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-The two-stack split keeps the slow-to-create OpenSearch domain separate, so iterating on pipeline config, dashboards, or application settings takes ~6 minutes instead of ~25.
-
 ## Stack Outputs
 
 After deployment, retrieve outputs with:
 
 ```bash
-aws cloudformation describe-stacks --stack-name ObservabilityStack \
+aws cloudformation describe-stacks --stack-name ObsStack-mystack \
   --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table
 ```
 
 | Output | Description |
 |--------|-------------|
-| `DashboardUrl` | Direct link to the Observability Stack workspace |
-| `OsisIngestEndpoint` | OTLP endpoint — point your OTel Collector here |
-| `OpenSearchAppEndpoint` | OpenSearch Application root URL |
-| `OpenSearchEndpoint` | OpenSearch domain endpoint |
-| `PrometheusWorkspaceId` | Amazon Managed Prometheus workspace ID |
+| `WorkspaceUrl` | Direct link to the Observability Stack workspace |
+| `WorkspaceId` | OpenSearch UI workspace ID |
+| `OSISEndpoint` | OTLP endpoint; point your OTel Collector here |
+| `OSISPipelineArn` | Pipeline ARN, for `osis:Ingest` permissions |
+| `AppEndpoint` | OpenSearch Application root URL |
+| `AppId` | OpenSearch Application ID |
+| `DomainEndpoint` / `AOSSEndpoint` | OpenSearch domain or collection endpoint |
+| `DomainArn` / `CollectionArn` | OpenSearch domain or collection ARN |
+| `AMPEndpoint` | Amazon Managed Prometheus workspace endpoint |
+| `AmpWorkspaceArn` | Amazon Managed Prometheus workspace ARN |
+| `DirectQueryRoleArn` | Role the DQS data source uses to query AMP |
+| `PrometheusDataSourceArn` | DQS Prometheus data source ARN |
 | `DemoInstanceId` | EC2 instance ID (when the demo workload is enabled) |
+| `ObsStackGeneration` | Template generation (`V2`), read by the console |
+| `AlertMonitors` | Alerting monitors created, existing or skipped |
+| `FieldsReady` | Whether the index patterns got their field lists at create time (else refresh them once data arrives) |
+| `PipelineRoleArn` | The OSIS pipeline's role |
+| `TemplateVersion` | The `observabilityStackVersion` the template was built from |
+
+The stack also keeps the output names from the two-stack layout: `DashboardUrl`, `OsisIngestEndpoint`, `OpenSearchAppEndpoint`, `OpenSearchEndpoint` and `PrometheusWorkspaceId`.
 
 ## Sending Telemetry
 
@@ -153,15 +182,15 @@ extensions:
 
 exporters:
   otlphttp/logs:
-    logs_endpoint: ${OSIS_ENDPOINT}/obs-stack-observabilitystack/v1/logs
+    logs_endpoint: ${OSIS_ENDPOINT}/obs-stack-obsstack-mystack/v1/logs
     auth: { authenticator: sigv4auth }
     compression: none
   otlphttp/traces:
-    traces_endpoint: ${OSIS_ENDPOINT}/obs-stack-observabilitystack/v1/traces
+    traces_endpoint: ${OSIS_ENDPOINT}/obs-stack-obsstack-mystack/v1/traces
     auth: { authenticator: sigv4auth }
     compression: none
   otlphttp/metrics:
-    metrics_endpoint: ${OSIS_ENDPOINT}/obs-stack-observabilitystack/v1/metrics
+    metrics_endpoint: ${OSIS_ENDPOINT}/obs-stack-obsstack-mystack/v1/metrics
     auth: { authenticator: sigv4auth }
     compression: none
 ```
@@ -177,23 +206,16 @@ The instance also runs the example agents and the [agent eval canary](../../dock
 ## Useful Commands
 
 ```bash
-# Deploy both stacks
-cdk deploy --all
-
-# Deploy only the fast-iteration stack (after infra is up). On serverless, changes to
-# adminRoleArns also update the data access policy in ObsInfra, so use --all for those.
-cdk deploy ObservabilityStack --exclusively
+# Deploy or update
+cdk deploy -c stackName=mystack
 
 # View diff before deploying
-cdk diff
+cdk diff -c stackName=mystack
 
 # Destroy everything
-cdk destroy --all
+cdk destroy -c stackName=mystack
 
-# Destroy only the app stack (keeps domain intact)
-cdk destroy ObservabilityStack
-
-# Unit tests (pipeline names, application admins, Agent Evaluations UI setup)
+# Unit tests (pipeline names, console contract, Agent Evaluations UI setup)
 npm test
 ```
 
@@ -203,8 +225,8 @@ npm test
 aws/cdk/
 ├── bin/app.ts                          # Entry point — stack instantiation and config
 ├── lib/
-│   ├── infra-stack.ts                  # OpenSearch domain, AMP, DQS data source
-│   ├── observability-stack.ts          # FGAC, OSIS pipeline, Application, UI init
+│   ├── observability-stack.ts          # The ObsStack-<name> stack: FGAC, OSIS pipeline, Application, UI init, outputs
+│   ├── infra-stack.ts                  # OpenSearch domain or collection, AMP, DQS data source
 │   ├── opensearch.ts                   # Domain + secret + pipeline role construct
 │   ├── prometheus.ts                   # AMP workspace + DQS data source construct
 │   ├── ingestion-pipeline.ts           # OSIS pipeline construct
@@ -213,7 +235,6 @@ aws/cdk/
 ├── custom-resources/
 │   ├── fgac-mapping/index.ts           # FGAC Security API role mapping
 │   ├── dqs-datasource/index.ts         # DQS Prometheus data source
-│   ├── opensearch-app/index.ts         # OpenSearch Application lifecycle
 │   └── ui-init/                        # Workspace, index patterns, Agent Evaluations config, dashboards
 │       ├── index.ts
 │       └── arch-image.mjs              # Architecture diagram (base64 PNG)
@@ -224,4 +245,15 @@ aws/cdk/
 
 ## Tagging
 
-All resources are tagged with `observability-stack: <stack-name>`, matching the CLI installer's tagging scheme. This allows the CLI's `list` and `destroy` commands to discover CDK-deployed stacks.
+The stack and all resources that support tags are tagged with:
+
+| Tag | Value |
+|-----|-------|
+| `observability-stack` | The CloudFormation stack name, matching the CLI installer's scheme so its `list` and `destroy` commands find CDK stacks |
+| `opensearch:observability-stack` | `stackName` |
+| `opensearch:observability-stack-source` | `cdk` |
+| `opensearch:observability-stack-version` | The `observabilityStackVersion` context value, when set |
+| `opensearch:obs-stack-generation` | `v2` |
+| `opensearch:obs-backend` | `aos-domain` or `aossv2` |
+
+The console doesn't depend on the tags: it finds the stack by its `ObsStack-` name and reads the generation and backend from the end of the stack Description.
