@@ -164,6 +164,8 @@ describe('names from StackDisplayName', () => {
     const name = props(t, 'AWS::OpenSearchService::Application')[0].Name['Fn::Join'];
     assert.deepEqual(name[1].slice(0, 3), ['obs', ref, 'app']);
     assert.match(JSON.stringify(name[1][3]), /AWS::StackId/);
+    // The 4-character UUID group: obs-<17 characters>-app-<4> is the API's 30-character limit.
+    assert.equal(name[1][3]['Fn::Select'][0], 1);
   });
 });
 

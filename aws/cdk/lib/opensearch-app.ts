@@ -48,7 +48,8 @@ export class OpenSearchAppConstruct extends Construct {
 
     const stack = cdk.Stack.of(this);
     // A failed create leaves the application behind outside the stack; the stack ID suffix keeps a retry from colliding with it.
-    const createId = cdk.Fn.select(0, cdk.Fn.split('-', cdk.Fn.select(2, cdk.Fn.split('/', stack.stackId))));
+    // The 4-character UUID group keeps a 17-character display name within the API's 30-character limit.
+    const createId = cdk.Fn.select(1, cdk.Fn.split('-', cdk.Fn.select(2, cdk.Fn.split('/', stack.stackId))));
     const appName = cdk.Fn.join('-', ['obs', props.displayName, 'app', createId]);
 
     this.application = new opensearch.CfnApplication(this, 'Application', {
