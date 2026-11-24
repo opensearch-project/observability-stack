@@ -68,6 +68,7 @@ export class ObservabilityStack extends cdk.Stack {
     });
     // The console finds the stack as ObsStack-<StackDisplayName>. Under another name the tag resolves an
     // import that doesn't exist, which fails the create before anything is made; the export name is the message.
+    // The console's templates use the same guard.
     const stackNameOk = new cdk.CfnCondition(this, 'StackNameOk', {
       expression: cdk.Fn.conditionEquals(cdk.Aws.STACK_NAME, `ObsStack-${displayName}`),
     });
@@ -89,6 +90,10 @@ export class ObservabilityStack extends cdk.Stack {
     cdk.Tags.of(this).add('opensearch:obs-stack-generation', 'v2');
     cdk.Tags.of(this).add('opensearch:obs-backend', backend);
     const version = this.node.tryGetContext('observabilityStackVersion');
+    // The demo clones it with git clone --branch inside Fn::Sub.
+    if (version !== undefined && !/^[\w./-]+$/.test(String(version))) {
+      throw new Error(`observabilityStackVersion must be a branch or tag name: ${version}`);
+    }
     if (version) cdk.Tags.of(this).add('opensearch:observability-stack-version', String(version));
 
     for (const arn of props.adminRoleArns ?? []) {

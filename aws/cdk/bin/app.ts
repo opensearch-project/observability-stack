@@ -19,7 +19,10 @@ const adminRoleArns = String(app.node.tryGetContext('adminRoleArns') ?? '')
   .split(',').map((s) => s.trim()).filter(Boolean);
 const optionalNumber = (key: string): number | undefined => {
   const value = app.node.tryGetContext(key);
-  return value === undefined ? undefined : Number(value);
+  if (value === undefined) return undefined;
+  const n = Number(value);
+  if (String(value).trim() === '' || !Number.isFinite(n)) throw new Error(`-c ${key} must be a number: ${value}`);
+  return n;
 };
 
 const stackName = String(app.node.tryGetContext('stackName') ?? '');

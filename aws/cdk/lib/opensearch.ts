@@ -50,21 +50,21 @@ export class OpenSearchConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
     // FGAC authorizes each caller; this policy limits callers to signed requests from this account.
-    // Set inline on the domain: the L2 accessPolicies prop applies it with a post-create
-    // UpdateDomainConfig, and the domain rejects new data source associations while that processes.
     if (props.optimizedEngine) {
       // Not in the L2 construct. Both are create-only; the engine needs an OpenSearch Optimized instance family.
       const cfn = this.domain.node.defaultChild as opensearch.CfnDomain;
       cfn.addPropertyOverride('EngineMode', 'OPTIMIZED');
       cfn.addPropertyOverride('UseCase', 'OBSERVABILITY');
     }
+    // Set inline on the domain: the L2 accessPolicies prop applies it with a post-create
+    // UpdateDomainConfig, and the domain rejects new data source associations while that processes.
     (this.domain.node.defaultChild as opensearch.CfnDomain).accessPolicies = {
       Version: '2012-10-17',
       Statement: [{
         Effect: 'Allow',
         Principal: { AWS: `arn:${stack.partition}:iam::${stack.account}:root` },
         Action: 'es:ESHttp*',
-        Resource: `arn:aws:es:${stack.region}:${stack.account}:domain/*/*`,
+        Resource: `arn:${stack.partition}:es:${stack.region}:${stack.account}:domain/*/*`,
       }],
     };
 

@@ -21,6 +21,18 @@ describe('bin/app.ts', () => {
     });
   }
 
+  it('rejects a -c number that is not a number', () => {
+    const r = runApp({ stackName: 'my-stack-01', osInstanceCount: 'abc' });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /-c osInstanceCount must be a number: abc/);
+  });
+
+  it('rejects an observabilityStackVersion that is not a branch or tag name', () => {
+    const r = runApp({ stackName: 'my-stack-01', observabilityStackVersion: 'v1${AWS::Region}' });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /observabilityStackVersion must be a branch or tag name/);
+  });
+
   it('accepts a valid stackName', () => {
     const r = runApp({ stackName: 'my-stack-01' });
     assert.equal(r.status, 0, r.stderr);
