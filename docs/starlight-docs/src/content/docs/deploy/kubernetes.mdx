@@ -104,7 +104,7 @@ helm install obs charts/observability-stack \
   --set opensearch.replicas=1 \
   --set opensearch.resources.requests.memory=1Gi \
   --set opensearch.resources.limits.memory=1Gi \
-  --set opensearch.opensearchJavaOpts="-Xms512m -Xmx512m" \
+  --set opensearch.opensearchJavaOpts="-Xms512m -Xmx512m -XX:-UseBASE64Intrinsics" \
   --set opensearch.persistence.size=2Gi \
   --set data-prepper.resources.requests.memory=512Mi \
   --set data-prepper.resources.limits.memory=512Mi

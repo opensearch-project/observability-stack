@@ -35,7 +35,7 @@ helm install obs charts/observability-stack \
   --set opensearch.replicas=1 \
   --set opensearch.resources.requests.memory=1Gi \
   --set opensearch.resources.limits.memory=1Gi \
-  --set opensearch.opensearchJavaOpts="-Xms512m -Xmx512m" \
+  --set opensearch.opensearchJavaOpts="-Xms512m -Xmx512m -XX:-UseBASE64Intrinsics" \
   --set opensearch.persistence.size=2Gi
 ```
 
@@ -234,7 +234,7 @@ The default values deploy a 3-node OpenSearch cluster suitable for small product
 | `opensearch.singleNode` | `false` | Set `true` only for local dev (kind) |
 | `opensearch.resources.requests.memory` | `2Gi` | 8–64Gi per node (JVM gets 50%) |
 | `opensearch.persistence.size` | `8Gi` | Size per formula below |
-| `opensearch.extraEnvs[OPENSEARCH_JAVA_OPTS]` | `-Xms1g -Xmx1g` | 50% of node RAM, max 31g |
+| `opensearch.extraEnvs[OPENSEARCH_JAVA_OPTS]` | `-Xms1g -Xmx1g -XX:-UseBASE64Intrinsics` | 50% of node RAM, max 31g |
 
 **Storage formula:**
 ```

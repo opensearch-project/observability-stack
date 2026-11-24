@@ -296,7 +296,7 @@ resource "helm_release" "observability_stack" {
   }
   set {
     name  = "opensearch.opensearchJavaOpts"
-    value = "-Xms${var.opensearch_jvm_heap} -Xmx${var.opensearch_jvm_heap}"
+    value = "-Xms${var.opensearch_jvm_heap} -Xmx${var.opensearch_jvm_heap} -XX:-UseBASE64Intrinsics"
   }
 
   # --- Cortex sizing ---
