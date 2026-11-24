@@ -276,7 +276,7 @@ export class DemoWorkload extends Construct {
           'sleep 60',
           'docker compose -f docker-compose.managed.yml up -d',
         ].join('\n'),
-        { OsiEndpoint: osiEndpoint, OpenSearchUrl: target?.url ?? '', PipelineName: props.pipeline.pipelineName },
+        { OsiEndpoint: osiEndpoint, PipelineName: props.pipeline.pipelineName, ...(target && online && { OpenSearchUrl: target.url }) },
       ]},
     });
 

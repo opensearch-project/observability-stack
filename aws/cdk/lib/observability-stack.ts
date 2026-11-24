@@ -72,6 +72,12 @@ export class ObservabilityStack extends cdk.Stack {
     });
     stackNameOk.overrideLogicalId('StackNameOk');
     (infra.pipelineRole.node.defaultChild as cdk.CfnResource).cfnOptions.condition = stackNameOk;
+    const reason = 'StackNameOk fails the create by leaving the pipeline role out when the stack name does not match.';
+    cdk.Validations.of(this).acknowledge(
+      { id: 'CloudFormation-Validate::E3005', reason },
+      { id: 'CloudFormation-Validate::W2502', reason },
+      { id: 'CloudFormation-Validate::W1001', reason },
+    );
     const backend = isServerless ? 'aossv2' : isOptimized ? 'aos-optimized' : 'aos-domain';
 
     // Read by the console's Observability stacks page. The stack name and this Description
