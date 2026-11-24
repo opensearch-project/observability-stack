@@ -66,18 +66,15 @@ export class ObservabilityStack extends cdk.Stack {
       adminRoleList: params.adminRoleArns,
       adminRoleListNotEmpty: params.hasAdminRoleArns,
     });
-    // The console finds the stack as ObsStack-<StackDisplayName>; a stack under another name fails to create.
+    // The console finds the stack as ObsStack-<StackDisplayName>. Under another name the tag resolves an
+    // import that doesn't exist, which fails the create before anything is made; the export name is the message.
     const stackNameOk = new cdk.CfnCondition(this, 'StackNameOk', {
       expression: cdk.Fn.conditionEquals(cdk.Aws.STACK_NAME, `ObsStack-${displayName}`),
     });
     stackNameOk.overrideLogicalId('StackNameOk');
-    (infra.pipelineRole.node.defaultChild as cdk.CfnResource).cfnOptions.condition = stackNameOk;
-    const reason = 'StackNameOk fails the create by leaving the pipeline role out when the stack name does not match.';
-    cdk.Validations.of(this).acknowledge(
-      { id: 'CloudFormation-Validate::E3005', reason },
-      { id: 'CloudFormation-Validate::W2502', reason },
-      { id: 'CloudFormation-Validate::W1001', reason },
-    );
+    cdk.Tags.of(infra.pipelineRole).add('opensearch:observability-stack', cdk.Fn.conditionIf('StackNameOk', displayName,
+      cdk.Fn.importValue(cdk.Fn.sub('ObsStack-${StackDisplayName} (required stack name -- do not edit it), invalid stack name')),
+    ).toString(), { priority: 300 });
     const backend = isServerless ? 'aossv2' : isOptimized ? 'aos-optimized' : 'aos-domain';
 
     // Read by the console's Observability stacks page. The stack name and this Description

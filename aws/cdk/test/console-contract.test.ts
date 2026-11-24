@@ -181,12 +181,15 @@ function findIfs(value: unknown, condition: string): unknown[][] {
 }
 
 describe('conditions', () => {
-  it('creates the pipeline role only when the stack is named ObsStack-<StackDisplayName>', () => {
+  it('fails a stack not named ObsStack-<StackDisplayName> with the required name in the error', () => {
     const { template: t } = synth('managed');
     assert.deepEqual(t.Conditions.StackNameOk['Fn::Equals'][0], { Ref: 'AWS::StackName' });
     const pipeline = Object.values<any>(t.Resources).find((r) => r.Type === 'AWS::OSIS::Pipeline');
-    const roleId = pipeline.Properties.PipelineRoleArn['Fn::GetAtt'][0];
-    assert.equal(t.Resources[roleId].Condition, 'StackNameOk');
+    const role = t.Resources[pipeline.Properties.PipelineRoleArn['Fn::GetAtt'][0]];
+    assert.equal(role.Condition, undefined);
+    const tag = role.Properties.Tags.find((x: any) => x.Key === 'opensearch:observability-stack');
+    assert.deepEqual(tag.Value['Fn::If'].slice(0, 2), ['StackNameOk', { Ref: 'StackDisplayName' }]);
+    assert.match(tag.Value['Fn::If'][2]['Fn::ImportValue']['Fn::Sub'], /^ObsStack-\$\{StackDisplayName\} \(required stack name/);
   });
 
   for (const type of ['managed', 'serverless'] as const) {
