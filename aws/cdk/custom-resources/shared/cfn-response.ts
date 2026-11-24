@@ -55,8 +55,19 @@ export function withCfnResponse<E>(fn: (event: E, context: LambdaContext) => Pro
       LogicalResourceId: event.LogicalResourceId,
       Data: result?.Data,
     });
-    // The pre-signed URL isn't signed for a content type, so send none.
-    const resp = await fetch(event.ResponseURL, { method: 'PUT', body, headers: { 'content-type': '' } });
-    if (!resp.ok) throw new Error(`ResponseURL returned ${resp.status}`);
+    await sendResponse(event.ResponseURL, body);
   };
+}
+
+/** PUTs the response, retrying: if it never arrives, CloudFormation waits an hour. */
+export async function sendResponse(url: string, body: string, attempts = 5, delayMs = 500) {
+  for (let i = 1; ; i++) {
+    // The pre-signed URL isn't signed for a content type, so send none.
+    const resp = await fetch(url, { method: 'PUT', body, headers: { 'content-type': '' } }).catch((e: Error) => e);
+    if (!(resp instanceof Error) && resp.ok) return;
+    const why = resp instanceof Error ? resp.message : `status ${resp.status}`;
+    if (i >= attempts) throw new Error(`ResponseURL failed after ${attempts} attempts: ${why}`);
+    console.warn(`ResponseURL attempt ${i} failed: ${why}`);
+    await new Promise((r) => setTimeout(r, delayMs * i));
+  }
 }

@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { withCfnResponse } from '../custom-resources/shared/cfn-response';
+import { sendResponse, withCfnResponse } from '../custom-resources/shared/cfn-response';
 
 const event = {
   RequestType: 'Create' as const, ResponseURL: 'https://example.invalid/response', StackId: 'stack',
@@ -44,6 +44,19 @@ describe('withCfnResponse', () => {
     const del = { ...event, RequestType: 'Delete' as const, PhysicalResourceId: 'stream-from-failed-create' };
     await withCfnResponse(async () => ({ PhysicalResourceId: 'ui-init' }))(del, context);
     assert.equal(sent[0].body.PhysicalResourceId, 'stream-from-failed-create');
+  });
+
+  it('retries the response PUT', async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      if (calls === 1) throw new Error('socket hang up');
+      return { ok: calls > 2, status: calls > 2 ? 200 : 503 } as Response;
+    }) as typeof fetch;
+    await sendResponse('https://example.invalid/response', '{}', 5, 1);
+    assert.equal(calls, 3);
+    globalThis.fetch = (async () => ({ ok: false, status: 500 }) as Response) as typeof fetch;
+    await assert.rejects(sendResponse('https://example.invalid/response', '{}', 2, 1), /after 2 attempts: status 500/);
   });
 
   it('sends FAILED before the function would time out', async () => {
