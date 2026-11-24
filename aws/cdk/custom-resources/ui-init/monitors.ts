@@ -3,7 +3,7 @@
  * init-otel-demo-monitors.py, created through the OpenSearch UI alerting API so they work on every backend.
  */
 
-type Request = (method: 'GET' | 'POST', path: string, body?: unknown) => Promise<{ status: number; data: any }>;
+type Request = (method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown) => Promise<{ status: number; data: any }>;
 
 /** Stack health: fires when the cluster is red (yellow is normal on a single-node domain). */
 function stackMonitors(): Record<string, unknown>[] {
@@ -77,19 +77,37 @@ export function monitorDefinitions(opts: { demo: boolean; exactIndexNames: boole
   return [...stackMonitors(), ...(opts.demo ? demoMonitors(spans, logs) : [])];
 }
 
+/** Names of the demo monitors, which a stack without the demo removes. */
+export function demoMonitorNames(): string[] {
+  return demoMonitors('', '').map((m) => String(m.name));
+}
+
 /**
- * Creates each monitor that doesn't exist yet. A monitor the backend rejects (for example cluster health on
- * serverless) is skipped. Returns one line per monitor for the AlertMonitors output. The calls go through the
- * workspace: a serverless data source answers "Missing workspace ID" outside it.
+ * Creates each monitor that doesn't exist yet and deletes the ones named in `remove`. A monitor the backend
+ * rejects (for example cluster health on serverless) is skipped. Returns one line per monitor for the
+ * AlertMonitors output. The calls go through the workspace: a serverless data source answers "Missing
+ * workspace ID" outside it.
  */
-export async function ensureMonitors(request: Request, wsId: string, dataSourceId: string | undefined, monitors: Record<string, unknown>[]) {
+export async function ensureMonitors(
+  request: Request, wsId: string, dataSourceId: string | undefined, monitors: Record<string, unknown>[], remove: string[] = [],
+) {
   const ds = dataSourceId ? `&dataSourceId=${dataSourceId}` : '';
   const base = `/w/${wsId}/api/alerting/monitors`;
+  const find = async (name: string): Promise<any[]> => {
+    const list = await request('GET', `${base}?from=0&size=50&search=${encodeURIComponent(name)}&sortField=name&sortDirection=asc&state=all${ds}`);
+    return (list.data?.monitors ?? []).filter((m: any) => m.name === name);
+  };
   const results: string[] = [];
+  for (const name of remove) {
+    for (const m of await find(name)) {
+      const deleted = await request('DELETE', `${base}/${m.id}?version=${m.version}${ds}`);
+      if (deleted.status === 200 && deleted.data?.ok !== false) results.push(`${name}: removed`);
+      else console.warn(`Monitor ${name} not removed: ${String(deleted.data?.resp ?? deleted.status).slice(0, 120)}`);
+    }
+  }
   for (const monitor of monitors) {
     const name = String(monitor.name);
-    const list = await request('GET', `${base}?from=0&size=50&search=${encodeURIComponent(name)}&sortField=name&sortDirection=asc&state=all${ds}`);
-    if ((list.data?.monitors ?? []).some((m: any) => m.name === name)) {
+    if ((await find(name)).length > 0) {
       results.push(`${name}: exists`);
       continue;
     }

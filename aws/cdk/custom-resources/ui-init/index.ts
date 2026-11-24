@@ -12,7 +12,7 @@ import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
 import { withCfnResponse } from '../shared/cfn-response';
-import { ensureMonitors, monitorDefinitions } from './monitors';
+import { demoMonitorNames, ensureMonitors, monitorDefinitions } from './monitors';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
@@ -342,6 +342,7 @@ export async function handler(event: Event) {
     wsId!,
     dsId,
     monitorDefinitions({ demo: DemoMonitors === 'true', exactIndexNames: ExactIndexNames === 'true', spanIndexPattern: spans }),
+    DemoMonitors === 'true' ? [] : demoMonitorNames(),
   );
 
   return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId, FieldsReady: String(fieldsReady), Monitors: monitors } };
