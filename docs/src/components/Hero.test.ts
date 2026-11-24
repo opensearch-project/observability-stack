@@ -13,6 +13,16 @@ import fc from 'fast-check';
  * For any CTA button element, the element should have analytics tracking attributes 
  * (data-analytics or onClick handler with tracking).
  */
+// Generated CTA labels are arbitrary strings; escape them the way the real
+// template does so characters like `<` or `"` cannot break the test markup.
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 describe('Hero - Property 14: CTA button analytics tracking', () => {
   let container: HTMLElement;
 
@@ -70,7 +80,7 @@ describe('Hero - Property 14: CTA button analytics tracking', () => {
                       data-testid="cta-${idx}"
                       ${externalAttrs}
                     >
-                      ${cta.text}
+                      ${escapeHtml(cta.text)}
                     </a>
                   `;
                 }).join('')}
