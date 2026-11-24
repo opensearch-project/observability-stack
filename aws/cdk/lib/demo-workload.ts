@@ -22,6 +22,19 @@ export interface DemoWorkloadProps {
   pipeline: IngestionPipeline;
   /** Where the eval canary reads agent spans. Without it the canary does not run. */
   opensearch?: DemoOpenSearchTarget;
+  /** Where the instance runs. Default: the account's default VPC, with a public IP. */
+  network?: DemoNetwork;
+}
+
+export interface DemoNetwork {
+  /** Create a one-AZ VPC with a NAT gateway and run the instance in its private subnet, with no public IP. */
+  privateSubnet?: boolean;
+  /** Existing VPC to run the instance in; the stack then creates no VPC or NAT gateway. */
+  vpcId?: string;
+  /** Subnet of `vpcId` for the instance. It needs outbound internet access, e.g. a route to a NAT gateway. */
+  subnetId?: string;
+  /** Availability Zone for the instance in the default VPC, or for the VPC `privateSubnet` creates. */
+  availabilityZone?: string;
 }
 
 export class DemoWorkload extends Construct {
@@ -33,7 +46,36 @@ export class DemoWorkload extends Construct {
 
     const stack = cdk.Stack.of(this);
     const region = stack.region;
-    const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
+    const net = props.network ?? {};
+    let vpc: ec2.IVpc;
+    let vpcSubnets: ec2.SubnetSelection | undefined;
+    if (net.vpcId) {
+      vpc = ec2.Vpc.fromLookup(this, 'Vpc', { vpcId: net.vpcId });
+      // The lookup counts a subnet as private if it routes to a NAT gateway or a transit gateway, or is tagged
+      // aws-cdk:subnet-type=Private, so an explicit subnet is the way to be sure of internet egress.
+      vpcSubnets = { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS };
+    } else if (net.privateSubnet) {
+      // No public IP; egress through a NAT gateway. VPC Block Public Access allows that in ingress-only mode;
+      // bidirectional mode blocks it unless the VPC or subnet has an exclusion.
+      vpc = new ec2.Vpc(this, 'Vpc', {
+        ...(net.availabilityZone ? { availabilityZones: [net.availabilityZone] } : { maxAzs: 1 }),
+        natGateways: 1,
+        subnetConfiguration: [
+          { name: 'public', subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+          { name: 'private', subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
+        ],
+      });
+      vpcSubnets = { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS };
+    } else {
+      // A public subnet of the default VPC, with a public IP. Block Public Access in any mode blocks its egress.
+      vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
+      if (net.availabilityZone) vpcSubnets = { subnetType: ec2.SubnetType.PUBLIC, availabilityZones: [net.availabilityZone] };
+    }
+    if (net.subnetId) {
+      const subnet = [...vpc.privateSubnets, ...vpc.isolatedSubnets, ...vpc.publicSubnets].find((s) => s.subnetId === net.subnetId);
+      if (!subnet) throw new Error(`demoSubnetId ${net.subnetId} is not a subnet of ${net.vpcId}`);
+      vpcSubnets = { subnets: [subnet] };
+    }
 
     const role = this.role = new iam.Role(this, 'InstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -89,6 +131,7 @@ export class DemoWorkload extends Construct {
 
     this.instance = new ec2.Instance(this, 'Instance', {
       vpc,
+      vpcSubnets,
       instanceType: new ec2.InstanceType('t3.xlarge'),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       role,
@@ -108,24 +151,6 @@ export class DemoWorkload extends Construct {
       'https://',
       cdk.Fn.select(0, props.pipeline.pipeline.attrIngestEndpointUrls),
     ]);
-
-    // Build user data with Fn::Sub for the OSIS endpoint
-    const userData = ec2.UserData.forLinux();
-    userData.addCommands(
-      'set -euo pipefail',
-      'exec > /var/log/obs-stack-init.log 2>&1',
-      '',
-      'dnf install -y docker git',
-      'systemctl enable --now docker',
-      'usermod -aG docker ec2-user',
-      '',
-      'mkdir -p /usr/local/lib/docker/cli-plugins',
-      'curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m)" -o /usr/local/lib/docker/cli-plugins/docker-compose',
-      'chmod +x /usr/local/lib/docker/cli-plugins/docker-compose',
-      '',
-      'git clone --depth 1 https://github.com/opensearch-project/observability-stack.git /opt/obs-stack',
-      'cd /opt/obs-stack',
-    );
 
     // Write collector config — use Fn::Sub to resolve OSI_ENDPOINT
     this.instance.instance.addPropertyOverride('UserData', {
