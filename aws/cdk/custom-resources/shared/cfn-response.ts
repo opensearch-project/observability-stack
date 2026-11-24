@@ -47,7 +47,9 @@ export function withCfnResponse<E>(fn: (event: E, context: LambdaContext) => Pro
     const body = JSON.stringify({
       Status: status,
       Reason: reason,
-      PhysicalResourceId: result?.PhysicalResourceId ?? event.PhysicalResourceId ?? context.logStreamName,
+      // A Delete answers for the resource CloudFormation named, which after a failed Create is the log stream.
+      PhysicalResourceId: (event.RequestType === 'Delete' && event.PhysicalResourceId)
+        || (result?.PhysicalResourceId ?? event.PhysicalResourceId ?? context.logStreamName),
       StackId: event.StackId,
       RequestId: event.RequestId,
       LogicalResourceId: event.LogicalResourceId,

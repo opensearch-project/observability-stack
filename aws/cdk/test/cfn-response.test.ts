@@ -39,6 +39,13 @@ describe('withCfnResponse', () => {
     assert.equal(sent[0].body.PhysicalResourceId, 'stream');
   });
 
+  it('keeps the physical id CloudFormation sent on Delete', async () => {
+    const sent = captureFetch();
+    const del = { ...event, RequestType: 'Delete' as const, PhysicalResourceId: 'stream-from-failed-create' };
+    await withCfnResponse(async () => ({ PhysicalResourceId: 'ui-init' }))(del, context);
+    assert.equal(sent[0].body.PhysicalResourceId, 'stream-from-failed-create');
+  });
+
   it('sends FAILED before the function would time out', async () => {
     const sent = captureFetch();
     const short = { ...context, getRemainingTimeInMillis: () => 10_500 };
