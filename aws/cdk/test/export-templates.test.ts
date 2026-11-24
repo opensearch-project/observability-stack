@@ -29,3 +29,19 @@ describe('export-templates', () => {
     });
   }
 });
+
+describe('export-templates without --version', () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'export-test-'));
+  before(() => {
+    execFileSync('npx', ['ts-node', 'scripts/export-templates.ts', '--out', out],
+      { cwd: path.join(__dirname, '..'), stdio: 'pipe' });
+  });
+
+  it('clones the default branch, since git clone --branch takes no commit ids', () => {
+    const t = JSON.parse(fs.readFileSync(path.join(out, 'observability-stack-domain.json'), 'utf8'));
+    const text = JSON.stringify(t);
+    assert.ok(text.includes('git clone --depth 1 https://'), 'demo clones a ref');
+    assert.equal(t.Metadata.TemplateVersion, 'unreleased');
+    assert.equal(t.Outputs.TemplateVersion.Value, 'unreleased');
+  });
+});

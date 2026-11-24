@@ -6,7 +6,7 @@
  *
  * Each template is this CDK app's synthesized stack with the Lambda bundles inlined as Code.ZipFile, so it
  * needs no CDK bootstrap or asset bucket. --version is the tag the demo instance clones and the template
- * reports; it defaults to the current commit.
+ * reports. Without it the demo clones the default branch and the template reports "unreleased".
  */
 import * as cdk from 'aws-cdk-lib';
 import * as fs from 'fs';
@@ -31,7 +31,7 @@ function arg(name: string): string | undefined {
 }
 
 const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();
-const version = arg('version') ?? commit;
+const version = arg('version');
 const outDir = path.resolve(arg('out') ?? path.join(__dirname, '..', 'dist', 'templates'));
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -40,7 +40,7 @@ for (const variant of VARIANTS) {
     outdir: fs.mkdtempSync(path.join(os.tmpdir(), 'obs-stack-export-')),
     analyticsReporting: false,
     context: { 'aws:cdk:enable-path-metadata': false, 'aws:cdk:enable-asset-metadata': true,
-      observabilityStackVersion: version, observabilityStackSource: 'console' },
+      ...(version && { observabilityStackVersion: version }), observabilityStackSource: 'console' },
   });
   const stack = new ObservabilityStack(app, 'ObsStack-template', {
     synthesizer: new cdk.DefaultStackSynthesizer({ generateBootstrapVersionRule: false }),
@@ -68,7 +68,7 @@ for (const variant of VARIANTS) {
   }
   for (const name of REQUIRED_PARAMETERS) delete template.Parameters[name].Default;
   template.Metadata = {
-    TemplateVersion: version,
+    TemplateVersion: version ?? 'unreleased',
     OssSource: { Repository: 'https://github.com/opensearch-project/observability-stack', Commit: commit },
   };
 
