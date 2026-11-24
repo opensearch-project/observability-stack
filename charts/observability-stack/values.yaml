@@ -27,7 +27,7 @@ opensearch:
     size: 100Gi
     # storageClass: "gp3"       # Uncomment for AWS gp3 (better IOPS/$ than gp2)
   # JVM heap — set to 50% of resources.requests.memory, max 31g
-  opensearchJavaOpts: "-Xms2g -Xmx2g"
+  opensearchJavaOpts: "-Xms2g -Xmx2g -XX:-UseBASE64Intrinsics"
   extraEnvs:
     - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
       valueFrom:

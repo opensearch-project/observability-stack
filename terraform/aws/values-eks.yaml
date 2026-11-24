@@ -19,7 +19,7 @@ opensearch:
     limits:
       memory: "4Gi"
       cpu: "4000m"
-  opensearchJavaOpts: "-Xms2g -Xmx2g"
+  opensearchJavaOpts: "-Xms2g -Xmx2g -XX:-UseBASE64Intrinsics"
 
 opensearch-dashboards:
   replicaCount: 3
