@@ -85,10 +85,10 @@ export function datasetDataSource(ds?: { id?: string; attributes?: Record<string
 }
 
 /** The explore saved object (attributes and references) for one panel over the traces pattern. */
-export function agentPanelObject(p: AgentPanel, tracesId: string, dataSource?: DatasetDataSource) {
-  const { query, chartType, axesMapping } = agentPanelQuery(p);
+export function agentPanelObject(p: AgentPanel, tracesId: string, dataSource?: DatasetDataSource, tracesTitle = AGENT_TRACES_TITLE) {
+  const { query, chartType, axesMapping } = agentPanelQuery(p, tracesTitle);
   const dataset = {
-    id: tracesId, title: AGENT_TRACES_TITLE, type: 'INDEX_PATTERN',
+    id: tracesId, title: tracesTitle, type: 'INDEX_PATTERN',
     language: 'PPL', timeFieldName: AGENT_TRACES_TIME_FIELD, signalType: 'traces',
     ...(dataSource && { dataSource }),
   };
@@ -152,13 +152,13 @@ export function agentDashboardObject(panelIds: string[]) {
  * reported in `warnings`; it never throws.
  */
 export async function syncAgentDashboard(
-  api: AgentApi, wsId: string, tracesId: string, dataSource?: DatasetDataSource,
+  api: AgentApi, wsId: string, tracesId: string, dataSource?: DatasetDataSource, tracesTitle = AGENT_TRACES_TITLE,
 ): Promise<AgentSyncResult> {
   const result: AgentSyncResult = { panelIds: [], dashboard: 'skipped', removedLegacy: [], warnings: [] };
 
   for (const p of AGENT_PANELS) {
     try {
-      const obj = agentPanelObject(p, tracesId, dataSource);
+      const obj = agentPanelObject(p, tracesId, dataSource, tracesTitle);
       const path = `/w/${wsId}/api/saved_objects/explore/${p.id}`;
       const created = await api.post(path, obj);
       if (created.status === 200) {

@@ -11,12 +11,20 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
+import { invocationSignal, withCfnResponse } from '../shared/cfn-response';
+import { demoMonitorNames, ensureMonitors, monitorDefinitions } from './monitors';
 
 interface Event {
   RequestType: 'Create' | 'Update' | 'Delete';
   ResourceProperties: {
     AppEndpoint: string;
     Region: string;
+    /** 'true' to also create the OpenTelemetry Demo monitors. */
+    DemoMonitors?: string;
+    /** 'true' on serverless collections, where monitors need exact index names. */
+    ExactIndexNames?: string;
+    /** Index pattern of the traces index: otel-v2-apm-span* on the Optimized engine. */
+    SpanIndexPattern?: string;
   };
 }
 
@@ -64,6 +72,7 @@ async function osuiRequest(method: string, url: string, body: any, region: strin
     method,
     headers: signed.headers as Record<string, string>,
     body: isGet ? undefined : bodyBytes,
+    signal: invocationSignal(),
   });
 
   const text = await resp.text();
@@ -98,7 +107,7 @@ const FIELD_META_PARAMS = ['_source', '_id', '_type', '_index', '_score'].map((f
 async function storeIndexPatternFields(
   base: string, wsId: string, dsId: string | undefined,
   patterns: { title: string; timeFieldName: string }[], patternIds: Record<string, string>, region: string,
-) {
+): Promise<boolean> {
   const pending = patterns.filter((p) => patternIds[p.title]);
   for (let attempt = 1; pending.length && attempt <= 12; attempt++) {
     for (const p of [...pending]) {
@@ -114,12 +123,14 @@ async function storeIndexPatternFields(
     if (pending.length) await sleep(15000);
   }
   for (const p of pending) console.warn(`Fields for ${p.title} not stored; refresh its field list once data arrives`);
+  return pending.length === 0;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function handler(event: Event) {
-  const { AppEndpoint, Region } = event.ResourceProperties;
+  const { AppEndpoint, Region, DemoMonitors, ExactIndexNames } = event.ResourceProperties;
+  const spans = event.ResourceProperties.SpanIndexPattern || 'otel-v1-apm-span*';
 
   if (event.RequestType === 'Delete') {
     return { PhysicalResourceId: 'ui-init' };
@@ -175,10 +186,8 @@ export async function handler(event: Event) {
     }, Region);
     wsId = (wsResp.data as any)?.result?.id;
     console.log('Workspace create response:', JSON.stringify(wsResp.data));
-    if (!wsId) {
-      console.log('WARNING: Workspace creation failed, returning without WorkspaceId');
-      return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: 'NONE' } };
-    }
+    // A stack without its workspace isn't usable, so fail the create instead of reporting success.
+    if (!wsId) throw new Error(`Workspace creation failed: ${wsResp.status} ${JSON.stringify(wsResp.data).slice(0, 300)}`);
   }
 
   // Associate data-source + data-connection with workspace
@@ -199,7 +208,7 @@ export async function handler(event: Event) {
   const logsSchema = '{"otelLogs":{"timestamp":"time","traceId":"traceId","spanId":"spanId","serviceName":"resource.attributes.service.name"}}';
   const patterns = [
     { title: 'logs-otel-v1*', timeFieldName: 'time', signalType: 'logs', schemaMappings: logsSchema },
-    { title: 'otel-v1-apm-span*', timeFieldName: 'endTime', signalType: 'traces' },
+    { title: spans, timeFieldName: 'endTime', signalType: 'traces' },
     { title: 'otel-v2-apm-service-map*', timeFieldName: 'timestamp' },
   ];
 
@@ -228,18 +237,18 @@ export async function handler(event: Event) {
       get: (path) => osuiGet(base, path, Region),
       post: (path, body) => osuiPost(base, path, body, Region),
       put: (path, body) => osuiPut(base, path, body, Region),
-    }, { wsId: wsId!, dsId, tracesId: patternIds['otel-v1-apm-span*'] });
+    }, { wsId: wsId!, dsId, tracesId: patternIds[spans] });
     console.log('Agent Evaluations setup:', JSON.stringify(evals));
     if (evals.evalsId) patternIds[EVALS_DATASET_TITLE] = evals.evalsId;
   } catch (e: any) {
     console.warn(`Agent Evaluations setup failed: ${e.message}`);
   }
 
-  await storeIndexPatternFields(base, wsId!, dsId,
+  const fieldsReady = await storeIndexPatternFields(base, wsId!, dsId,
     [...patterns, { title: EVALS_DATASET_TITLE, timeFieldName: EVALS_DATASET_TIME_FIELD }], patternIds, Region);
 
   const logsId = patternIds['logs-otel-v1*'];
-  const tracesId = patternIds['otel-v1-apm-span*'];
+  const tracesId = patternIds[spans];
   const svcMapId = patternIds['otel-v2-apm-service-map*'];
 
   // Set default index pattern
@@ -255,8 +264,8 @@ export async function handler(event: Event) {
     if (!hasTraceToLogs) {
       await osuiPost(base, `/w/${wsId}/api/saved_objects/correlations`, {
         attributes: {
-          correlationType: 'trace-to-logs-otel-v1-apm-span*',
-          title: 'trace-to-logs_otel-v1-apm-span*',
+          correlationType: `trace-to-logs-${spans}`,
+          title: `trace-to-logs_${spans}`,
           version: '1.0.0',
           entities: [
             { tracesDataset: { id: 'references[0].id' } },
@@ -300,10 +309,10 @@ export async function handler(event: Event) {
   // Saved queries
   const queries = [
     { id: 'error-logs', title: 'Error Logs', query: 'source = logs-otel-v1* | where severityNumber >= 17 | sort - time | head 100' },
-    { id: 'agent-invocations', title: 'Agent Invocations', query: 'source = otel-v1-apm-span* | where attributes.gen_ai.operation.name = "invoke_agent" | sort - endTime | head 50' },
-    { id: 'tool-executions', title: 'Tool Executions', query: 'source = otel-v1-apm-span* | where attributes.gen_ai.operation.name = "execute_tool" | sort - endTime | head 50' },
-    { id: 'slow-spans', title: 'Slow Spans (>5s)', query: 'source = otel-v1-apm-span* | where durationInNanos > 5000000000 | sort - durationInNanos | head 50' },
-    { id: 'token-usage', title: 'Token Usage by Model', query: 'source = otel-v1-apm-span* | where isnotnull(attributes.gen_ai.usage.input_tokens) | stats sum(attributes.gen_ai.usage.input_tokens) as input_tokens, sum(attributes.gen_ai.usage.output_tokens) as output_tokens by attributes.gen_ai.request.model' },
+    { id: 'agent-invocations', title: 'Agent Invocations', query: `source = ${spans} | where attributes.gen_ai.operation.name = "invoke_agent" | sort - endTime | head 50` },
+    { id: 'tool-executions', title: 'Tool Executions', query: `source = ${spans} | where attributes.gen_ai.operation.name = "execute_tool" | sort - endTime | head 50` },
+    { id: 'slow-spans', title: 'Slow Spans (>5s)', query: `source = ${spans} | where durationInNanos > 5000000000 | sort - durationInNanos | head 50` },
+    { id: 'token-usage', title: 'Token Usage by Model', query: `source = ${spans} | where isnotnull(attributes.gen_ai.usage.input_tokens) | stats sum(attributes.gen_ai.usage.input_tokens) as input_tokens, sum(attributes.gen_ai.usage.output_tokens) as output_tokens by attributes.gen_ai.request.model` },
   ];
   for (const q of queries) {
     await osuiPost(base, `/w/${wsId}/api/saved_objects/query/${q.id}`, {
@@ -313,7 +322,7 @@ export async function handler(event: Event) {
 
   // Agent Observability dashboard
   if (tracesId && wsId) {
-    await createAgentDashboard(base, wsId, tracesId, Region, dsId);
+    await createAgentDashboard(base, wsId, tracesId, Region, dsId, spans);
   }
 
   // Overview dashboard
@@ -329,12 +338,24 @@ export async function handler(event: Event) {
     changes: { defaultWorkspace: wsId },
   }, Region);
 
-  return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId } };
+  // Best effort, like the dashboards: a monitor failure doesn't roll back the stack.
+  const monitors = await ensureMonitors(
+    (method, path, body) => osuiRequest(method, `${base}${path}`, body ?? null, Region),
+    wsId!,
+    dsId,
+    monitorDefinitions({ demo: DemoMonitors === 'true', exactIndexNames: ExactIndexNames === 'true', spanIndexPattern: spans }),
+    DemoMonitors === 'true' ? [] : demoMonitorNames(),
+  ).catch((e: Error) => {
+    console.warn(`Monitors not created: ${e.message}`);
+    return `failed: ${e.message}`.slice(0, 300);
+  });
+
+  return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId, FieldsReady: String(fieldsReady), Monitors: monitors } };
 }
 
 // ── Agent Observability Dashboard ─────────────────────────────────────────────
 
-async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string, dsId?: string) {
+async function createAgentDashboard(base: string, wsId: string, tracesId: string, region: string, dsId?: string, spans?: string) {
   // Explore (PPL) panels, so they do not depend on the index pattern's stored field list; see
   // agent-panels.ts. A failed request skips that step instead of failing the whole init run.
   // The traces pattern lives on an external data source; the panels' queries must name it.
@@ -345,7 +366,7 @@ async function createAgentDashboard(base: string, wsId: string, tracesId: string
     post: (path, body) => osuiPost(base, path, body, region),
     put: (path, body) => osuiPut(base, path, body, region),
     del: (path) => osuiRequest('DELETE', `${base}${path}`, null, region),
-  }, wsId, tracesId, dataSource);
+  }, wsId, tracesId, dataSource, spans);
   for (const w of result.warnings) console.warn(w);
   console.log(`Agent Observability dashboard: ${result.dashboard} (${result.panelIds.length} panels)`);
 }
@@ -408,3 +429,6 @@ ${archImg}
     references: [{ name: 'panel_0', type: 'visualization', id: 'overview-markdown' }],
   }, region);
 }
+
+/** Entry point when CloudFormation invokes the function directly. */
+export const cfnHandler = withCfnResponse(handler);

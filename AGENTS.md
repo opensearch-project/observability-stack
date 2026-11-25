@@ -151,11 +151,11 @@ Contains Kubernetes Helm chart for production-like deployments.
 Contains the AWS CDK app (TypeScript) for a managed AWS deployment: OpenSearch, Amazon Managed Prometheus, an OSIS ingestion pipeline, the OpenSearch Application and dashboards, and an optional demo EC2 instance (`enableDemo`).
 
 **Key Files**:
-- `bin/app.ts`: App entry; instantiates `ObsInfra` and `ObservabilityStack`
+- `bin/app.ts`: App entry; instantiates one `ObsStack-<stackName>` stack (`-c stackName` is required)
 - `lib/demo-workload.ts`: Optional EC2 demo; its user-data is a Docker Compose bring-up injected via CloudFormation `Fn::Sub`
 - `custom-resources/`: UI-init and FGAC role-mapping resources
 
-**Gotcha**: the demo user-data in `lib/demo-workload.ts` is a single CloudFormation `Fn::Sub` string, so a bare shell `${VAR}` (even inside a comment) is read as a template reference and fails synth or deploy with `Unresolved resource dependencies [...]`. Escape shell variables as `${!VAR}`; `$(...)` command substitution is safe. `${OsiEndpoint}` is the one intentional `Fn::Sub` variable.
+**Gotcha**: the demo user-data in `lib/demo-workload.ts` is a single CloudFormation `Fn::Sub` string, so a bare shell `${VAR}` (even inside a comment) is read as a template reference and fails synth or deploy with `Unresolved resource dependencies [...]`. Escape shell variables as `${!VAR}`; `$(...)` command substitution is safe. The intentional `Fn::Sub` references are `${OsiEndpoint}`, `${PipelineName}`, `${OpenSearchUrl}` and `${AWS::Region}`.
 
 ### examples/
 

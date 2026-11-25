@@ -1,10 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
 import * as opensearch from 'aws-cdk-lib/aws-opensearchservice';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
+import { denyCreateLogGroup } from './function-log-group';
 
 export interface OpenSearchConstructProps {
+  /** The OpenSearch Optimized engine for observability data. Fixed at creation. */
+  optimizedEngine?: boolean;
+  domainName: string;
   instanceType: string;
   instanceCount: number;
   volumeSize: number;
@@ -15,30 +18,21 @@ export class OpenSearchConstruct extends Construct {
   public readonly pipelineRole: iam.Role;
   /** FGAC master user. The FGAC mapping Lambda runs as this role. */
   public readonly fgacAdminRole: iam.Role;
-  /** Unused. Kept so ObservabilityStack deployments that still import its ARN can update. */
-  public readonly masterPasswordSecret: secretsmanager.Secret;
 
   constructor(scope: Construct, id: string, props: OpenSearchConstructProps) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
 
-    this.masterPasswordSecret = new secretsmanager.Secret(this, 'MasterPassword', {
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({ username: 'admin' }),
-        generateStringKey: 'password',
-        excludePunctuation: false,
-        passwordLength: 24,
-      },
-    });
-
     this.fgacAdminRole = new iam.Role(this, 'FgacAdminRole', {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
     });
+    this.fgacAdminRole.addToPolicy(denyCreateLogGroup());
 
     this.domain = new opensearch.Domain(this, 'Domain', {
-      version: opensearch.EngineVersion.openSearch('3.5'),
+      domainName: props.domainName,
+      version: opensearch.EngineVersion.openSearch('3.7'),
       capacity: {
         dataNodeInstanceType: props.instanceType,
         dataNodes: props.instanceCount,
@@ -53,17 +47,26 @@ export class OpenSearchConstruct extends Construct {
       fineGrainedAccessControl: {
         masterUserArn: this.fgacAdminRole.roleArn,
       },
-      // FGAC authorizes each caller; this policy limits callers to signed requests from this account.
-      accessPolicies: [
-        new iam.PolicyStatement({
-          effect: iam.Effect.ALLOW,
-          principals: [new iam.AccountRootPrincipal()],
-          actions: ['es:ESHttp*'],
-          resources: [`arn:aws:es:${stack.region}:${stack.account}:domain/*/*`],
-        }),
-      ],
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
+    // FGAC authorizes each caller; this policy limits callers to signed requests from this account.
+    if (props.optimizedEngine) {
+      // Not in the L2 construct. Both are create-only; the engine needs an OpenSearch Optimized instance family.
+      const cfn = this.domain.node.defaultChild as opensearch.CfnDomain;
+      cfn.addPropertyOverride('EngineMode', 'OPTIMIZED');
+      cfn.addPropertyOverride('UseCase', 'OBSERVABILITY');
+    }
+    // Set inline on the domain: the L2 accessPolicies prop applies it with a post-create
+    // UpdateDomainConfig, and the domain rejects new data source associations while that processes.
+    (this.domain.node.defaultChild as opensearch.CfnDomain).accessPolicies = {
+      Version: '2012-10-17',
+      Statement: [{
+        Effect: 'Allow',
+        Principal: { AWS: `arn:${stack.partition}:iam::${stack.account}:root` },
+        Action: 'es:ESHttp*',
+        Resource: `arn:${stack.partition}:es:${stack.region}:${stack.account}:domain/*/*`,
+      }],
+    };
 
     this.fgacAdminRole.addToPolicy(new iam.PolicyStatement({
       actions: ['es:ESHttp*'],

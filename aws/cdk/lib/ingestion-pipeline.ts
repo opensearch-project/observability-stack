@@ -3,7 +3,6 @@ import * as osis from 'aws-cdk-lib/aws-osis';
 import { Construct } from 'constructs';
 import * as fs from 'fs';
 import * as path from 'path';
-import { pipelineNameFor } from './pipeline-name';
 
 // GenAI evaluation index: write alias (managed) or index (serverless) for gen_ai.evaluation.result
 // log events. Same template as the CLI installer and the local compose stack.
@@ -11,6 +10,10 @@ export const EVALUATION_INDEX = 'otel-v1-genai-evaluation';
 const EVALUATION_DIR = path.join(__dirname, 'genai-evaluation');
 export const EVALUATION_TEMPLATE_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-index-template.json'), 'utf8');
 export const EVALUATION_POLICY_JSON = fs.readFileSync(path.join(EVALUATION_DIR, 'otel-v1-genai-evaluation-policy.json'), 'utf8');
+// Traces on the Optimized engine: a custom index with Data Prepper's v2 span mappings; see optimized/README.md.
+export const OPTIMIZED_SPAN_INDEX = 'otel-v2-apm-span';
+const OPTIMIZED_SPAN_TEMPLATE = JSON.stringify(JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'optimized', 'otel-v2-apm-span-index-template.json'), 'utf8')));
 
 /** Days before evaluation indices are deleted on a managed domain; the local stack also defaults to 7. */
 export const DEFAULT_EVALUATION_RETENTION_DAYS = 7;
@@ -55,11 +58,15 @@ const LOG_ROUTES = `\
     - evaluations: 'getEventType() == "LOG" and /eventName == "gen_ai.evaluation.result"'`;
 
 export interface IngestionPipelineProps {
+  /** The domain runs the OpenSearch Optimized engine; traces go to a custom otel-v2-apm-span index. */
+  optimizedEngine?: boolean;
   domainEndpoint: string;
   prometheusWorkspaceArn: string;
   prometheusWorkspaceId: string;
   pipelineRoleArn: string;
   region: string;
+  /** OSIS pipeline name, obs-<display name>-ingest. */
+  pipelineName: string;
   minOcu: number;
   maxOcu: number;
   serverless?: boolean;
@@ -73,12 +80,12 @@ export class IngestionPipeline extends Construct {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
-    this.pipelineName = pipelineNameFor(stack.stackName);
+    this.pipelineName = props.pipelineName;
 
     // CollectionEndpoint includes the scheme; DomainEndpoint doesn't. Both are
     // unresolved tokens at synth time, so the prefix can't be detected.
     const opensearchEndpoint = props.serverless ? props.domainEndpoint : `https://${props.domainEndpoint}`;
-    const prometheusUrl = `https://aps-workspaces.${props.region}.amazonaws.com/workspaces/${props.prometheusWorkspaceId}/api/v1/remote_write`;
+    const prometheusUrl = `https://aps-workspaces.${props.region}.${cdk.Aws.URL_SUFFIX}/workspaces/${props.prometheusWorkspaceId}/api/v1/remote_write`;
 
     const renderFn = props.serverless ? renderServerlessPipelineYaml : renderManagedPipelineYaml;
 
@@ -92,6 +99,7 @@ export class IngestionPipeline extends Construct {
         prometheusUrl,
         region: props.region,
         roleArn: props.pipelineRoleArn,
+        optimizedEngine: props.optimizedEngine,
       }),
       pipelineRoleArn: props.pipelineRoleArn,
     });
@@ -104,6 +112,8 @@ interface PipelineConfig {
   prometheusUrl: string;
   region: string;
   roleArn: string;
+  /** The domain runs the OpenSearch Optimized engine. */
+  optimizedEngine?: boolean;
 }
 
 // ── Managed (AOS) pipeline ──────────────────────────────────────────────────
@@ -200,11 +210,19 @@ traces-raw-pipeline:
       name: otel-traces-pipeline
   processor:
     - otel_traces:
-  sink:
+${cfg.optimizedEngine ? `    # The engine accepts no array of objects, so span events and links are stored as JSON strings.
+    - write_json:
+        source: events
+    - write_json:
+        source: links
+` : ''}  sink:
     - opensearch:
         hosts:
           - '${cfg.opensearchEndpoint}'
-        index_type: trace-analytics-plain-raw
+${cfg.optimizedEngine ? `        index_type: custom
+        index: ${OPTIMIZED_SPAN_INDEX}
+        template_type: index-template
+        template_content: '${OPTIMIZED_SPAN_TEMPLATE}'` : '        index_type: trace-analytics-plain-raw'}
         aws:
           region: '${cfg.region}'
           sts_role_arn: "${cfg.roleArn}"

@@ -16,24 +16,30 @@ export interface DemoOpenSearchTarget {
   arn: string;
   /** Collection name (serverless only). */
   collectionName?: string;
+  /** False on the Optimized engine, which has no _search API: the canary runs only its offline suite, with no reads. */
+  onlineChecks?: boolean;
 }
 
 export interface DemoWorkloadProps {
   pipeline: IngestionPipeline;
   /** Where the eval canary reads agent spans. Without it the canary does not run. */
   opensearch?: DemoOpenSearchTarget;
+  /** AMI ID, from the LatestAl2023Ami parameter. */
+  amiId: string;
+  /** Every demo resource, and the demo outputs, are created only when this is true. Unset: always. */
+  condition?: cdk.CfnCondition;
+  /** Git ref the instance clones; main when unset. */
+  gitRef?: string;
 }
 
 export class DemoWorkload extends Construct {
-  public readonly instance: ec2.Instance;
+  public readonly instance: ec2.CfnInstance;
   public readonly role: iam.Role;
 
   constructor(scope: Construct, id: string, props: DemoWorkloadProps) {
     super(scope, id);
 
     const stack = cdk.Stack.of(this);
-    const region = stack.region;
-    const vpc = ec2.Vpc.fromLookup(this, 'DefaultVpc', { isDefault: true });
 
     const role = this.role = new iam.Role(this, 'InstanceRole', {
       assumedBy: new iam.ServicePrincipal('ec2.amazonaws.com'),
@@ -49,11 +55,13 @@ export class DemoWorkload extends Construct {
     // Read access for the eval canary, which scores agent spans and sends the results back
     // through the collector. Managed domains also need an FGAC readall mapping (the stack adds it).
     const target = props.opensearch;
-    if (target?.serverless) {
+    const online = target?.onlineChecks ?? true;
+    if (target?.serverless && online) {
       if (!target.collectionName) throw new Error('DemoWorkload: serverless target needs collectionName');
       role.addToPolicy(new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [target.arn] }));
       new aoss.CfnAccessPolicy(this, 'CanaryReadAccess', {
-        name: `${target.collectionName.slice(0, 22)}-demo-read`,
+        // Collection names are at most 21 characters, so this fits the 32 character limit.
+        name: `${target.collectionName}-demo-read`,
         type: 'data',
         policy: cdk.Fn.toJsonString([{
           Rules: [
@@ -62,13 +70,22 @@ export class DemoWorkload extends Construct {
           Principal: [role.roleArn],
         }]),
       });
-    } else if (target) {
+    } else if (target && online) {
       role.addToPolicy(new iam.PolicyStatement({
         actions: ['es:ESHttpGet', 'es:ESHttpPost'],
         resources: CANARY_READ_INDICES.map((i) => `${target.arn}/${i}`),
       }));
     }
-    const canaryEnv = target ? [
+    const canaryEnv = target && !online ? [
+      '',
+      '# Eval canary, offline suite only: an Optimized engine domain has no _search API, so the online checks',
+      '# cannot read spans. The suite only writes results, through the collector and the pipeline.',
+      'cat >> .env << \'CANARYEOF\'',
+      'COMPOSE_PROFILES=aws-evals',
+      'EVAL_CANARY_ONLINE=false',
+      'CANARYEOF',
+      'export COMPOSE_PROFILES=aws-evals',
+    ] : target ? [
       '',
       '# Eval canary: reads agent spans from the domain or collection with SigV4 (instance role)',
       '# and sends gen_ai.evaluation.result events through the collector to the pipeline.',
@@ -76,7 +93,7 @@ export class DemoWorkload extends Construct {
       'COMPOSE_PROFILES=aws-evals',
       'EVAL_CANARY_OPENSEARCH_URL=${OpenSearchUrl}',
       `OPENSEARCH_AWS_SERVICE=${target.serverless ? 'aoss' : 'es'}`,
-      `AWS_REGION=${region}`,
+      'AWS_REGION=${AWS::Region}',
       'CANARYEOF',
       'export COMPOSE_PROFILES=aws-evals',
     ] : [
@@ -87,21 +104,24 @@ export class DemoWorkload extends Construct {
       'export COMPOSE_PROFILES=',
     ];
 
-    this.instance = new ec2.Instance(this, 'Instance', {
-      vpc,
-      instanceType: new ec2.InstanceType('t3.xlarge'),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      role,
-      blockDevices: [{
-        deviceName: '/dev/xvda',
-        volume: ec2.BlockDeviceVolume.ebs(30, { volumeType: ec2.EbsDeviceVolumeType.GP3 }),
-      }],
-      // IMDSv2 with hop limit 2, so containers (collector, eval canary) reach the instance credentials
-      httpTokens: ec2.HttpTokens.REQUIRED,
-      httpPutResponseHopLimit: 2,
+    // No subnet or VPC: EC2 places the instance and its security group in the default VPC, with the default
+    // subnet's public IP. A Vpc.fromLookup would put one account's subnet IDs in the template.
+    // Egress rules need a VpcId; without one the group gets the default allow-all egress.
+    const securityGroup = new ec2.CfnSecurityGroup(this, 'SecurityGroup', {
+      groupDescription: 'Observability stack demo instance (no inbound rules)',
     });
-
-    const pipelineName = props.pipeline.pipelineName;
+    const profile = new iam.CfnInstanceProfile(this, 'InstanceProfile', { roles: [role.roleName] });
+    this.instance = new ec2.CfnInstance(this, 'Instance', {
+      instanceType: 't3.xlarge',
+      imageId: props.amiId,
+      iamInstanceProfile: profile.ref,
+      securityGroupIds: [securityGroup.attrGroupId],
+      blockDeviceMappings: [{ deviceName: '/dev/xvda', ebs: { volumeSize: 30, volumeType: 'gp3', deleteOnTermination: true } }],
+      // IMDSv2 with hop limit 2, so containers (collector, eval canary) reach the instance credentials
+      metadataOptions: { httpTokens: 'required', httpPutResponseHopLimit: 2 },
+    });
+    // The role's policy (osis:Ingest, index reads) exists before the instance starts sending.
+    this.instance.node.addDependency(role);
 
     // Use Fn::Sub to inject the OSIS endpoint at deploy time
     const osiEndpoint = cdk.Fn.join('', [
@@ -128,7 +148,7 @@ export class DemoWorkload extends Construct {
     );
 
     // Write collector config — use Fn::Sub to resolve OSI_ENDPOINT
-    this.instance.instance.addPropertyOverride('UserData', {
+    this.instance.addPropertyOverride('UserData', {
       'Fn::Base64': { 'Fn::Sub': [
         [
           '#!/bin/bash',
@@ -149,7 +169,7 @@ export class DemoWorkload extends Construct {
           'curl -SL "https://github.com/docker/buildx/releases/download/v0.36.1/buildx-v0.36.1.linux-${!BX_ARCH}" -o /usr/local/lib/docker/cli-plugins/docker-buildx',
           'chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx',
           '',
-          'git clone --depth 1 https://github.com/opensearch-project/observability-stack.git /opt/obs-stack',
+          `git clone --depth 1${props.gitRef ? ` --branch ${props.gitRef}` : ''} https://github.com/opensearch-project/observability-stack.git /opt/obs-stack`,
           'cd /opt/obs-stack',
           '',
           '# Patch otel-demo frontend-proxy: upstream envoy template references',
@@ -170,13 +190,13 @@ export class DemoWorkload extends Construct {
           'cat > docker-compose/otel-collector/managed.yaml << \'COLLECTOREOF\'',
           'extensions:',
           '  sigv4auth:',
-          `    region: "${region}"`,
+          '    region: "${AWS::Region}"',
           '    service: osis',
           'processors:',
           '  resourcedetection: { detectors: [env, ec2, system] }',
           'exporters:',
           '  otlphttp/osis-logs:',
-          `    logs_endpoint: \${OsiEndpoint}/${pipelineName}/v1/logs`,
+          `    logs_endpoint: \${OsiEndpoint}/\${PipelineName}/v1/logs`,
           '    auth: { authenticator: sigv4auth }',
           '    compression: none',
           '    retry_on_failure:',
@@ -185,7 +205,7 @@ export class DemoWorkload extends Construct {
           '      max_interval: 60s',
           '      max_elapsed_time: 1800s',
           '  otlphttp/osis-traces:',
-          `    traces_endpoint: \${OsiEndpoint}/${pipelineName}/v1/traces`,
+          `    traces_endpoint: \${OsiEndpoint}/\${PipelineName}/v1/traces`,
           '    auth: { authenticator: sigv4auth }',
           '    compression: none',
           '    retry_on_failure:',
@@ -194,7 +214,7 @@ export class DemoWorkload extends Construct {
           '      max_interval: 60s',
           '      max_elapsed_time: 1800s',
           '  otlphttp/osis-metrics:',
-          `    metrics_endpoint: \${OsiEndpoint}/${pipelineName}/v1/metrics`,
+          `    metrics_endpoint: \${OsiEndpoint}/\${PipelineName}/v1/metrics`,
           '    auth: { authenticator: sigv4auth }',
           '    compression: none',
           '    retry_on_failure:',
@@ -236,7 +256,7 @@ export class DemoWorkload extends Construct {
           '      - "4318:4318"',
           '      - "8888:8888"',
           '    environment:',
-          `      - AWS_REGION=${region}`,
+          '      - AWS_REGION=${AWS::Region}',
           '      - GOMEMLIMIT=400MiB',
           '    networks:',
           '      - observability-stack-network',
@@ -256,10 +276,20 @@ export class DemoWorkload extends Construct {
           'sleep 60',
           'docker compose -f docker-compose.managed.yml up -d',
         ].join('\n'),
-        { OsiEndpoint: osiEndpoint, OpenSearchUrl: target?.url ?? '' },
+        { OsiEndpoint: osiEndpoint, PipelineName: props.pipeline.pipelineName, ...(target && online && { OpenSearchUrl: target.url }) },
       ]},
     });
 
-    new cdk.CfnOutput(stack, 'DemoInstanceId', { value: this.instance.instanceId });
+    new cdk.CfnOutput(stack, 'DemoInstanceId', { value: this.instance.ref, condition: props.condition });
+    new cdk.CfnOutput(stack, 'DemoAccessHint', {
+      value: `aws ssm start-session --target ${this.instance.ref} --document-name AWS-StartPortForwardingSession --parameters portNumber=8080,localPortNumber=8080`,
+      condition: props.condition,
+    });
+    if (props.condition) {
+      const condition = props.condition;
+      cdk.Aspects.of(this).add({
+        visit: (node) => { if (node instanceof cdk.CfnResource) node.cfnOptions.condition = condition; },
+      });
+    }
   }
 }

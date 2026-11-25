@@ -1,4 +1,5 @@
 import { OpenSearchClient, AddDirectQueryDataSourceCommand, DeleteDirectQueryDataSourceCommand, GetDirectQueryDataSourceCommand } from '@aws-sdk/client-opensearch';
+import { withCfnResponse } from '../shared/cfn-response';
 
 const client = new OpenSearchClient();
 
@@ -37,3 +38,6 @@ export async function handler(event: any): Promise<any> {
 
   return { PhysicalResourceId: event.PhysicalResourceId };
 }
+
+/** Entry point when CloudFormation invokes the function directly. */
+export const cfnHandler = withCfnResponse(handler);
