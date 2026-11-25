@@ -45,7 +45,13 @@ Every choice is a CloudFormation parameter of the stack, with the same name as i
 | `logRetentionDays` | `LogRetentionDays` | `30` | serverless (sets `index.data.retention` on the log, span and service map indices) |
 | | `LatestAl2023Ami` | SSM path of the latest Amazon Linux 2023 AMI | all |
 
-`cdk deploy --parameters <Name>=<value>` overrides a parameter for one deploy.
+On an existing stack, `cdk deploy` keeps each parameter's previous value, so a changed `-c` value takes effect only with `--previous-parameters=false`:
+
+```bash
+cdk deploy -c stackName=mystack -c enableDemo=false --previous-parameters=false
+```
+
+`cdk deploy --parameters <Name>=<value>` sets one parameter for a deploy.
 
 The [demo workload](#demo-workload) is deployed by default. To skip it:
 
@@ -201,13 +207,18 @@ The IAM principal sending data needs `osis:Ingest` permission on the pipeline AR
 
 Unless you deploy with `-c enableDemo=false`, an EC2 instance launches running the [OpenTelemetry Demo](https://opentelemetry.io/docs/demo/) — a full e-commerce microservices app (~20 services) that generates realistic traces, logs, and metrics. Data flows through the OTel Collector → OSIS pipeline → OpenSearch + AMP.
 
-The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
+The instance also runs the example agents and the [agent eval canary](../../docker-compose/agent-eval-canary/README.md), which reads agent spans from the domain or collection with the instance role and sends evaluation results through the pipeline, so Agent Traces shows evaluations.
+
+The instance is a `t3.xlarge` in the default VPC, in the Availability Zone EC2 picks for the default subnet. In an Availability Zone that doesn't offer `t3.xlarge`, the instance fails to launch and the stack rolls back; deploy with `-c enableDemo=false` there. The stack grants the instance role read access: read-only, and only on the span and evaluation indices (`otel-v1-apm-span*`, `otel-v1-genai-evaluation*`): `aoss:APIAccessAll` plus a data access policy with `aoss:DescribeIndex` and `aoss:ReadDocument` on serverless, or `es:ESHttpGet`/`es:ESHttpPost` on those index paths plus the `readall` FGAC role on a managed domain.
 
 ## Useful Commands
 
 ```bash
-# Deploy or update
+# Deploy
 cdk deploy -c stackName=mystack
+
+# Update with changed -c values
+cdk deploy -c stackName=mystack --previous-parameters=false
 
 # View diff before deploying
 cdk diff -c stackName=mystack
