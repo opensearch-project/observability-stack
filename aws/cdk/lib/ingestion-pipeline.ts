@@ -85,7 +85,7 @@ export class IngestionPipeline extends Construct {
     // CollectionEndpoint includes the scheme; DomainEndpoint doesn't. Both are
     // unresolved tokens at synth time, so the prefix can't be detected.
     const opensearchEndpoint = props.serverless ? props.domainEndpoint : `https://${props.domainEndpoint}`;
-    const prometheusUrl = `https://aps-workspaces.${props.region}.amazonaws.com/workspaces/${props.prometheusWorkspaceId}/api/v1/remote_write`;
+    const prometheusUrl = `https://aps-workspaces.${props.region}.${cdk.Aws.URL_SUFFIX}/workspaces/${props.prometheusWorkspaceId}/api/v1/remote_write`;
 
     const renderFn = props.serverless ? renderServerlessPipelineYaml : renderManagedPipelineYaml;
 

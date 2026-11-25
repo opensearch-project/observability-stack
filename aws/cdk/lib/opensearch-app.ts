@@ -66,7 +66,7 @@ export class OpenSearchAppConstruct extends Construct {
 
     this.appId = this.application.attrId;
     // The service does not return the endpoint as an attribute; this is its fixed format.
-    this.appEndpoint = `https://application-${appName}-${this.appId}.${stack.region}.opensearch.amazonaws.com`;
+    this.appEndpoint = `https://application-${appName}-${this.appId}.${stack.region}.opensearch.${stack.urlSuffix}`;
 
     // UI init Lambda
     const uiInitFn = new NodejsFunction(this, 'UiInitFn', {
