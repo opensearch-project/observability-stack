@@ -41,7 +41,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "@vitest/ui": "^4.1.11",
     "fast-check": "^4.5.3",
-    "happy-dom": "^20.3.9",
+    "happy-dom": "^21.0.4",
     "vitest": "^4.1.11"
   }
 }
