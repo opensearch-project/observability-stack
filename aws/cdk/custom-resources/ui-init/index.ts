@@ -338,13 +338,17 @@ export async function handler(event: Event) {
     changes: { defaultWorkspace: wsId },
   }, Region);
 
+  // Best effort, like the dashboards: a monitor failure doesn't roll back the stack.
   const monitors = await ensureMonitors(
     (method, path, body) => osuiRequest(method, `${base}${path}`, body ?? null, Region),
     wsId!,
     dsId,
     monitorDefinitions({ demo: DemoMonitors === 'true', exactIndexNames: ExactIndexNames === 'true', spanIndexPattern: spans }),
     DemoMonitors === 'true' ? [] : demoMonitorNames(),
-  );
+  ).catch((e: Error) => {
+    console.warn(`Monitors not created: ${e.message}`);
+    return `failed: ${e.message}`.slice(0, 300);
+  });
 
   return { PhysicalResourceId: 'ui-init', Data: { WorkspaceId: wsId, FieldsReady: String(fieldsReady), Monitors: monitors } };
 }
