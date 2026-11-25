@@ -11,7 +11,7 @@ import { defaultProvider } from '@aws-sdk/credential-provider-node';
 import { ARCH_IMAGE_B64 } from './arch-image.mjs';
 import { syncAgentDashboard, datasetDataSource } from './agent-panels';
 import { ensureAgentEvalsSetup, EVALS_DATASET_TITLE, EVALS_DATASET_TIME_FIELD } from './agent-evals';
-import { withCfnResponse } from '../shared/cfn-response';
+import { invocationSignal, withCfnResponse } from '../shared/cfn-response';
 import { demoMonitorNames, ensureMonitors, monitorDefinitions } from './monitors';
 
 interface Event {
@@ -72,6 +72,7 @@ async function osuiRequest(method: string, url: string, body: any, region: strin
     method,
     headers: signed.headers as Record<string, string>,
     body: isGet ? undefined : bodyBytes,
+    signal: invocationSignal(),
   });
 
   const text = await resp.text();

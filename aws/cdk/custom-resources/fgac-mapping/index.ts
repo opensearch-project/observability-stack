@@ -9,7 +9,7 @@ import { SignatureV4 } from '@aws-sdk/signature-v4';
 import { Sha256 } from '@aws-crypto/sha256-js';
 import { HttpRequest } from '@smithy/protocol-http';
 import { defaultProvider } from '@aws-sdk/credential-provider-node';
-import { withCfnResponse } from '../shared/cfn-response';
+import { invocationSignal, withCfnResponse } from '../shared/cfn-response';
 
 interface Props {
   OpenSearchEndpoint: string;
@@ -120,7 +120,7 @@ function signerFor(region: string): Signer {
       body,
     });
     const signed = await signer.sign(request);
-    return fetch(url, { method, headers: signed.headers as Record<string, string>, body });
+    return fetch(url, { method, headers: signed.headers as Record<string, string>, body, signal: invocationSignal() });
   };
 }
 

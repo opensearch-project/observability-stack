@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 /** The result a custom resource handler returns; the same shape as a CDK Provider onEvent handler. */
 export interface HandlerResult {
   PhysicalResourceId?: string;
@@ -21,6 +23,19 @@ export interface LambdaContext {
 // CloudFormation waits up to an hour for a response that never comes, so answer before Lambda times out.
 const TIMEOUT_MARGIN_MS = 10_000;
 
+/** The physical ID of a resource whose Create failed. Its Delete has nothing to remove, so the handler doesn't run. */
+export const CREATE_FAILED_ID = 'obs-stack::create-failed';
+
+const invocation = new AsyncLocalStorage<AbortSignal>();
+
+/**
+ * Aborted once the running invocation has answered CloudFormation. Pass it to fetch: a handler that timed out
+ * resumes in a later invocation of the same container, and its requests then fail instead of running again.
+ */
+export function invocationSignal(): AbortSignal | undefined {
+  return invocation.getStore();
+}
+
 /**
  * Wraps a handler so CloudFormation can invoke the function directly (ServiceToken is the function ARN)
  * and gets its response on the pre-signed ResponseURL. Templates can then inline the bundle as ZipFile.
@@ -31,25 +46,33 @@ export function withCfnResponse<E>(fn: (event: E, context: LambdaContext) => Pro
     let reason = `See CloudWatch log stream ${context.logStreamName}`;
     let result: HandlerResult | void = undefined;
     let timer: NodeJS.Timeout | undefined;
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Timed out before the function finished')),
-          Math.max(context.getRemainingTimeInMillis() - TIMEOUT_MARGIN_MS, 1000));
-      });
-      result = await Promise.race([fn(event, context), timeout]);
-    } catch (e) {
-      console.error(e);
-      status = 'FAILED';
-      reason = `${e instanceof Error ? e.message : String(e)}`.slice(0, 1000);
-    } finally {
-      clearTimeout(timer);
+    const controller = new AbortController();
+    if (!(event.RequestType === 'Delete' && event.PhysicalResourceId === CREATE_FAILED_ID)) {
+      try {
+        const run = invocation.run(controller.signal, () => fn(event, context));
+        run.catch(() => {}); // still running after a timeout; its rejection must not end the runtime
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Timed out before the function finished')),
+            Math.max(context.getRemainingTimeInMillis() - TIMEOUT_MARGIN_MS, 1000));
+        });
+        result = await Promise.race([run, timeout]);
+      } catch (e) {
+        console.error(e);
+        status = 'FAILED';
+        reason = `${e instanceof Error ? e.message : String(e)}`.slice(0, 1000);
+      } finally {
+        clearTimeout(timer);
+        controller.abort();
+      }
     }
+    const failedCreate = status === 'FAILED' && event.RequestType === 'Create';
     const body = JSON.stringify({
       Status: status,
       Reason: reason,
-      // A Delete answers for the resource CloudFormation named, which after a failed Create is the log stream.
-      PhysicalResourceId: (event.RequestType === 'Delete' && event.PhysicalResourceId)
-        || (result?.PhysicalResourceId ?? event.PhysicalResourceId ?? context.logStreamName),
+      // A Delete answers for the resource CloudFormation named.
+      PhysicalResourceId: failedCreate ? CREATE_FAILED_ID
+        : (event.RequestType === 'Delete' && event.PhysicalResourceId)
+          || (result?.PhysicalResourceId ?? event.PhysicalResourceId ?? context.logStreamName),
       StackId: event.StackId,
       RequestId: event.RequestId,
       LogicalResourceId: event.LogicalResourceId,
