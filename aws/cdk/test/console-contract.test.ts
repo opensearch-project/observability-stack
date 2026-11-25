@@ -295,6 +295,12 @@ describe('Optimized engine (the console\'s optimized template)', () => {
     assert.equal(r('Custom::WorkspaceSeeder').Properties.SpanIndexPattern, 'otel-v2-apm-span*');
   });
 
+  it('stores span events and links as JSON strings, since the engine rejects arrays of objects', () => {
+    const body = JSON.stringify(r('AWS::OSIS::Pipeline').Properties.PipelineConfigurationBody);
+    assert.ok(body.includes('- write_json:\\n        source: events') && body.includes('- write_json:\\n        source: links'));
+    assert.ok(body.includes('\\"events\\":{\\"type\\":\\"text\\"}'));
+  });
+
   it('runs the eval canary offline only, with no read access', () => {
     const ud = JSON.stringify(r('AWS::EC2::Instance').Properties.UserData);
     assert.ok(ud.includes('EVAL_CANARY_ONLINE=false') && !ud.includes('EVAL_CANARY_OPENSEARCH_URL'));

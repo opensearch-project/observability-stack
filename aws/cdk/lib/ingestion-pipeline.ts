@@ -210,7 +210,12 @@ traces-raw-pipeline:
       name: otel-traces-pipeline
   processor:
     - otel_traces:
-  sink:
+${cfg.optimizedEngine ? `    # The engine accepts no array of objects, so span events and links are stored as JSON strings.
+    - write_json:
+        source: events
+    - write_json:
+        source: links
+` : ''}  sink:
     - opensearch:
         hosts:
           - '${cfg.opensearchEndpoint}'

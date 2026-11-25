@@ -4,6 +4,6 @@
 
 - `otel-v1-apm-span-index-standard-template.json` (the `otel-v2-apm-span-plain` component),
 - plus the dynamic templates of `otel-v2-apm-span-nested-keyword-component-template.json`,
-- with `events` and `links` mapped as `object` instead of `nested`: the Optimized engine rejects nested fields.
+- with `events` and `links` mapped as `text` instead of `nested`. The engine rejects nested fields, and arrays of objects in an `object` field, so the pipeline writes each span's events and links as a JSON string (`write_json`). They can be searched as text but not queried field by field.
 
 The pipeline writes it as a custom index, so Data Prepper doesn't set document IDs, which the engine also rejects.
