@@ -102,7 +102,7 @@ export class ObservabilityStack extends cdk.Stack {
       }
     }
 
-    const uiInitRole = iam.Role.fromRoleArn(this, 'UiInitRole', infra.uiInitRoleArn, { mutable: false });
+    const uiInitRole = infra.uiInitRole;
 
     // FGAC role mapping (managed domains only — serverless uses IAM)
     let fgacMapping: cdk.CustomResource | undefined;
@@ -215,6 +215,7 @@ export class ObservabilityStack extends cdk.Stack {
       uiInitDependsOn: [pipeline],
       demoMonitors: params.deployDemo ? cdk.Fn.conditionIf(params.deployDemo.logicalId, 'true', 'false').toString() : 'true',
       exactIndexNames: isServerless,
+      serverless: isServerless,
       spanIndexPattern: isOptimized ? 'otel-v2-apm-span*' : undefined,
     });
     if (!props.adminRoleArns?.length) {
