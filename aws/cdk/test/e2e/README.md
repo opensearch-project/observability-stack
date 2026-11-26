@@ -8,7 +8,7 @@
 4. Checks that all 20 logs and 20 spans are in OpenSearch, that the gauge is in Amazon Managed Service for Prometheus, that span events are stored as JSON on `optimized`, and that log retention is set on `serverless` and `serverless-easy`.
 5. Deletes the stack and checks that no function log group is left.
 
-It prints a table of checks and exits non-zero if any fails. A create takes 15 to 30 minutes, a delete up to 15.
+If the pipeline fails to create with an internal error in OpenSearch Ingestion, which asks callers to retry, the stack is deleted and the run tries once more under a new name. It prints a table of checks and exits non-zero if any fails. A create takes 15 to 30 minutes, a delete up to 15.
 
 ## Run locally
 

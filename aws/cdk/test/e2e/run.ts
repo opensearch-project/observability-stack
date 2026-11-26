@@ -27,13 +27,14 @@ function arg(name: string): string | undefined {
 const variant = arg('variant') as Variant;
 if (!(variant in SHORT)) throw new Error('--variant must be domain, optimized, serverless or serverless-easy');
 const templates = path.resolve(arg('templates') ?? 'dist/templates');
-const name = arg('name') ?? `e2e-${SHORT[variant]}-${randomBytes(3).toString('hex')}`;
+const newName = () => `e2e-${SHORT[variant]}-${randomBytes(3).toString('hex')}`;
+let name = arg('name') ?? newName();
 const keep = process.argv.includes('--keep');
 const region = process.env.AWS_REGION;
 if (!region) throw new Error('Set AWS_REGION');
-const stackName = `ObsStack-${name}`;
+let stackName = `ObsStack-${name}`;
 const serverless = variant.startsWith('serverless');
-const service = `e2e-${name}`;
+let service = `e2e-${name}`;
 
 function aws(...args: string[]): any {
   const out = execFileSync('aws', [...args, '--region', region!, '--output', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
@@ -107,6 +108,20 @@ async function main() {
     aws('s3api', 'put-public-access-block', '--bucket', bucket, '--public-access-block-configuration',
       'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true');
   }
+  if (await attempt(bucket, adminRoleArn, false)) {
+    name = newName();
+    stackName = `ObsStack-${name}`;
+    service = `e2e-${name}`;
+    log(`retrying as ${stackName}`);
+    await attempt(bucket, adminRoleArn, true);
+  }
+}
+
+/**
+ * Creates, checks and deletes one stack. Returns true when the create failed only because the pipeline hit an
+ * internal error in OpenSearch Ingestion, which it asks callers to retry, and `last` is false.
+ */
+async function attempt(bucket: string, adminRoleArn: string, last: boolean): Promise<boolean> {
   const key = `${name}/observability-stack-${variant}.json`;
   aws('s3', 'cp', path.join(templates, `observability-stack-${variant}.json`), `s3://${bucket}/${key}`, '--only-show-errors');
   const templateUrl = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
@@ -119,18 +134,27 @@ async function main() {
       '--capabilities', 'CAPABILITY_IAM', '--on-failure', 'DO_NOTHING', '--parameters', ...params, '--tags', 'Key=obs-stack-e2e,Value=true');
     const started = Date.now();
     const status = await waitForStack('create', 75 * 60_000);
-    check('stack created', status === 'CREATE_COMPLETE', `${status} in ${Math.round((Date.now() - started) / 60_000)} min`);
+    const took = `${status} in ${Math.round((Date.now() - started) / 60_000)} min`;
     if (status !== 'CREATE_COMPLETE') {
       log(failedEvents());
+      let reason = '';
       try {
         const p = aws('osis', 'get-pipeline', '--pipeline-name', `obs-${name}-ingest`).Pipeline;
-        log(`pipeline ${p.Status}: ${p.StatusReason?.Description ?? 'no reason given'}`);
+        reason = p.StatusReason?.Description ?? '';
+        log(`pipeline ${p.Status}: ${reason || 'no reason given'}`);
       } catch (e: any) {
         log(`pipeline not found: ${String(e.stderr ?? e.message).trim()}`);
       }
-      return;
+      if (!last && /internal exception/i.test(reason)) {
+        check('stack created (retried)', true, `${took}: OpenSearch Ingestion internal error, "${reason}"`);
+        return true;
+      }
+      check('stack created', false, took);
+      return false;
     }
+    check('stack created', true, took);
     await verify();
+    return false;
   } finally {
     if (keep) {
       log(`--keep: leaving ${stackName}`);
