@@ -115,12 +115,19 @@ async function main() {
   if (variant !== 'serverless-easy') params.push('ParameterKey=DeployDemoWorkload,ParameterValue=false');
   try {
     aws('cloudformation', 'create-stack', '--stack-name', stackName, '--template-url', templateUrl,
-      '--capabilities', 'CAPABILITY_IAM', '--parameters', ...params, '--tags', 'Key=obs-stack-e2e,Value=true');
+      // No rollback on a failed create, so the pipeline's status reason can still be read; teardown deletes the stack.
+      '--capabilities', 'CAPABILITY_IAM', '--on-failure', 'DO_NOTHING', '--parameters', ...params, '--tags', 'Key=obs-stack-e2e,Value=true');
     const started = Date.now();
     const status = await waitForStack('create', 75 * 60_000);
     check('stack created', status === 'CREATE_COMPLETE', `${status} in ${Math.round((Date.now() - started) / 60_000)} min`);
     if (status !== 'CREATE_COMPLETE') {
       log(failedEvents());
+      try {
+        const p = aws('osis', 'get-pipeline', '--pipeline-name', `obs-${name}-ingest`).Pipeline;
+        log(`pipeline ${p.Status}: ${p.StatusReason?.Description ?? 'no reason given'}`);
+      } catch (e: any) {
+        log(`pipeline not found: ${String(e.stderr ?? e.message).trim()}`);
+      }
       return;
     }
     await verify();
