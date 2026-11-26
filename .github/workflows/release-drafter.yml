@@ -88,14 +88,16 @@ jobs:
         working-directory: aws/cli-installer
         run: npm run test
 
-      # The console's templates for this release: self-contained, so CloudFormation needs no CDK bootstrap.
-      - name: Export CloudFormation templates
-        working-directory: aws/cdk
+      # The templates the e2e job exported for this tag and tested, so what ships is what was deployed.
+      - name: Download the tested CloudFormation templates
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: templates
+          path: ${{ runner.temp }}/templates
+
+      - name: Checksum the templates
+        working-directory: ${{ runner.temp }}/templates
         run: |
-          set -euo pipefail
-          npm ci
-          npm run export-templates -- --version "${GITHUB_REF_NAME}" --out "${RUNNER_TEMP}/templates"
-          cd "${RUNNER_TEMP}/templates"
           sha256sum *.json > SHA256SUMS
           cat SHA256SUMS
 
