@@ -27,3 +27,10 @@ jobs:
       - name: Run unit tests
         working-directory: aws/cdk
         run: npm test
+      # W3005: DependsOn the create order needs, also implied by a GetAtt. W3037: es:*DirectQueryDataSource actions,
+      # missing from cfn-lint's action list.
+      - name: Lint the exported templates
+        working-directory: aws/cdk
+        run: |
+          npm run export-templates -- --out "${RUNNER_TEMP}/templates"
+          pipx run cfn-lint==1.61.0 --ignore-checks W3005 W3037 -- "${RUNNER_TEMP}"/templates/*.json
