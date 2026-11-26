@@ -36,7 +36,7 @@ const serverless = variant.startsWith('serverless');
 const service = `e2e-${name}`;
 
 function aws(...args: string[]): any {
-  const out = execFileSync('aws', [...args, '--region', region!, '--output', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const out = execFileSync('aws', [...args, '--region', region!, '--output', 'json'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
   return out.trim() ? JSON.parse(out) : {};
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -66,7 +66,7 @@ async function waitForStack(target: 'create' | 'delete', timeoutMs: number): Pro
 }
 
 function failedEvents(): string {
-  const events = aws('cloudformation', 'describe-stack-events', '--stack-name', stackName).StackEvents as any[];
+  const events = aws('cloudformation', 'describe-stack-events', '--stack-name', stackName, '--max-items', '200').StackEvents as any[];
   return events.filter((e) => e.ResourceStatus.endsWith('FAILED') && e.ResourceStatusReason)
     .slice(0, 5).map((e) => `${e.LogicalResourceId}: ${e.ResourceStatusReason}`).join('\n');
 }
