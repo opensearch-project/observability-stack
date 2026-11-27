@@ -35,6 +35,8 @@ export class InfraStack extends Construct {
   public readonly dqsDataSourceArn: string;
   public readonly dqsRoleArn: string;
   public readonly uiInitRoleArn: string;
+  /** The UI init Lambda's role. Its access to the application and data store is granted with the application. */
+  public readonly uiInitRole: iam.Role;
   /** Runs the index retention function on serverless; listed in the collection's data access policy. */
   public readonly retentionRole?: iam.Role;
 
@@ -59,11 +61,8 @@ export class InfraStack extends Construct {
       assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
       managedPolicies: [iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')],
     });
-    uiInitRole.addToPolicy(new iam.PolicyStatement({
-      actions: ['es:*', 'opensearch:*', 'aoss:*'],
-      resources: ['*'],
-    }));
     uiInitRole.addToPolicy(denyCreateLogGroup());
+    this.uiInitRole = uiInitRole;
     this.uiInitRoleArn = uiInitRole.roleArn;
 
     if (this.opensearchType === 'serverless') {

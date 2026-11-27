@@ -68,7 +68,9 @@ export class StackParameters extends Construct {
     this.adminRoleArns = param('AdminRoleArns', {
       type: 'CommaDelimitedList',
       default: d.adminRoleArns.join(','),
-      description: 'IAM role ARNs that administer the OpenSearch UI application and get data access. The console fills in the role you are signed in with.',
+      description: `IAM role ARNs that administer the OpenSearch UI application and ${serverless
+        ? 'can read and write the collection'
+        : "are mapped to the domain's all_access and security_manager roles"}. The console fills in the role you are signed in with.`,
     }).valueAsList;
     this.hasAdminRoleArns = new cdk.CfnCondition(stack, 'HasAdminRoleArns', {
       expression: cdk.Fn.conditionNot(cdk.Fn.conditionEquals(cdk.Fn.join('', this.adminRoleArns), '')),
@@ -105,7 +107,7 @@ export class StackParameters extends Construct {
     this.minOcu = num('MinOCU', { type: 'Number', default: d.minOcu, description: 'Ingestion pipeline minimum OCU.' });
     this.maxOcu = num('MaxOCU', { type: 'Number', default: d.maxOcu, description: 'Ingestion pipeline maximum OCU.' });
     if (serverless) {
-      this.aossMinOcu = num('CollectionMinOCU', { type: 'Number', default: d.aossMinOcu, minValue: 0, description: 'Collection group minimum indexing and search OCU.' });
+      this.aossMinOcu = num('CollectionMinOCU', { type: 'Number', default: d.aossMinOcu, minValue: 0, description: 'Collection group minimum indexing and search OCU. 0 lets an idle stack scale down.' });
       this.aossMaxOcu = num('CollectionMaxOCU', { type: 'Number', default: d.aossMaxOcu, minValue: 1, description: 'Collection group maximum indexing and search OCU.' });
     }
     this.metricsRetentionDays = num('MetricsRetentionDays', {

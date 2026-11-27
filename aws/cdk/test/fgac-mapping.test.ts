@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
-import { mergeBackendRoles, parseFgacRoles, parseRoleArns, putBackendRoles } from '../custom-resources/fgac-mapping';
+import { mergeBackendRoles, parseFgacRoles, parseRoleArns, putBackendRoles, withRetry } from '../custom-resources/fgac-mapping';
 
 describe('CDK FGAC mapping', () => {
   it('maps all_access and security_manager when FgacRoles is absent', () => {
@@ -39,5 +39,33 @@ describe('CDK FGAC mapping', () => {
     await putBackendRoles(sign, 'https://d', 'readall', ['arn:aws:iam::123456789012:role/demo']);
     assert.deepEqual(calls.map((c) => c.split(' ')[0]), ['PATCH', 'PUT']);
     assert.equal(calls[1], 'PUT {"backend_roles":["arn:aws:iam::123456789012:role/demo"]}');
+  });
+});
+
+describe('withRetry', () => {
+  const noSleep = async () => {};
+  it('retries a security API that is not ready yet, then returns its answer', async () => {
+    const statuses = [403, 503, 200];
+    let calls = 0;
+    const sign = async () => {
+      const status = statuses[calls++];
+      return { status, ok: status === 200 } as Response;
+    };
+    const resp = await withRetry(sign, Date.now() + 60_000, noSleep)('https://d/_plugins/_security/api/rolesmapping/all_access', 'GET');
+    assert.deepEqual([resp.status, calls], [200, 3]);
+  });
+
+  it('returns a 400 or 404 without retrying', async () => {
+    let calls = 0;
+    const sign = async () => { calls++; return { status: 404, ok: false } as Response; };
+    const resp = await withRetry(sign, Date.now() + 60_000, noSleep)('https://d/x', 'GET');
+    assert.deepEqual([resp.status, calls], [404, 1]);
+  });
+
+  it('stops at the deadline and returns the last answer', async () => {
+    let calls = 0;
+    const sign = async () => { calls++; return { status: 403, ok: false } as Response; };
+    const resp = await withRetry(sign, Date.now(), noSleep)('https://d/x', 'GET');
+    assert.deepEqual([resp.status, calls], [403, 1]);
   });
 });

@@ -80,8 +80,26 @@ export class ObservabilityStack extends cdk.Stack {
 
     // Read by the console's Observability stacks page. The stack name and this Description
     // marker identify the stack without tags, which customers can remove.
-    this.templateOptions.description =
-      `OpenSearch Observability Stack - deployed with the observability-stack CDK. [obs-stack v2 ${backend}${props.minimalParameters ? ' easy' : ''}]`;
+    const store = isServerless
+      ? 'an OpenSearch Serverless (NextGen) time-series collection'
+      : isOptimized
+        ? 'an Amazon OpenSearch Service domain on the OpenSearch Optimized engine (observability use case)'
+        : 'an Amazon OpenSearch Service domain (general purpose engine) with fine-grained access control';
+    const target = isServerless ? 'the collection' : 'the domain';
+    this.templateOptions.description = `OpenSearch Observability Stack - ${store}, an OpenSearch Ingestion OTLP pipeline routing `
+      + `logs and traces to ${target} and metrics to Amazon Managed Service for Prometheus, a Prometheus workspace, an OpenSearch UI `
+      + 'application set up as an observability workspace, and an optional demo workload. Ready to use when creation finishes. '
+      + `[obs-stack v2 ${backend}${props.minimalParameters ? ' easy' : ''}]`;
+    if (props.minimalParameters) {
+      this.templateOptions.metadata = {
+        'AWS::CloudFormation::Interface': {
+          ParameterLabels: {
+            StackDisplayName: { default: 'Stack name (must match the CloudFormation stack name after ObsStack-)' },
+            AdminRoleArns: { default: 'Administrators (filled in by the console)' },
+          },
+        },
+      };
+    }
     // Tags.of a stack sets stack-level tags, which CloudFormation copies to every resource that supports tags.
     // Read by the CLI installer's list and destroy.
     cdk.Tags.of(this).add('observability-stack', this.stackName);
@@ -102,7 +120,7 @@ export class ObservabilityStack extends cdk.Stack {
       }
     }
 
-    const uiInitRole = iam.Role.fromRoleArn(this, 'UiInitRole', infra.uiInitRoleArn, { mutable: false });
+    const uiInitRole = infra.uiInitRole;
 
     // FGAC role mapping (managed domains only — serverless uses IAM)
     let fgacMapping: cdk.CustomResource | undefined;
@@ -215,6 +233,7 @@ export class ObservabilityStack extends cdk.Stack {
       uiInitDependsOn: [pipeline],
       demoMonitors: params.deployDemo ? cdk.Fn.conditionIf(params.deployDemo.logicalId, 'true', 'false').toString() : 'true',
       exactIndexNames: isServerless,
+      serverless: isServerless,
       spanIndexPattern: isOptimized ? 'otel-v2-apm-span*' : undefined,
     });
     if (!props.adminRoleArns?.length) {

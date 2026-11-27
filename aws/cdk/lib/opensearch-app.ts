@@ -28,6 +28,8 @@ export interface OpenSearchAppConstructProps {
   demoMonitors: string;
   /** Serverless collections: monitors use exact index names. */
   exactIndexNames: boolean;
+  /** domainArn is an OpenSearch Serverless collection. */
+  serverless: boolean;
   /** Traces index pattern, when it isn't otel-v1-apm-span*. */
   spanIndexPattern?: string;
 }
@@ -92,6 +94,17 @@ export class OpenSearchAppConstruct extends Construct {
       },
     });
     uiInit.node.addDependency(this.application);
+    // UI init reaches the data store through the application, signed as its own role.
+    const access = new iam.Policy(this, 'UiInitAccess', {
+      roles: [props.uiInitRole],
+      statements: [
+        new iam.PolicyStatement({ actions: ['opensearch:ApplicationAccessAll'], resources: [this.application.attrArn] }),
+        props.serverless
+          ? new iam.PolicyStatement({ actions: ['aoss:APIAccessAll'], resources: [props.domainArn] })
+          : new iam.PolicyStatement({ actions: ['es:ESHttp*'], resources: [props.domainArn, `${props.domainArn}/*`] }),
+      ],
+    });
+    uiInit.node.addDependency(access);
     for (const dep of props.uiInitDependsOn ?? []) uiInit.node.addDependency(dep);
 
     this.workspaceId = uiInit.getAttString('WorkspaceId');

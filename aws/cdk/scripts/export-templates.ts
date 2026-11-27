@@ -68,6 +68,7 @@ for (const variant of VARIANTS) {
   }
   for (const name of REQUIRED_PARAMETERS) delete template.Parameters[name].Default;
   template.Metadata = {
+    ...template.Metadata,
     TemplateVersion: version ?? 'unreleased',
     OssSource: { Repository: 'https://github.com/opensearch-project/observability-stack', Commit: commit },
   };

@@ -308,3 +308,23 @@ describe('Optimized engine (the console\'s optimized template)', () => {
     assert.ok(!demoPolicies.includes('es:ESHttpGet'));
   });
 });
+
+describe('UI init role', () => {
+  for (const type of ['managed', 'serverless'] as const) {
+    it(`reaches only this stack's application and data store (${type})`, () => {
+      const { template: t } = synth(type);
+      const fn = Object.values<any>(t.Resources).find((r) => r.Type === 'AWS::Lambda::Function'
+        && JSON.stringify(r.Properties.Role).includes('UiInitRole'));
+      const roleId = fn.Properties.Role['Fn::GetAtt'][0];
+      const statements = Object.values<any>(t.Resources)
+        .filter((r) => r.Type === 'AWS::IAM::Policy' && JSON.stringify(r.Properties.Roles).includes(roleId))
+        .flatMap((r) => r.Properties.PolicyDocument.Statement)
+        .filter((s: any) => s.Effect === 'Allow');
+      const actions = statements.flatMap((s: any) => [].concat(s.Action)).sort();
+      assert.deepEqual(actions, type === 'serverless'
+        ? ['aoss:APIAccessAll', 'opensearch:ApplicationAccessAll']
+        : ['es:ESHttp*', 'opensearch:ApplicationAccessAll']);
+      for (const s of statements) assert.notEqual(s.Resource, '*', `${s.Action} on *`);
+    });
+  }
+});

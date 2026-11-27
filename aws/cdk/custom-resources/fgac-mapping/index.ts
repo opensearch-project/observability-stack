@@ -69,18 +69,22 @@ export function mergeBackendRoles(existing: string[], add: string[], revoke: str
   return [...new Set([...kept, ...add])];
 }
 
-export async function handler(event: Event) {
+export async function handler(event: Event, context?: { getRemainingTimeInMillis(): number }) {
   const { OpenSearchEndpoint, RoleArns, Region, FgacRoles } = event.ResourceProperties;
   const roleArns = parseRoleArns(RoleArns);
   const fgacRoles = parseFgacRoles(FgacRoles);
   const base = `https://${OpenSearchEndpoint}`;
-  const sign = signerFor(Region);
+  // Leave 30 seconds for the response before the function times out.
+  const deadline = Date.now() + (context?.getRemainingTimeInMillis() ?? 300_000) - 30_000;
+  const sign = withRetry(signerFor(Region), deadline);
 
   if (event.RequestType === 'Delete') {
     // Best-effort: remove role mappings
     try {
+      // No retries: the domain may already be unreachable, and this must not hold up the stack delete.
+      const once = signerFor(Region);
       for (const role of fgacRoles) {
-        await removeMappings(sign, base, role, roleArns);
+        await removeMappings(once, base, role, roleArns);
       }
     } catch { /* best effort */ }
     return { PhysicalResourceId: event.PhysicalResourceId || 'fgac-mapping' };
@@ -106,6 +110,27 @@ export async function handler(event: Event) {
 }
 
 type Signer = (url: string, method: 'GET' | 'PATCH' | 'PUT', body?: string) => Promise<Response>;
+
+const RETRY_MS = 10_000;
+
+/**
+ * Retries a request that fails with 401, 403, 429, a 5xx or a network error until `deadline`: a new domain reports
+ * ACTIVE before its security API accepts the master user.
+ */
+export function withRetry(sign: Signer, deadline: number, sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))): Signer {
+  return async (url, method, body) => {
+    for (;;) {
+      const resp = await sign(url, method, body).catch((e: Error) => e);
+      const retryable = resp instanceof Error || [401, 403, 429].includes(resp.status) || resp.status >= 500;
+      if (!retryable || Date.now() + RETRY_MS > deadline) {
+        if (resp instanceof Error) throw resp;
+        return resp;
+      }
+      console.log(`${method} ${new URL(url).pathname}: ${resp instanceof Error ? resp.message : resp.status}, retrying`);
+      await sleep(RETRY_MS);
+    }
+  };
+}
 
 function signerFor(region: string): Signer {
   const signer = new SignatureV4({ credentials: defaultProvider(), region, service: 'es', sha256: Sha256 });
