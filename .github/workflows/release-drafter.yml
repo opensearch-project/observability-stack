@@ -6,13 +6,24 @@ on:
       - "v*"
 
 jobs:
+  # Deploys each exported template in AWS and checks it end to end before anything is published.
+  e2e:
+    uses: ./.github/workflows/cdk-e2e.yml
+    with:
+      version: ${{ github.ref_name }}
+    permissions:
+      contents: read
+      id-token: write
+
   release-to-npm:
+    needs: e2e
     environment: release-approval
     runs-on: ubuntu-latest
     timeout-minutes: 1440
     permissions:
       id-token: write
       contents: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -77,7 +88,26 @@ jobs:
         working-directory: aws/cli-installer
         run: npm run test
 
+      # The templates the e2e job exported for this tag and tested, so what ships is what was deployed.
+      - name: Download the tested CloudFormation templates
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: templates
+          path: ${{ runner.temp }}/templates
+
+      - name: Checksum the templates
+        working-directory: ${{ runner.temp }}/templates
+        run: |
+          sha256sum *.json > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest the templates' provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ runner.temp }}/templates/*.json
+
       - name: Publish to npm
+        if: github.repository == 'opensearch-project/observability-stack'
         working-directory: aws/cli-installer
         run: npm publish --tag "${{ steps.version.outputs.dist_tag }}"
 
@@ -87,3 +117,6 @@ jobs:
           draft: false
           prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
           generate_release_notes: true
+          files: |
+            ${{ runner.temp }}/templates/*.json
+            ${{ runner.temp }}/templates/SHA256SUMS

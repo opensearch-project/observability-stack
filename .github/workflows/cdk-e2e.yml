@@ -1,0 +1,87 @@
+name: CDK End-to-End
+
+# Deploys each exported CloudFormation template in AWS, sends OTLP logs, spans and a metric, checks they arrive,
+# and deletes the stack (aws/cdk/test/e2e/run.ts).
+#
+# Runs in the account of the role in the E2E_ROLE_ARN repository variable, assumed with GitHub OIDC. Without it
+# the deploy jobs are skipped, so forks and repositories without an AWS account still pass. The role trusts only
+# this repository's main branch and the release-approval environment; pull requests never get AWS credentials.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aws/cdk/**'
+      - '.github/workflows/cdk-e2e.yml'
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      variants:
+        description: 'Templates to test, as a JSON list'
+        default: '["domain", "optimized", "serverless", "serverless-easy"]'
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release tag the templates are exported for'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cdk-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  templates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Export templates
+        working-directory: aws/cdk
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          npm ci
+          npm run export-templates -- ${VERSION:+--version "$VERSION"} --out "${RUNNER_TEMP}/templates"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: templates
+          path: ${{ runner.temp }}/templates
+
+  e2e:
+    needs: templates
+    if: vars.E2E_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(inputs.variants || '["domain", "optimized", "serverless", "serverless-easy"]') }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Install dependencies
+        working-directory: aws/cdk
+        run: npm ci
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: templates
+          path: ${{ runner.temp }}/templates
+      - uses: aws-actions/configure-aws-credentials@45666896f5d8e0f10ae255413f3a4cdd03bdc8f5 # v6.3.1
+        with:
+          role-to-assume: ${{ vars.E2E_ROLE_ARN }}
+          role-session-name: obs-stack-e2e-${{ matrix.variant }}
+          role-duration-seconds: 10800
+          aws-region: ${{ vars.E2E_REGION || 'us-east-1' }}
+      - name: Deploy, check and delete the ${{ matrix.variant }} template
+        working-directory: aws/cdk
+        run: npx ts-node test/e2e/run.ts --variant ${{ matrix.variant }} --templates "${RUNNER_TEMP}/templates"

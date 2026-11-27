@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Role that the CDK End-to-End workflow (.github/workflows/cdk-e2e.yml) assumes with GitHub OIDC to deploy, check
+  and delete observability stacks. Set the E2E_ROLE_ARN repository variable to the RoleArn output.
+
+Parameters:
+  Repository:
+    Type: String
+    Default: opensearch-project/observability-stack
+    Description: GitHub repository (owner/name) whose workflows may assume the role.
+  ExtraRefPattern:
+    Type: String
+    Default: ''
+    Description: >-
+      One more git ref pattern the role trusts, for example refs/heads/ci/* on a fork. The role always trusts
+      refs/heads/main and refs/tags/v*.
+  CreateOidcProvider:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: "'false' if the account already has the token.actions.githubusercontent.com provider."
+
+Conditions:
+  CreateProvider: !Equals [!Ref CreateOidcProvider, 'true']
+  HasExtraRef: !Not [!Equals [!Ref ExtraRefPattern, '']]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 10800
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub 'repo:${Repository}:ref:refs/heads/main'
+                  - !Sub 'repo:${Repository}:ref:refs/tags/v*'
+                  - !If [HasExtraRef, !Sub 'repo:${Repository}:ref:${ExtraRefPattern}', !Ref 'AWS::NoValue']
+      ManagedPolicyArns:
+        # The stack creates OpenSearch, OpenSearch Serverless, OSIS, AMP, Lambda, EC2 and log resources.
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/PowerUserAccess'
+      Policies:
+        - PolicyName: stack-iam
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # CloudFormation names the stack's roles and instance profile ObsStack-<name>-<resource>-<suffix>.
+              - Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:PutRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:TagInstanceProfile
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/ObsStack-*'
+                  - !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:instance-profile/ObsStack-*'
+              # The test reads its own role to pass it as AdminRoleArns.
+              - Effect: Allow
+                Action: iam:GetRole
+                Resource: '*'
+              - Effect: Allow
+                Action: iam:CreateServiceLinkedRole
+                Resource: '*'
+                Condition:
+                  StringLike:
+                    iam:AWSServiceName:
+                      - opensearchservice.amazonaws.com
+                      - observability.aoss.amazonaws.com
+                      - osis.amazonaws.com
+
+Outputs:
+  RoleArn:
+    Value: !GetAtt Role.Arn
